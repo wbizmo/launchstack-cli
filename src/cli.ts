@@ -2,6 +2,7 @@
 
 import { Command } from "commander";
 import { deployCommand } from "./commands/deploy";
+import { dockerCommand } from "./commands/docker";
 import { envCommand } from "./commands/env";
 import { historyCommand } from "./commands/history";
 import { initCommand } from "./commands/init";
@@ -27,5 +28,6 @@ program.addCommand(providerCommand);
 program.addCommand(secretsCommand);
 program.addCommand(historyCommand);
 program.addCommand(rollbackCommand);
+program.addCommand(dockerCommand);
 
 program.parse();

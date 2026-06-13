@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { Command as Command10 } from "commander";
+import { Command as Command11 } from "commander";
 
 // src/commands/deploy.ts
 import { execSync as execSync2 } from "child_process";
@@ -170,10 +170,61 @@ var deployCommand = new Command("deploy").description("Run the configured Launch
   }
 });
 
-// src/commands/env.ts
+// src/commands/docker.ts
+import { existsSync as existsSync4, writeFileSync as writeFileSync3 } from "fs";
 import { Command as Command2 } from "commander";
+function writeFileIfAllowed(path, content, force) {
+  if (existsSync4(path) && !force) {
+    console.log(`${path} already exists. Use --force to overwrite.`);
+    return;
+  }
+  writeFileSync3(path, content);
+  console.log(`Created ${path}`);
+}
+var dockerCommand = new Command2("docker").description("Generate Docker deployment files");
+dockerCommand.command("init").description("Create Dockerfile, .dockerignore, and docker-compose.yml").option("-f, --force", "Overwrite existing Docker files").action((options) => {
+  const config = readConfig();
+  const force = Boolean(options.force);
+  const dockerfile = `FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm install
+
+COPY . .
+
+RUN ${config.buildCommand}
+
+EXPOSE 3000
+
+CMD ["npm", "start"]
+`;
+  const dockerignore = `node_modules
+dist
+.git
+.env
+.launchstack
+npm-debug.log
+`;
+  const compose = `services:
+  ${config.appName}:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: ${config.environment}
+`;
+  writeFileIfAllowed("Dockerfile", dockerfile, force);
+  writeFileIfAllowed(".dockerignore", dockerignore, force);
+  writeFileIfAllowed("docker-compose.yml", compose, force);
+});
+
+// src/commands/env.ts
+import { Command as Command3 } from "commander";
 var allowedEnvironments = ["development", "staging", "production"];
-var envCommand = new Command2("env").description("View or update the LaunchStack environment").argument("[environment]", "development, staging, or production").action((environment) => {
+var envCommand = new Command3("env").description("View or update the LaunchStack environment").argument("[environment]", "development, staging, or production").action((environment) => {
   try {
     const config = readConfig();
     if (!environment) {
@@ -197,8 +248,8 @@ var envCommand = new Command2("env").description("View or update the LaunchStack
 });
 
 // src/commands/history.ts
-import { Command as Command3 } from "commander";
-var historyCommand = new Command3("history").description("Show recent LaunchStack deployments").option("-l, --limit <number>", "Number of records to show", "10").action((options) => {
+import { Command as Command4 } from "commander";
+var historyCommand = new Command4("history").description("Show recent LaunchStack deployments").option("-l, --limit <number>", "Number of records to show", "10").action((options) => {
   const records = readHistory();
   const limit = Number(options.limit);
   if (records.length === 0) {
@@ -222,8 +273,8 @@ var historyCommand = new Command3("history").description("Show recent LaunchStac
 });
 
 // src/commands/init.ts
-import { Command as Command4 } from "commander";
-var initCommand = new Command4("init").description("Create a LaunchStack config file").option("-n, --name <name>", "Project name").option("-f, --force", "Overwrite existing config file").action((options) => {
+import { Command as Command5 } from "commander";
+var initCommand = new Command5("init").description("Create a LaunchStack config file").option("-n, --name <name>", "Project name").option("-f, --force", "Overwrite existing config file").action((options) => {
   if (configExists() && !options.force) {
     console.log("launchstack.config.json already exists. Use --force to overwrite.");
     return;
@@ -235,9 +286,9 @@ var initCommand = new Command4("init").description("Create a LaunchStack config 
 });
 
 // src/commands/provider.ts
-import { Command as Command5 } from "commander";
+import { Command as Command6 } from "commander";
 var allowedProviders = ["vercel", "netlify", "render", "railway", "docker", "custom"];
-var providerCommand = new Command5("provider").description("View or update the LaunchStack deployment provider").argument("[provider]", "vercel, netlify, render, railway, docker, or custom").action((provider) => {
+var providerCommand = new Command6("provider").description("View or update the LaunchStack deployment provider").argument("[provider]", "vercel, netlify, render, railway, docker, or custom").action((provider) => {
   try {
     const config = readConfig();
     if (!provider) {
@@ -261,8 +312,8 @@ var providerCommand = new Command5("provider").description("View or update the L
 });
 
 // src/commands/rollback.ts
-import { Command as Command6 } from "commander";
-var rollbackCommand = new Command6("rollback").description("Show the latest successful deployment available for rollback").action(() => {
+import { Command as Command7 } from "commander";
+var rollbackCommand = new Command7("rollback").description("Show the latest successful deployment available for rollback").action(() => {
   const records = readHistory();
   const latestSuccess = records.find((record) => record.status === "success");
   if (!latestSuccess) {
@@ -279,9 +330,9 @@ var rollbackCommand = new Command6("rollback").description("Show the latest succ
 });
 
 // src/commands/secrets.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync2, readFileSync as readFileSync3, writeFileSync as writeFileSync3 } from "fs";
+import { existsSync as existsSync5, mkdirSync as mkdirSync2, readFileSync as readFileSync3, writeFileSync as writeFileSync4 } from "fs";
 import { resolve as resolve4 } from "path";
-import { Command as Command7 } from "commander";
+import { Command as Command8 } from "commander";
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
 function getStorePath2() {
@@ -291,22 +342,22 @@ function getSecretsPath() {
   return resolve4(getStorePath2(), SECRETS_FILE);
 }
 function ensureStore2() {
-  if (!existsSync4(getStorePath2())) {
+  if (!existsSync5(getStorePath2())) {
     mkdirSync2(getStorePath2(), { recursive: true });
   }
 }
 function readSecrets() {
   ensureStore2();
-  if (!existsSync4(getSecretsPath())) {
+  if (!existsSync5(getSecretsPath())) {
     return {};
   }
   return JSON.parse(readFileSync3(getSecretsPath(), "utf-8"));
 }
 function writeSecrets(secrets) {
   ensureStore2();
-  writeFileSync3(getSecretsPath(), JSON.stringify(secrets, null, 2));
+  writeFileSync4(getSecretsPath(), JSON.stringify(secrets, null, 2));
 }
-var secretsCommand = new Command7("secrets").description("Manage local LaunchStack secrets");
+var secretsCommand = new Command8("secrets").description("Manage local LaunchStack secrets");
 secretsCommand.command("add").description("Add or update a local secret").argument("<key>", "Secret key").argument("<value>", "Secret value").action((key, value) => {
   const secrets = readSecrets();
   secrets[key] = value;
@@ -336,8 +387,8 @@ secretsCommand.command("remove").description("Remove a local secret").argument("
 });
 
 // src/commands/status.ts
-import { Command as Command8 } from "commander";
-var statusCommand = new Command8("status").description("Show LaunchStack project status").action(() => {
+import { Command as Command9 } from "commander";
+var statusCommand = new Command9("status").description("Show LaunchStack project status").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack project status");
@@ -357,8 +408,8 @@ var statusCommand = new Command8("status").description("Show LaunchStack project
 });
 
 // src/commands/validate.ts
-import { Command as Command9 } from "commander";
-var validateCommand = new Command9("validate").description("Validate the LaunchStack config file").action(() => {
+import { Command as Command10 } from "commander";
+var validateCommand = new Command10("validate").description("Validate the LaunchStack config file").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack config is valid");
@@ -375,7 +426,7 @@ var validateCommand = new Command9("validate").description("Validate the LaunchS
 });
 
 // src/cli.ts
-var program = new Command10();
+var program = new Command11();
 program.name("launchstack").description("Deployment and release workflow CLI").version("0.1.0");
 program.addCommand(initCommand);
 program.addCommand(statusCommand);
@@ -386,4 +437,5 @@ program.addCommand(providerCommand);
 program.addCommand(secretsCommand);
 program.addCommand(historyCommand);
 program.addCommand(rollbackCommand);
+program.addCommand(dockerCommand);
 program.parse();
