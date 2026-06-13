@@ -5,6 +5,7 @@ import { deployCommand } from "./commands/deploy";
 import { envCommand } from "./commands/env";
 import { initCommand } from "./commands/init";
 import { providerCommand } from "./commands/provider";
+import { secretsCommand } from "./commands/secrets";
 import { statusCommand } from "./commands/status";
 import { validateCommand } from "./commands/validate";
 
@@ -21,5 +22,6 @@ program.addCommand(deployCommand);
 program.addCommand(validateCommand);
 program.addCommand(envCommand);
 program.addCommand(providerCommand);
+program.addCommand(secretsCommand);
 
 program.parse();

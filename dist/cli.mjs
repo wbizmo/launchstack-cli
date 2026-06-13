@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { Command as Command7 } from "commander";
+import { Command as Command8 } from "commander";
 
 // src/commands/deploy.ts
 import { execSync } from "child_process";
@@ -146,9 +146,66 @@ var providerCommand = new Command4("provider").description("View or update the L
   }
 });
 
-// src/commands/status.ts
+// src/commands/secrets.ts
+import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "fs";
+import { resolve as resolve3 } from "path";
 import { Command as Command5 } from "commander";
-var statusCommand = new Command5("status").description("Show LaunchStack project status").action(() => {
+var STORE_DIR = ".launchstack";
+var SECRETS_FILE = "secrets.json";
+function getStorePath() {
+  return resolve3(process.cwd(), STORE_DIR);
+}
+function getSecretsPath() {
+  return resolve3(getStorePath(), SECRETS_FILE);
+}
+function ensureStore() {
+  if (!existsSync3(getStorePath())) {
+    mkdirSync(getStorePath(), { recursive: true });
+  }
+}
+function readSecrets() {
+  ensureStore();
+  if (!existsSync3(getSecretsPath())) {
+    return {};
+  }
+  return JSON.parse(readFileSync2(getSecretsPath(), "utf-8"));
+}
+function writeSecrets(secrets) {
+  ensureStore();
+  writeFileSync2(getSecretsPath(), JSON.stringify(secrets, null, 2));
+}
+var secretsCommand = new Command5("secrets").description("Manage local LaunchStack secrets");
+secretsCommand.command("add").description("Add or update a local secret").argument("<key>", "Secret key").argument("<value>", "Secret value").action((key, value) => {
+  const secrets = readSecrets();
+  secrets[key] = value;
+  writeSecrets(secrets);
+  console.log(`Secret saved: ${key}`);
+});
+secretsCommand.command("list").description("List local secret keys").action(() => {
+  const secrets = readSecrets();
+  const keys = Object.keys(secrets);
+  if (keys.length === 0) {
+    console.log("No secrets found");
+    return;
+  }
+  keys.forEach((key) => {
+    console.log(`${key}=********`);
+  });
+});
+secretsCommand.command("remove").description("Remove a local secret").argument("<key>", "Secret key").action((key) => {
+  const secrets = readSecrets();
+  if (!secrets[key]) {
+    console.log(`Secret not found: ${key}`);
+    return;
+  }
+  delete secrets[key];
+  writeSecrets(secrets);
+  console.log(`Secret removed: ${key}`);
+});
+
+// src/commands/status.ts
+import { Command as Command6 } from "commander";
+var statusCommand = new Command6("status").description("Show LaunchStack project status").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack project status");
@@ -168,8 +225,8 @@ var statusCommand = new Command5("status").description("Show LaunchStack project
 });
 
 // src/commands/validate.ts
-import { Command as Command6 } from "commander";
-var validateCommand = new Command6("validate").description("Validate the LaunchStack config file").action(() => {
+import { Command as Command7 } from "commander";
+var validateCommand = new Command7("validate").description("Validate the LaunchStack config file").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack config is valid");
@@ -186,7 +243,7 @@ var validateCommand = new Command6("validate").description("Validate the LaunchS
 });
 
 // src/cli.ts
-var program = new Command7();
+var program = new Command8();
 program.name("launchstack").description("Deployment and release workflow CLI").version("0.1.0");
 program.addCommand(initCommand);
 program.addCommand(statusCommand);
@@ -194,4 +251,5 @@ program.addCommand(deployCommand);
 program.addCommand(validateCommand);
 program.addCommand(envCommand);
 program.addCommand(providerCommand);
+program.addCommand(secretsCommand);
 program.parse();
