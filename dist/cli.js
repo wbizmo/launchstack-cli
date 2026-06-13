@@ -6,8 +6,8 @@ var import_commander8 = require("commander");
 
 // src/commands/deploy.ts
 var import_node_child_process = require("child_process");
-var import_node_fs2 = require("fs");
-var import_node_path2 = require("path");
+var import_node_fs3 = require("fs");
+var import_node_path3 = require("path");
 var import_commander = require("commander");
 
 // src/config.ts
@@ -48,8 +48,42 @@ function readConfig() {
   return launchStackConfigSchema.parse(parsed);
 }
 
+// src/history.ts
+var import_node_fs2 = require("fs");
+var import_node_path2 = require("path");
+var STORE_DIR = ".launchstack";
+var HISTORY_FILE = "history.json";
+function getStorePath() {
+  return (0, import_node_path2.resolve)(process.cwd(), STORE_DIR);
+}
+function getHistoryPath() {
+  return (0, import_node_path2.resolve)(getStorePath(), HISTORY_FILE);
+}
+function ensureStore() {
+  if (!(0, import_node_fs2.existsSync)(getStorePath())) {
+    (0, import_node_fs2.mkdirSync)(getStorePath(), { recursive: true });
+  }
+}
+function readHistory() {
+  ensureStore();
+  if (!(0, import_node_fs2.existsSync)(getHistoryPath())) {
+    return [];
+  }
+  return JSON.parse((0, import_node_fs2.readFileSync)(getHistoryPath(), "utf-8"));
+}
+function writeHistory(records) {
+  ensureStore();
+  (0, import_node_fs2.writeFileSync)(getHistoryPath(), JSON.stringify(records, null, 2));
+}
+function addDeploymentRecord(record) {
+  const records = readHistory();
+  records.unshift(record);
+  writeHistory(records.slice(0, 50));
+}
+
 // src/commands/deploy.ts
 var deployCommand = new import_commander.Command("deploy").description("Run the configured LaunchStack deployment workflow").option("--skip-build", "Skip the build command").action((options) => {
+  const createdAt = (/* @__PURE__ */ new Date()).toISOString();
   try {
     const config = readConfig();
     console.log("LaunchStack deployment");
@@ -64,12 +98,32 @@ var deployCommand = new import_commander.Command("deploy").description("Run the 
         cwd: process.cwd()
       });
     }
-    const outputPath = (0, import_node_path2.resolve)(process.cwd(), config.outputDirectory);
-    if (!(0, import_node_fs2.existsSync)(outputPath)) {
+    const outputPath = (0, import_node_path3.resolve)(process.cwd(), config.outputDirectory);
+    if (!(0, import_node_fs3.existsSync)(outputPath)) {
+      addDeploymentRecord({
+        id: `dep_${Date.now()}`,
+        appName: config.appName,
+        environment: config.environment,
+        provider: config.provider,
+        deployTarget: config.deployTarget,
+        outputDirectory: config.outputDirectory,
+        status: "failed",
+        createdAt
+      });
       console.log("");
       console.log(`Output directory not found: ${config.outputDirectory}`);
       process.exit(1);
     }
+    addDeploymentRecord({
+      id: `dep_${Date.now()}`,
+      appName: config.appName,
+      environment: config.environment,
+      provider: config.provider,
+      deployTarget: config.deployTarget,
+      outputDirectory: config.outputDirectory,
+      status: "success",
+      createdAt
+    });
     console.log("");
     console.log("Build output verified");
     console.log(`Deploy target: ${config.deployTarget}`);
@@ -148,32 +202,32 @@ var providerCommand = new import_commander4.Command("provider").description("Vie
 });
 
 // src/commands/secrets.ts
-var import_node_fs3 = require("fs");
-var import_node_path3 = require("path");
+var import_node_fs4 = require("fs");
+var import_node_path4 = require("path");
 var import_commander5 = require("commander");
-var STORE_DIR = ".launchstack";
+var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
-function getStorePath() {
-  return (0, import_node_path3.resolve)(process.cwd(), STORE_DIR);
+function getStorePath2() {
+  return (0, import_node_path4.resolve)(process.cwd(), STORE_DIR2);
 }
 function getSecretsPath() {
-  return (0, import_node_path3.resolve)(getStorePath(), SECRETS_FILE);
+  return (0, import_node_path4.resolve)(getStorePath2(), SECRETS_FILE);
 }
-function ensureStore() {
-  if (!(0, import_node_fs3.existsSync)(getStorePath())) {
-    (0, import_node_fs3.mkdirSync)(getStorePath(), { recursive: true });
+function ensureStore2() {
+  if (!(0, import_node_fs4.existsSync)(getStorePath2())) {
+    (0, import_node_fs4.mkdirSync)(getStorePath2(), { recursive: true });
   }
 }
 function readSecrets() {
-  ensureStore();
-  if (!(0, import_node_fs3.existsSync)(getSecretsPath())) {
+  ensureStore2();
+  if (!(0, import_node_fs4.existsSync)(getSecretsPath())) {
     return {};
   }
-  return JSON.parse((0, import_node_fs3.readFileSync)(getSecretsPath(), "utf-8"));
+  return JSON.parse((0, import_node_fs4.readFileSync)(getSecretsPath(), "utf-8"));
 }
 function writeSecrets(secrets) {
-  ensureStore();
-  (0, import_node_fs3.writeFileSync)(getSecretsPath(), JSON.stringify(secrets, null, 2));
+  ensureStore2();
+  (0, import_node_fs4.writeFileSync)(getSecretsPath(), JSON.stringify(secrets, null, 2));
 }
 var secretsCommand = new import_commander5.Command("secrets").description("Manage local LaunchStack secrets");
 secretsCommand.command("add").description("Add or update a local secret").argument("<key>", "Secret key").argument("<value>", "Secret value").action((key, value) => {

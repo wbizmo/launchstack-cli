@@ -1,0 +1,12 @@
+[
+  {
+    "id": "dep_1781320846651",
+    "appName": "test-app",
+    "environment": "staging",
+    "provider": "vercel",
+    "deployTarget": "https://example.com",
+    "outputDirectory": "dist",
+    "status": "success",
+    "createdAt": "2026-06-13T03:20:46.644Z"
+  }
+]

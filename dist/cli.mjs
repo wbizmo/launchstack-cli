@@ -5,8 +5,8 @@ import { Command as Command8 } from "commander";
 
 // src/commands/deploy.ts
 import { execSync } from "child_process";
-import { existsSync as existsSync2 } from "fs";
-import { resolve as resolve2 } from "path";
+import { existsSync as existsSync3 } from "fs";
+import { resolve as resolve3 } from "path";
 import { Command } from "commander";
 
 // src/config.ts
@@ -47,8 +47,42 @@ function readConfig() {
   return launchStackConfigSchema.parse(parsed);
 }
 
+// src/history.ts
+import { existsSync as existsSync2, mkdirSync, readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "fs";
+import { resolve as resolve2 } from "path";
+var STORE_DIR = ".launchstack";
+var HISTORY_FILE = "history.json";
+function getStorePath() {
+  return resolve2(process.cwd(), STORE_DIR);
+}
+function getHistoryPath() {
+  return resolve2(getStorePath(), HISTORY_FILE);
+}
+function ensureStore() {
+  if (!existsSync2(getStorePath())) {
+    mkdirSync(getStorePath(), { recursive: true });
+  }
+}
+function readHistory() {
+  ensureStore();
+  if (!existsSync2(getHistoryPath())) {
+    return [];
+  }
+  return JSON.parse(readFileSync2(getHistoryPath(), "utf-8"));
+}
+function writeHistory(records) {
+  ensureStore();
+  writeFileSync2(getHistoryPath(), JSON.stringify(records, null, 2));
+}
+function addDeploymentRecord(record) {
+  const records = readHistory();
+  records.unshift(record);
+  writeHistory(records.slice(0, 50));
+}
+
 // src/commands/deploy.ts
 var deployCommand = new Command("deploy").description("Run the configured LaunchStack deployment workflow").option("--skip-build", "Skip the build command").action((options) => {
+  const createdAt = (/* @__PURE__ */ new Date()).toISOString();
   try {
     const config = readConfig();
     console.log("LaunchStack deployment");
@@ -63,12 +97,32 @@ var deployCommand = new Command("deploy").description("Run the configured Launch
         cwd: process.cwd()
       });
     }
-    const outputPath = resolve2(process.cwd(), config.outputDirectory);
-    if (!existsSync2(outputPath)) {
+    const outputPath = resolve3(process.cwd(), config.outputDirectory);
+    if (!existsSync3(outputPath)) {
+      addDeploymentRecord({
+        id: `dep_${Date.now()}`,
+        appName: config.appName,
+        environment: config.environment,
+        provider: config.provider,
+        deployTarget: config.deployTarget,
+        outputDirectory: config.outputDirectory,
+        status: "failed",
+        createdAt
+      });
       console.log("");
       console.log(`Output directory not found: ${config.outputDirectory}`);
       process.exit(1);
     }
+    addDeploymentRecord({
+      id: `dep_${Date.now()}`,
+      appName: config.appName,
+      environment: config.environment,
+      provider: config.provider,
+      deployTarget: config.deployTarget,
+      outputDirectory: config.outputDirectory,
+      status: "success",
+      createdAt
+    });
     console.log("");
     console.log("Build output verified");
     console.log(`Deploy target: ${config.deployTarget}`);
@@ -147,32 +201,32 @@ var providerCommand = new Command4("provider").description("View or update the L
 });
 
 // src/commands/secrets.ts
-import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "fs";
-import { resolve as resolve3 } from "path";
+import { existsSync as existsSync4, mkdirSync as mkdirSync2, readFileSync as readFileSync3, writeFileSync as writeFileSync3 } from "fs";
+import { resolve as resolve4 } from "path";
 import { Command as Command5 } from "commander";
-var STORE_DIR = ".launchstack";
+var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
-function getStorePath() {
-  return resolve3(process.cwd(), STORE_DIR);
+function getStorePath2() {
+  return resolve4(process.cwd(), STORE_DIR2);
 }
 function getSecretsPath() {
-  return resolve3(getStorePath(), SECRETS_FILE);
+  return resolve4(getStorePath2(), SECRETS_FILE);
 }
-function ensureStore() {
-  if (!existsSync3(getStorePath())) {
-    mkdirSync(getStorePath(), { recursive: true });
+function ensureStore2() {
+  if (!existsSync4(getStorePath2())) {
+    mkdirSync2(getStorePath2(), { recursive: true });
   }
 }
 function readSecrets() {
-  ensureStore();
-  if (!existsSync3(getSecretsPath())) {
+  ensureStore2();
+  if (!existsSync4(getSecretsPath())) {
     return {};
   }
-  return JSON.parse(readFileSync2(getSecretsPath(), "utf-8"));
+  return JSON.parse(readFileSync3(getSecretsPath(), "utf-8"));
 }
 function writeSecrets(secrets) {
-  ensureStore();
-  writeFileSync2(getSecretsPath(), JSON.stringify(secrets, null, 2));
+  ensureStore2();
+  writeFileSync3(getSecretsPath(), JSON.stringify(secrets, null, 2));
 }
 var secretsCommand = new Command5("secrets").description("Manage local LaunchStack secrets");
 secretsCommand.command("add").description("Add or update a local secret").argument("<key>", "Secret key").argument("<value>", "Secret value").action((key, value) => {
