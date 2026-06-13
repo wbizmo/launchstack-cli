@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { deployCommand } from "./commands/deploy";
 import { envCommand } from "./commands/env";
 import { initCommand } from "./commands/init";
+import { providerCommand } from "./commands/provider";
 import { statusCommand } from "./commands/status";
 import { validateCommand } from "./commands/validate";
 
@@ -19,5 +20,6 @@ program.addCommand(statusCommand);
 program.addCommand(deployCommand);
 program.addCommand(validateCommand);
 program.addCommand(envCommand);
+program.addCommand(providerCommand);
 
 program.parse();

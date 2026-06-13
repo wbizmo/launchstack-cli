@@ -2,7 +2,7 @@
 "use strict";
 
 // src/cli.ts
-var import_commander6 = require("commander");
+var import_commander7 = require("commander");
 
 // src/commands/deploy.ts
 var import_node_child_process = require("child_process");
@@ -121,9 +121,35 @@ var initCommand = new import_commander3.Command("init").description("Create a La
   console.log("Created launchstack.config.json");
 });
 
-// src/commands/status.ts
+// src/commands/provider.ts
 var import_commander4 = require("commander");
-var statusCommand = new import_commander4.Command("status").description("Show LaunchStack project status").action(() => {
+var allowedProviders = ["vercel", "netlify", "render", "railway", "docker", "custom"];
+var providerCommand = new import_commander4.Command("provider").description("View or update the LaunchStack deployment provider").argument("[provider]", "vercel, netlify, render, railway, docker, or custom").action((provider) => {
+  try {
+    const config = readConfig();
+    if (!provider) {
+      console.log(`Current provider: ${config.provider}`);
+      return;
+    }
+    if (!allowedProviders.includes(provider)) {
+      console.log("Invalid provider. Use vercel, netlify, render, railway, docker, or custom.");
+      process.exit(1);
+    }
+    config.provider = provider;
+    writeConfig(config);
+    console.log(`Provider updated to ${config.provider}`);
+  } catch (error) {
+    console.log("Could not update provider");
+    if (error instanceof Error) {
+      console.log(error.message);
+    }
+    process.exit(1);
+  }
+});
+
+// src/commands/status.ts
+var import_commander5 = require("commander");
+var statusCommand = new import_commander5.Command("status").description("Show LaunchStack project status").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack project status");
@@ -143,8 +169,8 @@ var statusCommand = new import_commander4.Command("status").description("Show La
 });
 
 // src/commands/validate.ts
-var import_commander5 = require("commander");
-var validateCommand = new import_commander5.Command("validate").description("Validate the LaunchStack config file").action(() => {
+var import_commander6 = require("commander");
+var validateCommand = new import_commander6.Command("validate").description("Validate the LaunchStack config file").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack config is valid");
@@ -161,11 +187,12 @@ var validateCommand = new import_commander5.Command("validate").description("Val
 });
 
 // src/cli.ts
-var program = new import_commander6.Command();
+var program = new import_commander7.Command();
 program.name("launchstack").description("Deployment and release workflow CLI").version("0.1.0");
 program.addCommand(initCommand);
 program.addCommand(statusCommand);
 program.addCommand(deployCommand);
 program.addCommand(validateCommand);
 program.addCommand(envCommand);
+program.addCommand(providerCommand);
 program.parse();
