@@ -4,19 +4,10 @@
 import { Command as Command4 } from "commander";
 
 // src/commands/deploy.ts
+import { execSync } from "child_process";
+import { existsSync as existsSync2 } from "fs";
+import { resolve as resolve2 } from "path";
 import { Command } from "commander";
-var deployCommand = new Command("deploy").description("Deploy application").action(() => {
-  console.log("Deployment started");
-});
-
-// src/commands/status.ts
-import { Command as Command2 } from "commander";
-var statusCommand = new Command2("status").description("Show deployment status").action(() => {
-  console.log("All systems operational");
-});
-
-// src/commands/init.ts
-import { Command as Command3 } from "commander";
 
 // src/config.ts
 import { existsSync, readFileSync, writeFileSync } from "fs";
@@ -50,8 +41,69 @@ function createDefaultConfig(appName) {
 function writeConfig(config) {
   writeFileSync(getConfigPath(), JSON.stringify(config, null, 2));
 }
+function readConfig() {
+  const raw = readFileSync(getConfigPath(), "utf-8");
+  const parsed = JSON.parse(raw);
+  return launchStackConfigSchema.parse(parsed);
+}
+
+// src/commands/deploy.ts
+var deployCommand = new Command("deploy").description("Run the configured LaunchStack deployment workflow").option("--skip-build", "Skip the build command").action((options) => {
+  try {
+    const config = readConfig();
+    console.log("LaunchStack deployment");
+    console.log(`App: ${config.appName}`);
+    console.log(`Environment: ${config.environment}`);
+    console.log(`Provider: ${config.provider}`);
+    console.log("");
+    if (!options.skipBuild) {
+      console.log(`Running build: ${config.buildCommand}`);
+      execSync(config.buildCommand, {
+        stdio: "inherit",
+        cwd: process.cwd()
+      });
+    }
+    const outputPath = resolve2(process.cwd(), config.outputDirectory);
+    if (!existsSync2(outputPath)) {
+      console.log("");
+      console.log(`Output directory not found: ${config.outputDirectory}`);
+      process.exit(1);
+    }
+    console.log("");
+    console.log("Build output verified");
+    console.log(`Deploy target: ${config.deployTarget}`);
+    console.log("");
+    console.log("Deployment workflow completed");
+  } catch (error) {
+    console.log("Deployment failed");
+    console.log(error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
+});
+
+// src/commands/status.ts
+import { Command as Command2 } from "commander";
+var statusCommand = new Command2("status").description("Show LaunchStack project status").action(() => {
+  try {
+    const config = readConfig();
+    console.log("LaunchStack project status");
+    console.log("");
+    console.log(`App: ${config.appName}`);
+    console.log(`Environment: ${config.environment}`);
+    console.log(`Provider: ${config.provider}`);
+    console.log(`Build command: ${config.buildCommand}`);
+    console.log(`Output directory: ${config.outputDirectory}`);
+    console.log(`Deploy target: ${config.deployTarget}`);
+    console.log("");
+    console.log("Config: valid");
+  } catch {
+    console.log("Config: missing or invalid");
+    console.log("Run: launchstack init --name your-app");
+  }
+});
 
 // src/commands/init.ts
+import { Command as Command3 } from "commander";
 var initCommand = new Command3("init").description("Create a LaunchStack config file").option("-n, --name <name>", "Project name").option("-f, --force", "Overwrite existing config file").action((options) => {
   if (configExists() && !options.force) {
     console.log("launchstack.config.json already exists. Use --force to overwrite.");
