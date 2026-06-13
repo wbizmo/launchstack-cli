@@ -6,6 +6,7 @@ import { envCommand } from "./commands/env";
 import { historyCommand } from "./commands/history";
 import { initCommand } from "./commands/init";
 import { providerCommand } from "./commands/provider";
+import { rollbackCommand } from "./commands/rollback";
 import { secretsCommand } from "./commands/secrets";
 import { statusCommand } from "./commands/status";
 import { validateCommand } from "./commands/validate";
@@ -25,5 +26,6 @@ program.addCommand(envCommand);
 program.addCommand(providerCommand);
 program.addCommand(secretsCommand);
 program.addCommand(historyCommand);
+program.addCommand(rollbackCommand);
 
 program.parse();

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { Command as Command9 } from "commander";
+import { Command as Command10 } from "commander";
 
 // src/commands/deploy.ts
 import { execSync } from "child_process";
@@ -220,10 +220,28 @@ var providerCommand = new Command5("provider").description("View or update the L
   }
 });
 
+// src/commands/rollback.ts
+import { Command as Command6 } from "commander";
+var rollbackCommand = new Command6("rollback").description("Show the latest successful deployment available for rollback").action(() => {
+  const records = readHistory();
+  const latestSuccess = records.find((record) => record.status === "success");
+  if (!latestSuccess) {
+    console.log("No successful deployment found for rollback");
+    return;
+  }
+  console.log("Rollback target found");
+  console.log(`Deployment: ${latestSuccess.id}`);
+  console.log(`App: ${latestSuccess.appName}`);
+  console.log(`Environment: ${latestSuccess.environment}`);
+  console.log(`Provider: ${latestSuccess.provider}`);
+  console.log(`Deploy target: ${latestSuccess.deployTarget}`);
+  console.log(`Created: ${latestSuccess.createdAt}`);
+});
+
 // src/commands/secrets.ts
 import { existsSync as existsSync4, mkdirSync as mkdirSync2, readFileSync as readFileSync3, writeFileSync as writeFileSync3 } from "fs";
 import { resolve as resolve4 } from "path";
-import { Command as Command6 } from "commander";
+import { Command as Command7 } from "commander";
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
 function getStorePath2() {
@@ -248,7 +266,7 @@ function writeSecrets(secrets) {
   ensureStore2();
   writeFileSync3(getSecretsPath(), JSON.stringify(secrets, null, 2));
 }
-var secretsCommand = new Command6("secrets").description("Manage local LaunchStack secrets");
+var secretsCommand = new Command7("secrets").description("Manage local LaunchStack secrets");
 secretsCommand.command("add").description("Add or update a local secret").argument("<key>", "Secret key").argument("<value>", "Secret value").action((key, value) => {
   const secrets = readSecrets();
   secrets[key] = value;
@@ -278,8 +296,8 @@ secretsCommand.command("remove").description("Remove a local secret").argument("
 });
 
 // src/commands/status.ts
-import { Command as Command7 } from "commander";
-var statusCommand = new Command7("status").description("Show LaunchStack project status").action(() => {
+import { Command as Command8 } from "commander";
+var statusCommand = new Command8("status").description("Show LaunchStack project status").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack project status");
@@ -299,8 +317,8 @@ var statusCommand = new Command7("status").description("Show LaunchStack project
 });
 
 // src/commands/validate.ts
-import { Command as Command8 } from "commander";
-var validateCommand = new Command8("validate").description("Validate the LaunchStack config file").action(() => {
+import { Command as Command9 } from "commander";
+var validateCommand = new Command9("validate").description("Validate the LaunchStack config file").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack config is valid");
@@ -317,7 +335,7 @@ var validateCommand = new Command8("validate").description("Validate the LaunchS
 });
 
 // src/cli.ts
-var program = new Command9();
+var program = new Command10();
 program.name("launchstack").description("Deployment and release workflow CLI").version("0.1.0");
 program.addCommand(initCommand);
 program.addCommand(statusCommand);
@@ -327,4 +345,5 @@ program.addCommand(envCommand);
 program.addCommand(providerCommand);
 program.addCommand(secretsCommand);
 program.addCommand(historyCommand);
+program.addCommand(rollbackCommand);
 program.parse();
