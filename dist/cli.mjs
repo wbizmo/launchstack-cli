@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { Command as Command4 } from "commander";
+import { Command as Command5 } from "commander";
 
 // src/commands/deploy.ts
 import { execSync } from "child_process";
@@ -81,9 +81,22 @@ var deployCommand = new Command("deploy").description("Run the configured Launch
   }
 });
 
-// src/commands/status.ts
+// src/commands/init.ts
 import { Command as Command2 } from "commander";
-var statusCommand = new Command2("status").description("Show LaunchStack project status").action(() => {
+var initCommand = new Command2("init").description("Create a LaunchStack config file").option("-n, --name <name>", "Project name").option("-f, --force", "Overwrite existing config file").action((options) => {
+  if (configExists() && !options.force) {
+    console.log("launchstack.config.json already exists. Use --force to overwrite.");
+    return;
+  }
+  const appName = options.name || "my-app";
+  const config = createDefaultConfig(appName);
+  writeConfig(config);
+  console.log("Created launchstack.config.json");
+});
+
+// src/commands/status.ts
+import { Command as Command3 } from "commander";
+var statusCommand = new Command3("status").description("Show LaunchStack project status").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack project status");
@@ -102,23 +115,29 @@ var statusCommand = new Command2("status").description("Show LaunchStack project
   }
 });
 
-// src/commands/init.ts
-import { Command as Command3 } from "commander";
-var initCommand = new Command3("init").description("Create a LaunchStack config file").option("-n, --name <name>", "Project name").option("-f, --force", "Overwrite existing config file").action((options) => {
-  if (configExists() && !options.force) {
-    console.log("launchstack.config.json already exists. Use --force to overwrite.");
-    return;
+// src/commands/validate.ts
+import { Command as Command4 } from "commander";
+var validateCommand = new Command4("validate").description("Validate the LaunchStack config file").action(() => {
+  try {
+    const config = readConfig();
+    console.log("LaunchStack config is valid");
+    console.log(`App: ${config.appName}`);
+    console.log(`Provider: ${config.provider}`);
+    console.log(`Environment: ${config.environment}`);
+  } catch (error) {
+    console.log("LaunchStack config is invalid");
+    if (error instanceof Error) {
+      console.log(error.message);
+    }
+    process.exit(1);
   }
-  const appName = options.name || "my-app";
-  const config = createDefaultConfig(appName);
-  writeConfig(config);
-  console.log("Created launchstack.config.json");
 });
 
 // src/cli.ts
-var program = new Command4();
-program.name("launchstack").description("Deployment and release workflow CLI").version("1.0.0");
+var program = new Command5();
+program.name("launchstack").description("Deployment and release workflow CLI").version("0.1.0");
 program.addCommand(initCommand);
 program.addCommand(statusCommand);
 program.addCommand(deployCommand);
+program.addCommand(validateCommand);
 program.parse();
