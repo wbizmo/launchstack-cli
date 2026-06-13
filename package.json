@@ -1,7 +1,7 @@
 {
-  "name": "launchstack-sdk",
+  "name": "launchstack-cli",
   "version": "0.1.0",
-  "description": "Deployment automation SDK and CLI for managing releases, environments, deployments, and changelogs.",
+  "description": "A TypeScript CLI for deployment automation, release workflows, changelogs, environments, and project launch operations.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -18,14 +18,14 @@
   "keywords": [
     "launchstack",
     "cli",
-    "sdk",
-    "typescript",
     "deployment",
     "release-management",
     "automation",
     "devops",
+    "typescript",
     "changelog",
-    "environments"
+    "environments",
+    "workflows"
   ],
   "author": "Williams",
   "license": "MIT",
