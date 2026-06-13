@@ -5,7 +5,7 @@
 var import_commander10 = require("commander");
 
 // src/commands/deploy.ts
-var import_node_child_process = require("child_process");
+var import_node_child_process2 = require("child_process");
 var import_node_fs3 = require("fs");
 var import_node_path3 = require("path");
 var import_commander = require("commander");
@@ -48,6 +48,31 @@ function readConfig() {
   return launchStackConfigSchema.parse(parsed);
 }
 
+// src/git.ts
+var import_node_child_process = require("child_process");
+function run(command) {
+  return (0, import_node_child_process.execSync)(command, {
+    encoding: "utf-8",
+    stdio: ["pipe", "pipe", "ignore"]
+  }).trim();
+}
+function getGitMetadata() {
+  try {
+    const branch = run("git rev-parse --abbrev-ref HEAD");
+    const commitHash = run("git rev-parse HEAD");
+    const commitMessage = run("git log -1 --pretty=%B");
+    const dirty = run("git status --porcelain").length > 0;
+    return {
+      branch,
+      commitHash,
+      commitMessage,
+      dirty
+    };
+  } catch {
+    return null;
+  }
+}
+
 // src/history.ts
 var import_node_fs2 = require("fs");
 var import_node_path2 = require("path");
@@ -86,14 +111,22 @@ var deployCommand = new import_commander.Command("deploy").description("Run the 
   const createdAt = (/* @__PURE__ */ new Date()).toISOString();
   try {
     const config = readConfig();
+    const git = getGitMetadata();
     console.log("LaunchStack deployment");
     console.log(`App: ${config.appName}`);
     console.log(`Environment: ${config.environment}`);
     console.log(`Provider: ${config.provider}`);
+    if (git) {
+      console.log(`Branch: ${git.branch}`);
+      console.log(`Commit: ${git.commitHash.slice(0, 7)}`);
+      if (git.dirty) {
+        console.log("Working tree has uncommitted changes");
+      }
+    }
     console.log("");
     if (!options.skipBuild) {
       console.log(`Running build: ${config.buildCommand}`);
-      (0, import_node_child_process.execSync)(config.buildCommand, {
+      (0, import_node_child_process2.execSync)(config.buildCommand, {
         stdio: "inherit",
         cwd: process.cwd()
       });
@@ -108,7 +141,8 @@ var deployCommand = new import_commander.Command("deploy").description("Run the 
         deployTarget: config.deployTarget,
         outputDirectory: config.outputDirectory,
         status: "failed",
-        createdAt
+        createdAt,
+        git
       });
       console.log("");
       console.log(`Output directory not found: ${config.outputDirectory}`);
@@ -122,7 +156,8 @@ var deployCommand = new import_commander.Command("deploy").description("Run the 
       deployTarget: config.deployTarget,
       outputDirectory: config.outputDirectory,
       status: "success",
-      createdAt
+      createdAt,
+      git
     });
     console.log("");
     console.log("Build output verified");
@@ -178,6 +213,11 @@ var historyCommand = new import_commander3.Command("history").description("Show 
     console.log(`Provider: ${record.provider}`);
     console.log(`Status: ${record.status}`);
     console.log(`Created: ${record.createdAt}`);
+    if (record.git) {
+      console.log(`Branch: ${record.git.branch}`);
+      console.log(`Commit: ${record.git.commitHash.slice(0, 7)}`);
+      console.log(`Dirty: ${record.git.dirty ? "yes" : "no"}`);
+    }
     console.log("");
   });
 });

@@ -13,6 +13,12 @@ export type DeploymentRecord = {
   outputDirectory: string;
   status: "success" | "failed";
   createdAt: string;
+  git?: {
+    branch: string;
+    commitHash: string;
+    commitMessage: string;
+    dirty: boolean;
+  } | null;
 };
 
 function getStorePath() {

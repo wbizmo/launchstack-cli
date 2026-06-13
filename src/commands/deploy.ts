@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { Command } from "commander";
 import { readConfig } from "../config";
+import { getGitMetadata } from "../git";
 import { addDeploymentRecord } from "../history";
 
 export const deployCommand = new Command("deploy")
@@ -13,11 +14,22 @@ export const deployCommand = new Command("deploy")
 
     try {
       const config = readConfig();
+      const git = getGitMetadata();
 
       console.log("LaunchStack deployment");
       console.log(`App: ${config.appName}`);
       console.log(`Environment: ${config.environment}`);
       console.log(`Provider: ${config.provider}`);
+
+      if (git) {
+        console.log(`Branch: ${git.branch}`);
+        console.log(`Commit: ${git.commitHash.slice(0, 7)}`);
+
+        if (git.dirty) {
+          console.log("Working tree has uncommitted changes");
+        }
+      }
+
       console.log("");
 
       if (!options.skipBuild) {
@@ -39,7 +51,8 @@ export const deployCommand = new Command("deploy")
           deployTarget: config.deployTarget,
           outputDirectory: config.outputDirectory,
           status: "failed",
-          createdAt
+          createdAt,
+          git
         });
 
         console.log("");
@@ -55,7 +68,8 @@ export const deployCommand = new Command("deploy")
         deployTarget: config.deployTarget,
         outputDirectory: config.outputDirectory,
         status: "success",
-        createdAt
+        createdAt,
+        git
       });
 
       console.log("");

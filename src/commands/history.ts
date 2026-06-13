@@ -20,6 +20,13 @@ export const historyCommand = new Command("history")
       console.log(`Provider: ${record.provider}`);
       console.log(`Status: ${record.status}`);
       console.log(`Created: ${record.createdAt}`);
+
+      if (record.git) {
+        console.log(`Branch: ${record.git.branch}`);
+        console.log(`Commit: ${record.git.commitHash.slice(0, 7)}`);
+        console.log(`Dirty: ${record.git.dirty ? "yes" : "no"}`);
+      }
+
       console.log("");
     });
   });
