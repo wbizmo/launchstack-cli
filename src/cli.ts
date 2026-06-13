@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { deployCommand } from "./commands/deploy";
 import { envCommand } from "./commands/env";
+import { historyCommand } from "./commands/history";
 import { initCommand } from "./commands/init";
 import { providerCommand } from "./commands/provider";
 import { secretsCommand } from "./commands/secrets";
@@ -23,5 +24,6 @@ program.addCommand(validateCommand);
 program.addCommand(envCommand);
 program.addCommand(providerCommand);
 program.addCommand(secretsCommand);
+program.addCommand(historyCommand);
 
 program.parse();

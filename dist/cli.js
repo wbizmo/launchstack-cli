@@ -2,7 +2,7 @@
 "use strict";
 
 // src/cli.ts
-var import_commander8 = require("commander");
+var import_commander9 = require("commander");
 
 // src/commands/deploy.ts
 var import_node_child_process = require("child_process");
@@ -162,9 +162,29 @@ var envCommand = new import_commander2.Command("env").description("View or updat
   }
 });
 
-// src/commands/init.ts
+// src/commands/history.ts
 var import_commander3 = require("commander");
-var initCommand = new import_commander3.Command("init").description("Create a LaunchStack config file").option("-n, --name <name>", "Project name").option("-f, --force", "Overwrite existing config file").action((options) => {
+var historyCommand = new import_commander3.Command("history").description("Show recent LaunchStack deployments").option("-l, --limit <number>", "Number of records to show", "10").action((options) => {
+  const records = readHistory();
+  const limit = Number(options.limit);
+  if (records.length === 0) {
+    console.log("No deployment history found");
+    return;
+  }
+  records.slice(0, limit).forEach((record) => {
+    console.log(`${record.id}`);
+    console.log(`App: ${record.appName}`);
+    console.log(`Environment: ${record.environment}`);
+    console.log(`Provider: ${record.provider}`);
+    console.log(`Status: ${record.status}`);
+    console.log(`Created: ${record.createdAt}`);
+    console.log("");
+  });
+});
+
+// src/commands/init.ts
+var import_commander4 = require("commander");
+var initCommand = new import_commander4.Command("init").description("Create a LaunchStack config file").option("-n, --name <name>", "Project name").option("-f, --force", "Overwrite existing config file").action((options) => {
   if (configExists() && !options.force) {
     console.log("launchstack.config.json already exists. Use --force to overwrite.");
     return;
@@ -176,9 +196,9 @@ var initCommand = new import_commander3.Command("init").description("Create a La
 });
 
 // src/commands/provider.ts
-var import_commander4 = require("commander");
+var import_commander5 = require("commander");
 var allowedProviders = ["vercel", "netlify", "render", "railway", "docker", "custom"];
-var providerCommand = new import_commander4.Command("provider").description("View or update the LaunchStack deployment provider").argument("[provider]", "vercel, netlify, render, railway, docker, or custom").action((provider) => {
+var providerCommand = new import_commander5.Command("provider").description("View or update the LaunchStack deployment provider").argument("[provider]", "vercel, netlify, render, railway, docker, or custom").action((provider) => {
   try {
     const config = readConfig();
     if (!provider) {
@@ -204,7 +224,7 @@ var providerCommand = new import_commander4.Command("provider").description("Vie
 // src/commands/secrets.ts
 var import_node_fs4 = require("fs");
 var import_node_path4 = require("path");
-var import_commander5 = require("commander");
+var import_commander6 = require("commander");
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
 function getStorePath2() {
@@ -229,7 +249,7 @@ function writeSecrets(secrets) {
   ensureStore2();
   (0, import_node_fs4.writeFileSync)(getSecretsPath(), JSON.stringify(secrets, null, 2));
 }
-var secretsCommand = new import_commander5.Command("secrets").description("Manage local LaunchStack secrets");
+var secretsCommand = new import_commander6.Command("secrets").description("Manage local LaunchStack secrets");
 secretsCommand.command("add").description("Add or update a local secret").argument("<key>", "Secret key").argument("<value>", "Secret value").action((key, value) => {
   const secrets = readSecrets();
   secrets[key] = value;
@@ -259,8 +279,8 @@ secretsCommand.command("remove").description("Remove a local secret").argument("
 });
 
 // src/commands/status.ts
-var import_commander6 = require("commander");
-var statusCommand = new import_commander6.Command("status").description("Show LaunchStack project status").action(() => {
+var import_commander7 = require("commander");
+var statusCommand = new import_commander7.Command("status").description("Show LaunchStack project status").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack project status");
@@ -280,8 +300,8 @@ var statusCommand = new import_commander6.Command("status").description("Show La
 });
 
 // src/commands/validate.ts
-var import_commander7 = require("commander");
-var validateCommand = new import_commander7.Command("validate").description("Validate the LaunchStack config file").action(() => {
+var import_commander8 = require("commander");
+var validateCommand = new import_commander8.Command("validate").description("Validate the LaunchStack config file").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack config is valid");
@@ -298,7 +318,7 @@ var validateCommand = new import_commander7.Command("validate").description("Val
 });
 
 // src/cli.ts
-var program = new import_commander8.Command();
+var program = new import_commander9.Command();
 program.name("launchstack").description("Deployment and release workflow CLI").version("0.1.0");
 program.addCommand(initCommand);
 program.addCommand(statusCommand);
@@ -307,4 +327,5 @@ program.addCommand(validateCommand);
 program.addCommand(envCommand);
 program.addCommand(providerCommand);
 program.addCommand(secretsCommand);
+program.addCommand(historyCommand);
 program.parse();
