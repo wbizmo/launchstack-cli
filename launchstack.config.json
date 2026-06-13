@@ -1,7 +1,7 @@
 {
-  "appName": "test-app",
+  "appName": "demo-app",
   "environment": "staging",
-  "provider": "vercel",
+  "provider": "docker",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "deployTarget": "https://example.com"
