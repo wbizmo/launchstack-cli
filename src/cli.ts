@@ -2,6 +2,7 @@
 
 import { Command } from "commander";
 import { deployCommand } from "./commands/deploy";
+import { envCommand } from "./commands/env";
 import { initCommand } from "./commands/init";
 import { statusCommand } from "./commands/status";
 import { validateCommand } from "./commands/validate";
@@ -17,5 +18,6 @@ program.addCommand(initCommand);
 program.addCommand(statusCommand);
 program.addCommand(deployCommand);
 program.addCommand(validateCommand);
+program.addCommand(envCommand);
 
 program.parse();

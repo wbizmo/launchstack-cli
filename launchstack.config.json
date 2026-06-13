@@ -1,6 +1,6 @@
 {
   "appName": "test-app",
-  "environment": "production",
+  "environment": "staging",
   "provider": "custom",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
