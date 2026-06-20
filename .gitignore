@@ -9,3 +9,9 @@ dist
 coverage
 
 .DS_Store
+# Replit
+.replit
+replit.nix
+.config/
+.upm/
+.cache/
