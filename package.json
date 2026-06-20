@@ -1,6 +1,6 @@
 {
   "name": "launchstack-cli",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A TypeScript CLI for deployment automation, release workflows, changelogs, environments, and project launch operations.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

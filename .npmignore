@@ -1,0 +1,17 @@
+src
+tests
+examples
+.github
+.launchstack
+node_modules
+coverage
+
+.replit
+replit.nix
+.config
+.upm
+.cache
+
+.env
+.env.*
+*.log
