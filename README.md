@@ -1,47 +1,50 @@
 # LaunchStack CLI
 
-LaunchStack CLI is a TypeScript command-line tool for managing deployment workflows, project launch configuration, environment switching, provider selection, deployment history, rollback visibility, local secrets, Docker scaffolding, and GitHub Actions workflow generation.
+A TypeScript CLI for deployment automation, configuration management, Docker scaffolding, GitHub Actions generation, deployment tracking, and developer workflow tooling.
 
-It is built as a lean DevOps utility for developers who want a simple, local-first way to prepare and standardize deployment workflows across projects.
-
----
+LaunchStack CLI helps developers standardize deployment workflows across projects through a lightweight, local-first command-line experience. It provides project initialization, configuration validation, deployment history tracking, rollback visibility, secrets management, infrastructure scaffolding, and workflow generation.
 
 ## Features
 
 * Project initialization with `launchstack.config.json`
-* Config validation
-* Environment switching
+* Configuration validation
+* Environment management
 * Deployment provider management
-* Build and deployment workflow execution
+* Deployment workflow execution
 * Deployment history tracking
 * Rollback target lookup
 * Local secrets management
-* Git metadata tracking during deployments
-* Docker file generation
+* Git metadata tracking
+* Docker scaffolding generation
 * GitHub Actions workflow generation
 * TypeScript-first architecture
-* Lightweight CLI design
+* Lightweight and extensible CLI design
 
 ---
 
 ## Installation
 
-Clone the repository:
+### Install from npm
+
+```bash
+npm install -g launchstack-cli
+```
+
+Verify installation:
+
+```bash
+launchstack --help
+```
+
+### Build from Source
 
 ```bash
 git clone https://github.com/wbizmo/launchstack-cli.git
+
 cd launchstack-cli
-```
 
-Install dependencies:
-
-```bash
 npm install
-```
 
-Build the CLI:
-
-```bash
 npm run build
 ```
 
@@ -53,70 +56,100 @@ node dist/cli.js --help
 
 ---
 
-## Usage
+## Quick Start
+
+Create a new project configuration:
 
 ```bash
-launchstack <command>
+launchstack init --name my-app
 ```
 
-When running locally before publishing to npm:
+Check project status:
 
 ```bash
-node dist/cli.js <command>
+launchstack status
+```
+
+Validate configuration:
+
+```bash
+launchstack validate
+```
+
+Generate deployment assets:
+
+```bash
+launchstack docker init
+
+launchstack github init
+```
+
+Run a deployment workflow:
+
+```bash
+launchstack deploy
 ```
 
 ---
 
 ## Commands
 
-### Initialize a project
+### Initialize a Project
 
-Creates a `launchstack.config.json` file.
+Create a new configuration file.
 
 ```bash
-node dist/cli.js init --name my-app
+launchstack init --name my-app
 ```
 
-Force overwrite an existing config:
+Overwrite an existing configuration:
 
 ```bash
-node dist/cli.js init --name my-app --force
+launchstack init --name my-app --force
 ```
 
 ---
 
-### View project status
+### View Project Status
 
 ```bash
-node dist/cli.js status
+launchstack status
 ```
 
-Displays the current app name, environment, provider, build command, output directory, deploy target, and config status.
+Displays:
+
+* Application name
+* Environment
+* Provider
+* Build command
+* Output directory
+* Deploy target
+* Configuration status
 
 ---
 
-### Validate config
+### Validate Configuration
 
 ```bash
-node dist/cli.js validate
+launchstack validate
 ```
 
-Checks whether `launchstack.config.json` is valid.
+Validates the current `launchstack.config.json`.
 
 ---
 
-### Switch environment
+### Manage Environments
 
 View current environment:
 
 ```bash
-node dist/cli.js env
+launchstack env
 ```
 
 Update environment:
 
 ```bash
-node dist/cli.js env staging
+launchstack env staging
 ```
 
 Supported environments:
@@ -129,18 +162,18 @@ production
 
 ---
 
-### Manage deployment provider
+### Manage Providers
 
 View current provider:
 
 ```bash
-node dist/cli.js provider
+launchstack provider
 ```
 
 Update provider:
 
 ```bash
-node dist/cli.js provider docker
+launchstack provider docker
 ```
 
 Supported providers:
@@ -156,35 +189,45 @@ custom
 
 ---
 
-### Run deployment workflow
+### Deploy
+
+Run the configured deployment workflow:
 
 ```bash
-node dist/cli.js deploy
+launchstack deploy
 ```
 
-Skip the build step:
+Skip build execution:
 
 ```bash
-node dist/cli.js deploy --skip-build
+launchstack deploy --skip-build
 ```
 
-The deploy command reads the project config, runs the configured build command, verifies the output directory, captures Git metadata, and records deployment history.
+Deployment execution includes:
+
+* Configuration loading
+* Build execution
+* Output validation
+* Git metadata collection
+* Deployment history recording
 
 ---
 
-### View deployment history
+### Deployment History
+
+View deployment history:
 
 ```bash
-node dist/cli.js history
+launchstack history
 ```
 
-Limit the number of records:
+Limit results:
 
 ```bash
-node dist/cli.js history --limit 3
+launchstack history --limit 3
 ```
 
-Deployment history is stored locally in:
+History location:
 
 ```text
 .launchstack/history.json
@@ -192,56 +235,58 @@ Deployment history is stored locally in:
 
 ---
 
-### Rollback lookup
+### Rollback Lookup
+
+Display the most recent successful deployment:
 
 ```bash
-node dist/cli.js rollback
+launchstack rollback
 ```
-
-Displays the latest successful deployment available as a rollback target.
 
 ---
 
-### Manage local secrets
+### Secrets Management
 
 Add a secret:
 
 ```bash
-node dist/cli.js secrets add API_KEY abc123
+launchstack secrets add API_KEY abc123
 ```
 
-List secret keys:
+List secrets:
 
 ```bash
-node dist/cli.js secrets list
+launchstack secrets list
 ```
 
 Remove a secret:
 
 ```bash
-node dist/cli.js secrets remove API_KEY
+launchstack secrets remove API_KEY
 ```
 
-Secrets are stored locally in:
+Secrets location:
 
 ```text
 .launchstack/secrets.json
 ```
 
-This file should not be committed.
+This file should never be committed.
 
 ---
 
-### Generate Docker files
+### Docker Scaffolding
+
+Generate Docker assets:
 
 ```bash
-node dist/cli.js docker init
+launchstack docker init
 ```
 
-Force overwrite existing Docker files:
+Overwrite existing files:
 
 ```bash
-node dist/cli.js docker init --force
+launchstack docker init --force
 ```
 
 Generated files:
@@ -254,16 +299,18 @@ docker-compose.yml
 
 ---
 
-### Generate GitHub Actions workflow
+### GitHub Actions Workflow Generation
+
+Generate a deployment workflow:
 
 ```bash
-node dist/cli.js github init
+launchstack github init
 ```
 
-Force overwrite an existing workflow:
+Overwrite existing workflows:
 
 ```bash
-node dist/cli.js github init --force
+launchstack github init --force
 ```
 
 Generated file:
@@ -276,7 +323,7 @@ Generated file:
 
 ## Configuration
 
-LaunchStack uses a local config file:
+LaunchStack uses a project-level configuration file:
 
 ```text
 launchstack.config.json
@@ -301,25 +348,26 @@ Example:
 
 ```text
 src/
-  commands/
-    deploy.ts
-    docker.ts
-    env.ts
-    github.ts
-    history.ts
-    init.ts
-    provider.ts
-    rollback.ts
-    secrets.ts
-    status.ts
-    validate.ts
-  cli.ts
-  config.ts
-  git.ts
-  history.ts
-  index.ts
-  types.ts
-  errors.ts
+├── commands/
+│   ├── deploy.ts
+│   ├── docker.ts
+│   ├── env.ts
+│   ├── github.ts
+│   ├── history.ts
+│   ├── init.ts
+│   ├── provider.ts
+│   ├── rollback.ts
+│   ├── secrets.ts
+│   ├── status.ts
+│   └── validate.ts
+├── cli.ts
+├── config.ts
+├── git.ts
+├── history.ts
+├── index.ts
+├── types.ts
+└── errors.ts
+
 tests/
 examples/
 ```
@@ -328,13 +376,19 @@ examples/
 
 ## Development
 
-Run the development build watcher:
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start development build watcher:
 
 ```bash
 npm run dev
 ```
 
-Build for production:
+Build:
 
 ```bash
 npm run build
@@ -367,33 +421,32 @@ npm run format
 
 ---
 
-## Why LaunchStack CLI?
+## Use Cases
 
-LaunchStack CLI demonstrates practical DevOps tooling concepts in a clean TypeScript project. It is intentionally lightweight, but covers core areas used in real deployment workflows:
+LaunchStack CLI is designed for:
 
-* CLI architecture
-* Config validation
+* Deployment workflow standardization
+* Local DevOps automation
+* Infrastructure scaffolding
+* Team onboarding
 * Environment management
-* Build automation
-* Git metadata collection
-* Deployment history
-* Secrets handling
-* Docker scaffolding
-* CI workflow generation
+* Developer tooling experimentation
+* CI/CD workflow generation
 
 ---
 
 ## Roadmap
 
-Planned improvements:
+Future improvements may include:
 
-* Interactive init prompts
+* Interactive project setup prompts
 * Encrypted secrets storage
 * Provider-specific deployment adapters
 * Deployment preview URLs
-* Rollback execution hooks
-* JSON output mode
-* Plugin system for custom providers
+* Rollback execution workflows
+* JSON output support
+* Plugin architecture
+* Custom deployment providers
 
 ---
 
@@ -405,6 +458,8 @@ MIT
 
 ## Author
 
-Williams
+Williams Ashibuogwu (wbizmo)
 
-GitHub: [wbizmo](https://github.com/wbizmo)
+GitHub: https://github.com/wbizmo
+
+npm: https://www.npmjs.com/package/launchstack-cli
