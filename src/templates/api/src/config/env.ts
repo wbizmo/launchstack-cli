@@ -7,6 +7,10 @@ export type AppEnvironment = {
   logLevel: string;
   corsOrigin: string;
   databaseUrl: string;
+  jwtAccessSecret: string;
+  jwtRefreshSecret: string;
+  jwtAccessExpiresIn: string;
+  jwtRefreshExpiresIn: string;
 };
 
 function parsePort(value: string | undefined): number {
@@ -58,6 +62,18 @@ export function loadEnvironment(): AppEnvironment {
     databaseUrl: requireEnvironmentVariable(
       "DATABASE_URL",
       process.env.DATABASE_URL
-    )
+    ),
+    jwtAccessSecret: requireEnvironmentVariable(
+      "JWT_ACCESS_SECRET",
+      process.env.JWT_ACCESS_SECRET
+    ),
+    jwtRefreshSecret: requireEnvironmentVariable(
+      "JWT_REFRESH_SECRET",
+      process.env.JWT_REFRESH_SECRET
+    ),
+    jwtAccessExpiresIn:
+      process.env.JWT_ACCESS_EXPIRES_IN ?? "15m",
+    jwtRefreshExpiresIn:
+      process.env.JWT_REFRESH_EXPIRES_IN ?? "7d"
   };
 }

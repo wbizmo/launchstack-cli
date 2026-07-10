@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { authPlugin } from "./auth";
 import { configPlugin } from "./config";
 import { corsPlugin } from "./cors";
 import { databasePlugin } from "./database";
@@ -11,6 +12,7 @@ export async function registerPlugins(
   await app.register(configPlugin);
   await app.register(databasePlugin);
   await app.register(sensiblePlugin);
+  await app.register(authPlugin);
   await app.register(corsPlugin);
   await app.register(errorHandlerPlugin);
 }
