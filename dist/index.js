@@ -25,6 +25,9 @@ __export(index_exports, {
   copyDirectory: () => copyDirectory,
   ensureDestinationAvailable: () => ensureDestinationAvailable,
   generateProject: () => generateProject,
+  getPackageRoot: () => getPackageRoot,
+  getTemplateDirectory: () => getTemplateDirectory,
+  installDependencies: () => installDependencies,
   renderDirectory: () => renderDirectory,
   renderTemplate: () => renderTemplate,
   toDisplayName: () => toDisplayName,
@@ -111,6 +114,7 @@ var import_node_path = require("path");
 var RENAMED_TEMPLATE_FILES = {
   "_gitignore": ".gitignore",
   "_npmrc": ".npmrc",
+  "_env": ".env",
   "_env.example": ".env.example"
 };
 function ensureDestinationAvailable(destinationDirectory, overwrite = false) {
@@ -120,7 +124,7 @@ function ensureDestinationAvailable(destinationDirectory, overwrite = false) {
   const contents = (0, import_node_fs.readdirSync)(destinationDirectory);
   if (contents.length > 0 && !overwrite) {
     throw new Error(
-      `Destination is not empty: ${destinationDirectory}. Use overwrite to continue.`
+      `Destination is not empty: ${destinationDirectory}. Use --force to overwrite it.`
     );
   }
 }
@@ -137,21 +141,28 @@ function copyDirectory(sourceDirectory, destinationDirectory) {
 }
 function renameTemplateFiles(directory) {
   for (const entry of (0, import_node_fs.readdirSync)(directory)) {
-    const path = (0, import_node_path.join)(directory, entry);
-    const stats = (0, import_node_fs.statSync)(path);
+    const currentPath = (0, import_node_path.join)(directory, entry);
+    const stats = (0, import_node_fs.statSync)(currentPath);
     if (stats.isDirectory()) {
-      renameTemplateFiles(path);
+      renameTemplateFiles(currentPath);
       continue;
     }
-    const replacementName = RENAMED_TEMPLATE_FILES[(0, import_node_path.basename)(path)];
+    const replacementName = RENAMED_TEMPLATE_FILES[(0, import_node_path.basename)(currentPath)];
     if (!replacementName) {
       continue;
     }
-    const content = (0, import_node_fs.readFileSync)(path);
-    const replacementPath = (0, import_node_path.resolve)(directory, replacementName);
-    (0, import_node_fs.writeFileSync)(replacementPath, content);
-    const { unlinkSync } = require("fs");
-    unlinkSync(path);
+    const replacementPath = (0, import_node_path.resolve)((0, import_node_path.dirname)(currentPath), replacementName);
+    if ((0, import_node_fs.existsSync)(replacementPath)) {
+      const existingContent = (0, import_node_fs.readFileSync)(replacementPath);
+      const sourceContent = (0, import_node_fs.readFileSync)(currentPath);
+      if (!existingContent.equals(sourceContent)) {
+        throw new Error(
+          `Cannot rename template file because the destination exists: ${replacementPath}`
+        );
+      }
+      continue;
+    }
+    (0, import_node_fs.renameSync)(currentPath, replacementPath);
   }
 }
 
@@ -174,9 +185,19 @@ function toDisplayName(projectName) {
 // src/generator/paths.ts
 var import_node_fs2 = require("fs");
 var import_node_path2 = require("path");
-function findPackageRoot() {
+function getRuntimeDirectory() {
+  if (typeof __dirname === "string") {
+    return __dirname;
+  }
+  return process.cwd();
+}
+function getPackageRoot() {
+  const runtimeDirectory = getRuntimeDirectory();
   const candidates = [
     process.cwd(),
+    runtimeDirectory,
+    (0, import_node_path2.resolve)(runtimeDirectory, ".."),
+    (0, import_node_path2.resolve)(runtimeDirectory, "../.."),
     (0, import_node_path2.resolve)(process.cwd(), ".."),
     (0, import_node_path2.resolve)(process.cwd(), "../..")
   ];
@@ -187,21 +208,22 @@ function findPackageRoot() {
   }
   throw new Error("Could not locate the LaunchStack package root.");
 }
-function getPackageRoot() {
-  return findPackageRoot();
-}
 function getTemplateDirectory(templateName) {
+  const runtimeDirectory = getRuntimeDirectory();
   const packageRoot = getPackageRoot();
   const candidates = [
-    (0, import_node_path2.resolve)(packageRoot, "src", "templates", templateName),
+    (0, import_node_path2.resolve)(runtimeDirectory, "templates", templateName),
     (0, import_node_path2.resolve)(packageRoot, "dist", "templates", templateName),
+    (0, import_node_path2.resolve)(packageRoot, "src", "templates", templateName),
     (0, import_node_path2.resolve)(packageRoot, "templates", templateName)
   ];
   const templateDirectory = candidates.find(
     (candidate) => (0, import_node_fs2.existsSync)(candidate)
   );
   if (!templateDirectory) {
-    throw new Error(`Template directory not found: ${templateName}`);
+    throw new Error(
+      `Template "${templateName}" could not be found in the LaunchStack installation.`
+    );
   }
   return templateDirectory;
 }
@@ -250,6 +272,16 @@ function generateProject(options) {
   });
   return destinationDirectory;
 }
+
+// src/generator/install.ts
+var import_node_child_process = require("child_process");
+function installDependencies(projectDirectory) {
+  const npmExecutable = process.platform === "win32" ? "npm.cmd" : "npm";
+  (0, import_node_child_process.execFileSync)(npmExecutable, ["install"], {
+    cwd: projectDirectory,
+    stdio: "inherit"
+  });
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   LaunchStackClient,
@@ -257,6 +289,9 @@ function generateProject(options) {
   copyDirectory,
   ensureDestinationAvailable,
   generateProject,
+  getPackageRoot,
+  getTemplateDirectory,
+  installDependencies,
   renderDirectory,
   renderTemplate,
   toDisplayName,

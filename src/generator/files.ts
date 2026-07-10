@@ -4,14 +4,15 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  statSync,
-  writeFileSync
+  renameSync,
+  statSync
 } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 const RENAMED_TEMPLATE_FILES: Record<string, string> = {
   "_gitignore": ".gitignore",
   "_npmrc": ".npmrc",
+  "_env": ".env",
   "_env.example": ".env.example"
 };
 
@@ -27,7 +28,7 @@ export function ensureDestinationAvailable(
 
   if (contents.length > 0 && !overwrite) {
     throw new Error(
-      `Destination is not empty: ${destinationDirectory}. Use overwrite to continue.`
+      `Destination is not empty: ${destinationDirectory}. Use --force to overwrite it.`
     );
   }
 }
@@ -52,26 +53,35 @@ export function copyDirectory(
 
 function renameTemplateFiles(directory: string): void {
   for (const entry of readdirSync(directory)) {
-    const path = join(directory, entry);
-    const stats = statSync(path);
+    const currentPath = join(directory, entry);
+    const stats = statSync(currentPath);
 
     if (stats.isDirectory()) {
-      renameTemplateFiles(path);
+      renameTemplateFiles(currentPath);
       continue;
     }
 
-    const replacementName = RENAMED_TEMPLATE_FILES[basename(path)];
+    const replacementName = RENAMED_TEMPLATE_FILES[basename(currentPath)];
 
     if (!replacementName) {
       continue;
     }
 
-    const content = readFileSync(path);
-    const replacementPath = resolve(directory, replacementName);
+    const replacementPath = resolve(dirname(currentPath), replacementName);
 
-    writeFileSync(replacementPath, content);
+    if (existsSync(replacementPath)) {
+      const existingContent = readFileSync(replacementPath);
+      const sourceContent = readFileSync(currentPath);
 
-    const { unlinkSync } = require("node:fs") as typeof import("node:fs");
-    unlinkSync(path);
+      if (!existingContent.equals(sourceContent)) {
+        throw new Error(
+          `Cannot rename template file because the destination exists: ${replacementPath}`
+        );
+      }
+
+      continue;
+    }
+
+    renameSync(currentPath, replacementPath);
   }
 }

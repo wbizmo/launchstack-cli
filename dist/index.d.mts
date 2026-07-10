@@ -80,11 +80,16 @@ declare function generateProject(options: GenerateProjectOptions): string;
 declare function ensureDestinationAvailable(destinationDirectory: string, overwrite?: boolean): void;
 declare function copyDirectory(sourceDirectory: string, destinationDirectory: string): void;
 
+declare function installDependencies(projectDirectory: string): void;
+
 declare function validateProjectName(projectName: string): void;
 declare function toDisplayName(projectName: string): string;
+
+declare function getPackageRoot(): string;
+declare function getTemplateDirectory(templateName: string): string;
 
 type TemplateVariables = Record<string, string>;
 declare function renderTemplate(content: string, variables: TemplateVariables): string;
 declare function renderDirectory(directory: string, variables: TemplateVariables): void;
 
-export { type ChangelogEntry, type CreateChangelogInput, type CreateDeploymentInput, type CreateLaunchInput, type Deployment, type GenerateProjectOptions, type Launch, LaunchStackClient, type LaunchStackConfig, LaunchStackError, type ProjectTemplate, type TemplateFile, type TemplateName, copyDirectory, ensureDestinationAvailable, generateProject, renderDirectory, renderTemplate, toDisplayName, validateProjectName };
+export { type ChangelogEntry, type CreateChangelogInput, type CreateDeploymentInput, type CreateLaunchInput, type Deployment, type GenerateProjectOptions, type Launch, LaunchStackClient, type LaunchStackConfig, LaunchStackError, type ProjectTemplate, type TemplateFile, type TemplateName, copyDirectory, ensureDestinationAvailable, generateProject, getPackageRoot, getTemplateDirectory, installDependencies, renderDirectory, renderTemplate, toDisplayName, validateProjectName };

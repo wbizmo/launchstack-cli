@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import { createCommand } from "./commands/create";
 import { deployCommand } from "./commands/deploy";
 import { dockerCommand } from "./commands/docker";
 import { envCommand } from "./commands/env";
@@ -17,9 +18,12 @@ const program = new Command();
 
 program
   .name("launchstack")
-  .description("Deployment and release workflow CLI")
-  .version("0.1.0");
+  .description(
+    "Backend API scaffolding, deployment automation, and developer workflow CLI"
+  )
+  .version("1.0.0");
 
+program.addCommand(createCommand);
 program.addCommand(initCommand);
 program.addCommand(statusCommand);
 program.addCommand(deployCommand);
