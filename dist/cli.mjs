@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "./chunk-Y6FXYEAI.mjs";
 
 // src/cli.ts
 import { Command as Command12 } from "commander";

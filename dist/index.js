@@ -21,7 +21,14 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var index_exports = {};
 __export(index_exports, {
   LaunchStackClient: () => LaunchStackClient,
-  LaunchStackError: () => LaunchStackError
+  LaunchStackError: () => LaunchStackError,
+  copyDirectory: () => copyDirectory,
+  ensureDestinationAvailable: () => ensureDestinationAvailable,
+  generateProject: () => generateProject,
+  renderDirectory: () => renderDirectory,
+  renderTemplate: () => renderTemplate,
+  toDisplayName: () => toDisplayName,
+  validateProjectName: () => validateProjectName
 });
 module.exports = __toCommonJS(index_exports);
 
@@ -94,8 +101,164 @@ var LaunchStackClient = class {
     });
   }
 };
+
+// src/generator/generate.ts
+var import_node_path4 = require("path");
+
+// src/generator/files.ts
+var import_node_fs = require("fs");
+var import_node_path = require("path");
+var RENAMED_TEMPLATE_FILES = {
+  "_gitignore": ".gitignore",
+  "_npmrc": ".npmrc",
+  "_env.example": ".env.example"
+};
+function ensureDestinationAvailable(destinationDirectory, overwrite = false) {
+  if (!(0, import_node_fs.existsSync)(destinationDirectory)) {
+    return;
+  }
+  const contents = (0, import_node_fs.readdirSync)(destinationDirectory);
+  if (contents.length > 0 && !overwrite) {
+    throw new Error(
+      `Destination is not empty: ${destinationDirectory}. Use overwrite to continue.`
+    );
+  }
+}
+function copyDirectory(sourceDirectory, destinationDirectory) {
+  if (!(0, import_node_fs.existsSync)(sourceDirectory)) {
+    throw new Error(`Template directory not found: ${sourceDirectory}`);
+  }
+  (0, import_node_fs.mkdirSync)(destinationDirectory, { recursive: true });
+  (0, import_node_fs.cpSync)(sourceDirectory, destinationDirectory, {
+    recursive: true,
+    force: true
+  });
+  renameTemplateFiles(destinationDirectory);
+}
+function renameTemplateFiles(directory) {
+  for (const entry of (0, import_node_fs.readdirSync)(directory)) {
+    const path = (0, import_node_path.join)(directory, entry);
+    const stats = (0, import_node_fs.statSync)(path);
+    if (stats.isDirectory()) {
+      renameTemplateFiles(path);
+      continue;
+    }
+    const replacementName = RENAMED_TEMPLATE_FILES[(0, import_node_path.basename)(path)];
+    if (!replacementName) {
+      continue;
+    }
+    const content = (0, import_node_fs.readFileSync)(path);
+    const replacementPath = (0, import_node_path.resolve)(directory, replacementName);
+    (0, import_node_fs.writeFileSync)(replacementPath, content);
+    const { unlinkSync } = require("fs");
+    unlinkSync(path);
+  }
+}
+
+// src/generator/names.ts
+var PROJECT_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+function validateProjectName(projectName) {
+  if (!projectName.trim()) {
+    throw new Error("Project name is required.");
+  }
+  if (!PROJECT_NAME_PATTERN.test(projectName)) {
+    throw new Error(
+      "Project name must use lowercase letters, numbers, and hyphens only."
+    );
+  }
+}
+function toDisplayName(projectName) {
+  return projectName.split("-").filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+// src/generator/paths.ts
+var import_node_fs2 = require("fs");
+var import_node_path2 = require("path");
+function findPackageRoot() {
+  const candidates = [
+    process.cwd(),
+    (0, import_node_path2.resolve)(process.cwd(), ".."),
+    (0, import_node_path2.resolve)(process.cwd(), "../..")
+  ];
+  for (const candidate of candidates) {
+    if ((0, import_node_fs2.existsSync)((0, import_node_path2.resolve)(candidate, "package.json"))) {
+      return candidate;
+    }
+  }
+  throw new Error("Could not locate the LaunchStack package root.");
+}
+function getPackageRoot() {
+  return findPackageRoot();
+}
+function getTemplateDirectory(templateName) {
+  const packageRoot = getPackageRoot();
+  const candidates = [
+    (0, import_node_path2.resolve)(packageRoot, "src", "templates", templateName),
+    (0, import_node_path2.resolve)(packageRoot, "dist", "templates", templateName),
+    (0, import_node_path2.resolve)(packageRoot, "templates", templateName)
+  ];
+  const templateDirectory = candidates.find(
+    (candidate) => (0, import_node_fs2.existsSync)(candidate)
+  );
+  if (!templateDirectory) {
+    throw new Error(`Template directory not found: ${templateName}`);
+  }
+  return templateDirectory;
+}
+
+// src/generator/template.ts
+var import_node_fs3 = require("fs");
+var import_node_path3 = require("path");
+function renderTemplate(content, variables) {
+  return Object.entries(variables).reduce(
+    (rendered, [key, value]) => rendered.split(`{{${key}}}`).join(value),
+    content
+  );
+}
+function renderDirectory(directory, variables) {
+  if (!(0, import_node_fs3.existsSync)(directory)) {
+    throw new Error(`Directory not found: ${directory}`);
+  }
+  for (const entry of (0, import_node_fs3.readdirSync)(directory)) {
+    const path = (0, import_node_path3.join)(directory, entry);
+    const stats = (0, import_node_fs3.statSync)(path);
+    if (stats.isDirectory()) {
+      renderDirectory(path, variables);
+      continue;
+    }
+    const content = (0, import_node_fs3.readFileSync)(path, "utf8");
+    const rendered = renderTemplate(content, variables);
+    if (rendered !== content) {
+      (0, import_node_fs3.writeFileSync)(path, rendered);
+    }
+  }
+}
+
+// src/generator/generate.ts
+function generateProject(options) {
+  validateProjectName(options.projectName);
+  const destinationDirectory = (0, import_node_path4.resolve)(options.destinationDirectory);
+  ensureDestinationAvailable(
+    destinationDirectory,
+    options.overwrite ?? false
+  );
+  const templateDirectory = getTemplateDirectory(options.template);
+  copyDirectory(templateDirectory, destinationDirectory);
+  renderDirectory(destinationDirectory, {
+    PROJECT_NAME: options.projectName,
+    PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
+  });
+  return destinationDirectory;
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   LaunchStackClient,
-  LaunchStackError
+  LaunchStackError,
+  copyDirectory,
+  ensureDestinationAvailable,
+  generateProject,
+  renderDirectory,
+  renderTemplate,
+  toDisplayName,
+  validateProjectName
 });

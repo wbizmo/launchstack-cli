@@ -1,7 +1,7 @@
 {
   "name": "launchstack-cli",
   "version": "1.0.0",
-  "description": "A TypeScript CLI for deployment automation, release workflows, changelogs, environments, and project launch operations.",
+  "description": "A TypeScript CLI for backend API scaffolding, deployment automation, configuration management, and developer workflows.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -13,7 +13,9 @@
     "build": "tsup src/index.ts src/cli.ts --format cjs,esm --dts",
     "test": "vitest",
     "lint": "eslint src tests",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test:run": "vitest run",
+    "check": "npm run test:run && npm run build"
   },
   "keywords": [
     "launchstack",
@@ -25,7 +27,11 @@
     "typescript",
     "changelog",
     "environments",
-    "workflows"
+    "workflows",
+    "api-scaffolding",
+    "fastify",
+    "backend-generator",
+    "developer-tools"
   ],
   "author": "Williams",
   "license": "MIT",
@@ -41,7 +47,7 @@
     "zod": "latest"
   },
   "devDependencies": {
-    "@types/node": "^25.9.3",
+    "@types/node": "^25.9.5",
     "eslint": "latest",
     "prettier": "latest",
     "tsup": "^8.5.1",

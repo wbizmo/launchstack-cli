@@ -59,4 +59,32 @@ declare class LaunchStackError extends Error {
     constructor(message: string, status?: number, details?: unknown);
 }
 
-export { type ChangelogEntry, type CreateChangelogInput, type CreateDeploymentInput, type CreateLaunchInput, type Deployment, type Launch, LaunchStackClient, type LaunchStackConfig, LaunchStackError };
+type TemplateName = "api";
+type TemplateFile = {
+    source: string;
+    destination: string;
+};
+type ProjectTemplate = {
+    name: TemplateName;
+    rootDirectory: string;
+};
+type GenerateProjectOptions = {
+    projectName: string;
+    destinationDirectory: string;
+    template: TemplateName;
+    overwrite?: boolean;
+};
+
+declare function generateProject(options: GenerateProjectOptions): string;
+
+declare function ensureDestinationAvailable(destinationDirectory: string, overwrite?: boolean): void;
+declare function copyDirectory(sourceDirectory: string, destinationDirectory: string): void;
+
+declare function validateProjectName(projectName: string): void;
+declare function toDisplayName(projectName: string): string;
+
+type TemplateVariables = Record<string, string>;
+declare function renderTemplate(content: string, variables: TemplateVariables): string;
+declare function renderDirectory(directory: string, variables: TemplateVariables): void;
+
+export { type ChangelogEntry, type CreateChangelogInput, type CreateDeploymentInput, type CreateLaunchInput, type Deployment, type GenerateProjectOptions, type Launch, LaunchStackClient, type LaunchStackConfig, LaunchStackError, type ProjectTemplate, type TemplateFile, type TemplateName, copyDirectory, ensureDestinationAvailable, generateProject, renderDirectory, renderTemplate, toDisplayName, validateProjectName };

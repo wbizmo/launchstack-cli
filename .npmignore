@@ -15,3 +15,9 @@ replit.nix
 .env
 .env.*
 *.log
+
+sprint-*.sh
+*.tgz
+launchstack.config.json
+Dockerfile
+docker-compose.yml
