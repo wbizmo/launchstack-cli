@@ -106,3 +106,11 @@ Build:
 LaunchStack CLI
 
 https://www.npmjs.com/package/launchstack-cli
+
+## API Documentation
+
+Swagger UI:
+
+    http://localhost:3000/docs
+
+The generated OpenAPI document includes health endpoints, authentication endpoints, request schemas, response schemas, JWT bearer authentication, and documented error responses.

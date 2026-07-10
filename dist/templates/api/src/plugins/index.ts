@@ -4,12 +4,14 @@ import { configPlugin } from "./config";
 import { corsPlugin } from "./cors";
 import { databasePlugin } from "./database";
 import { errorHandlerPlugin } from "./error-handler";
+import { schemasPlugin } from "./schemas";
 import { sensiblePlugin } from "./sensible";
+import { swaggerPlugin } from "./swagger";
 
-export async function registerPlugins(
-  app: FastifyInstance
-): Promise<void> {
+export async function registerPlugins(app: FastifyInstance): Promise<void> {
   await app.register(configPlugin);
+  await app.register(schemasPlugin);
+  await app.register(swaggerPlugin);
   await app.register(databasePlugin);
   await app.register(sensiblePlugin);
   await app.register(authPlugin);

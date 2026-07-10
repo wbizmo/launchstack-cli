@@ -7,55 +7,35 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
       schema: {
         tags: ["System"],
         summary: "Check API health",
-        response: {
-          200: {
-            type: "object",
-            required: [
-              "status",
-              "service",
-              "environment",
-              "timestamp",
-              "uptime"
-            ],
-            properties: {
-              status: {
-                type: "string"
-              },
-              service: {
-                type: "string"
-              },
-              environment: {
-                type: "string"
-              },
-              timestamp: {
-                type: "string"
-              },
-              uptime: {
-                type: "number"
-              }
-            }
-          }
-        }
+        description: "Returns the current process status and basic runtime information.",
+        response: { 200: { $ref: "HealthResponse#" } }
       }
     },
-    async () => {
-      return {
-        status: "ok",
-        service: "{{PROJECT_NAME}}",
-        environment: app.config.nodeEnv,
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime()
-      };
-    }
+    async () => ({
+      status: "ok",
+      service: "{{PROJECT_NAME}}",
+      environment: app.config.nodeEnv,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    })
   );
 
   app.get(
     "/health/database",
-    {},
+    {
+      schema: {
+        tags: ["System"],
+        summary: "Check database connectivity",
+        description: "Runs a lightweight query to verify PostgreSQL connectivity.",
+        response: {
+          200: { $ref: "DatabaseHealthResponse#" },
+          503: { $ref: "DatabaseHealthResponse#" }
+        }
+      }
+    },
     async (_request, reply) => {
       try {
         await app.prisma.$queryRaw`SELECT 1`;
-
         return {
           status: "ok",
           database: "connected",
