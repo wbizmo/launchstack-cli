@@ -1,19 +1,22 @@
 import type { UserRole } from "@prisma/client";
+import type { z } from "zod";
+import type {
+  loginBodySchema,
+  refreshBodySchema,
+  registerBodySchema
+} from "./auth.schemas";
 
-export type RegisterInput = {
-  email: string;
-  password: string;
-  name?: string;
-};
+export type RegisterInput = z.infer<
+  typeof registerBodySchema
+>;
 
-export type LoginInput = {
-  email: string;
-  password: string;
-};
+export type LoginInput = z.infer<
+  typeof loginBodySchema
+>;
 
-export type RefreshInput = {
-  refreshToken: string;
-};
+export type RefreshInput = z.infer<
+  typeof refreshBodySchema
+>;
 
 export type AuthenticatedUser = {
   id: string;

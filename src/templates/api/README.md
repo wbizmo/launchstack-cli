@@ -107,6 +107,35 @@ LaunchStack CLI
 
 https://www.npmjs.com/package/launchstack-cli
 
+## Request Validation
+
+The starter uses Zod for request and response schemas.
+
+Included validation:
+
+- Registration payloads
+- Login payloads
+- Refresh-token payloads
+- Health responses
+- Authentication responses
+- Error responses
+
+Fastify uses the Zod type provider for runtime validation and TypeScript inference.
+
+## Validation Behaviour
+
+Invalid request bodies are rejected automatically with HTTP 400 responses.
+
+Examples include:
+
+- Invalid email addresses
+- Passwords shorter than eight characters
+- Missing login credentials
+- Empty refresh tokens
+- Invalid response payloads during development and testing
+
+Request types are inferred directly from Zod schemas, reducing duplication between runtime validation and TypeScript types.
+
 ## API Documentation
 
 Swagger UI:

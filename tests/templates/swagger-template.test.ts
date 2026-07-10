@@ -8,7 +8,6 @@ describe("Swagger and OpenAPI template", () => {
   it("contains documentation files", () => {
     const requiredFiles = [
       "src/plugins/swagger.ts",
-      "src/plugins/schemas.ts",
       "src/schemas/common.ts",
       "src/schemas/auth.ts",
       "tests/openapi.test.ts"
