@@ -13,9 +13,12 @@ export function authorize(...roles: UserRole[]) {
       await reply.status(403).send({
         statusCode: 403,
         error: "Forbidden",
-        message: "You do not have permission to access this resource.",
+        message:
+          "You do not have permission to access this resource.",
         requestId: request.id
       });
+
+      return;
     }
   };
 }

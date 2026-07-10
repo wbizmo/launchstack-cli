@@ -1,7 +1,12 @@
 import "dotenv/config";
 
+export type NodeEnvironment =
+  | "development"
+  | "test"
+  | "production";
+
 export type AppEnvironment = {
-  nodeEnv: "development" | "test" | "production";
+  nodeEnv: NodeEnvironment;
   host: string;
   port: number;
   logLevel: string;
@@ -16,8 +21,14 @@ export type AppEnvironment = {
 function parsePort(value: string | undefined): number {
   const parsed = Number(value ?? 3000);
 
-  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) {
-    throw new Error("PORT must be an integer between 1 and 65535.");
+  if (
+    !Number.isInteger(parsed) ||
+    parsed <= 0 ||
+    parsed > 65535
+  ) {
+    throw new Error(
+      "PORT must be an integer between 1 and 65535."
+    );
   }
 
   return parsed;
@@ -25,7 +36,7 @@ function parsePort(value: string | undefined): number {
 
 function parseNodeEnvironment(
   value: string | undefined
-): AppEnvironment["nodeEnv"] {
+): NodeEnvironment {
   const environment = value ?? "development";
 
   if (
@@ -49,12 +60,41 @@ function requireEnvironmentVariable(
     throw new Error(`${name} is required.`);
   }
 
-  return value;
+  return value.trim();
+}
+
+function validateJwtSecret(
+  name: string,
+  value: string | undefined,
+  environment: NodeEnvironment
+): string {
+  const secret = requireEnvironmentVariable(name, value);
+
+  if (secret.length < 32) {
+    throw new Error(
+      `${name} must contain at least 32 characters.`
+    );
+  }
+
+  if (
+    environment === "production" &&
+    secret.startsWith("replace-with-")
+  ) {
+    throw new Error(
+      `${name} must be replaced before running in production.`
+    );
+  }
+
+  return secret;
 }
 
 export function loadEnvironment(): AppEnvironment {
+  const nodeEnv = parseNodeEnvironment(
+    process.env.NODE_ENV
+  );
+
   return {
-    nodeEnv: parseNodeEnvironment(process.env.NODE_ENV),
+    nodeEnv,
     host: process.env.HOST ?? "0.0.0.0",
     port: parsePort(process.env.PORT),
     logLevel: process.env.LOG_LEVEL ?? "info",
@@ -63,13 +103,15 @@ export function loadEnvironment(): AppEnvironment {
       "DATABASE_URL",
       process.env.DATABASE_URL
     ),
-    jwtAccessSecret: requireEnvironmentVariable(
+    jwtAccessSecret: validateJwtSecret(
       "JWT_ACCESS_SECRET",
-      process.env.JWT_ACCESS_SECRET
+      process.env.JWT_ACCESS_SECRET,
+      nodeEnv
     ),
-    jwtRefreshSecret: requireEnvironmentVariable(
+    jwtRefreshSecret: validateJwtSecret(
       "JWT_REFRESH_SECRET",
-      process.env.JWT_REFRESH_SECRET
+      process.env.JWT_REFRESH_SECRET,
+      nodeEnv
     ),
     jwtAccessExpiresIn:
       process.env.JWT_ACCESS_EXPIRES_IN ?? "15m",

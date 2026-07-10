@@ -25,10 +25,22 @@ function parseRefreshExpiry(value: string): Date {
     );
   }
 
-  const amount = Number(match[1]);
-  const unit = match[2];
+  const amountValue = match[1];
+  const unitValue = match[2];
 
-  const multipliers: Record<string, number> = {
+  if (!amountValue || !unitValue) {
+    throw new Error(
+      "JWT_REFRESH_EXPIRES_IN could not be parsed."
+    );
+  }
+
+  const amount = Number(amountValue);
+  const unit = unitValue as "s" | "m" | "h" | "d";
+
+  const multipliers: Record<
+    "s" | "m" | "h" | "d",
+    number
+  > = {
     s: 1000,
     m: 60 * 1000,
     h: 60 * 60 * 1000,
