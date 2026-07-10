@@ -1,9 +1,12 @@
+import "dotenv/config";
+
 export type AppEnvironment = {
   nodeEnv: "development" | "test" | "production";
   host: string;
   port: number;
   logLevel: string;
   corsOrigin: string;
+  databaseUrl: string;
 };
 
 function parsePort(value: string | undefined): number {
@@ -34,12 +37,27 @@ function parseNodeEnvironment(
   return environment;
 }
 
+function requireEnvironmentVariable(
+  name: string,
+  value: string | undefined
+): string {
+  if (!value || !value.trim()) {
+    throw new Error(`${name} is required.`);
+  }
+
+  return value;
+}
+
 export function loadEnvironment(): AppEnvironment {
   return {
     nodeEnv: parseNodeEnvironment(process.env.NODE_ENV),
     host: process.env.HOST ?? "0.0.0.0",
     port: parsePort(process.env.PORT),
     logLevel: process.env.LOG_LEVEL ?? "info",
-    corsOrigin: process.env.CORS_ORIGIN ?? "*"
+    corsOrigin: process.env.CORS_ORIGIN ?? "*",
+    databaseUrl: requireEnvironmentVariable(
+      "DATABASE_URL",
+      process.env.DATABASE_URL
+    )
   };
 }

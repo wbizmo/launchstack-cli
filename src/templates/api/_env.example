@@ -3,3 +3,4 @@ HOST=0.0.0.0
 PORT=3000
 LOG_LEVEL=info
 CORS_ORIGIN=*
+DATABASE_URL=postgresql://launchstack:launchstack@localhost:5432/{{PROJECT_NAME}}?schema=public

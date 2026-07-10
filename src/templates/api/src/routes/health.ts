@@ -48,4 +48,26 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
       };
     }
   );
+
+  app.get(
+    "/health/database",
+    {},
+    async (_request, reply) => {
+      try {
+        await app.prisma.$queryRaw`SELECT 1`;
+
+        return {
+          status: "ok",
+          database: "connected",
+          timestamp: new Date().toISOString()
+        };
+      } catch {
+        return reply.status(503).send({
+          status: "error",
+          database: "unavailable",
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+  );
 };
