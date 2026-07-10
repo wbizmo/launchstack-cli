@@ -87,6 +87,38 @@ Send access tokens using:
 
 Never use the default JWT secrets in production.
 
+## Application Architecture
+
+The generated API uses a modular layered architecture:
+
+    src/
+      core/
+        errors/
+        http/
+        types/
+      modules/
+        auth/
+          auth.controller.ts
+          auth.repository.ts
+          auth.routes.ts
+          auth.schemas.ts
+          auth.service.ts
+          auth.types.ts
+        users/
+          user.controller.ts
+          user.dto.ts
+          user.repository.ts
+          user.service.ts
+
+Layer responsibilities:
+
+- Routes define HTTP endpoints and middleware.
+- Controllers translate HTTP requests into service calls.
+- Services contain application and domain logic.
+- Repositories isolate Prisma database access.
+- DTOs control data exposed by the API.
+- Core utilities provide shared errors, response envelopes, and pagination.
+
 ## Quality Commands
 
 Run tests:

@@ -32,7 +32,7 @@ describe("Swagger and OpenAPI template", () => {
 
   it("documents authentication routes", () => {
     const source = readFileSync(resolve(templateRoot, "src/modules/auth/auth.schemas.ts"), "utf8");
-    expect(source).toContain('tags: ["Authentication"]');
+    expect(source).toMatch(/tags:\s*\[\s*"Authentication"\s*\]/);
     expect(source).toContain("security");
   });
 });

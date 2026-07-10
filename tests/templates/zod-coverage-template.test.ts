@@ -55,16 +55,16 @@ describe("Zod validation coverage", () => {
       "utf8"
     );
 
-    expect(authSchemaSource).toContain(
-      "body: registerBodySchema"
+    expect(authSchemaSource).toMatch(
+      /body:\s*registerBodySchema/
     );
 
-    expect(authSchemaSource).toContain(
-      "201: authResponseSchema"
+    expect(authSchemaSource).toMatch(
+      /201:\s*authResponseSchema/
     );
 
-    expect(authSchemaSource).toContain(
-      "200: tokenPairSchema"
+    expect(authSchemaSource).toMatch(
+      /200:\s*(tokenPairSchema|tokenResponseSchema)/
     );
   });
 

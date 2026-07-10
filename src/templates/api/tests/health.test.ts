@@ -53,7 +53,7 @@ describe("health endpoint", () => {
 
     expect(response.json()).toMatchObject({
       statusCode: 404,
-      error: "Not Found"
+      error: "RESOURCE_NOT_FOUND"
     });
   });
 });

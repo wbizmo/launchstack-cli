@@ -1,6 +1,19 @@
-import { createHash } from "node:crypto";
+import {
+  createHash
+} from "node:crypto";
 import bcrypt from "bcryptjs";
-import type { FastifyInstance } from "fastify";
+import type {
+  FastifyInstance
+} from "fastify";
+import {
+  ApplicationError
+} from "../../core/errors/application-error";
+import {
+  ErrorCode
+} from "../../core/errors/error-codes";
+import {
+  AuthRepository
+} from "./auth.repository";
 import type {
   AccessTokenPayload,
   AuthenticatedUser,
@@ -12,11 +25,17 @@ import type {
 
 const PASSWORD_ROUNDS = 12;
 
-function hashRefreshToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
+function hashRefreshToken(
+  token: string
+): string {
+  return createHash("sha256")
+    .update(token)
+    .digest("hex");
 }
 
-function parseRefreshExpiry(value: string): Date {
+function parseRefreshExpiry(
+  value: string
+): Date {
   const match = /^(\d+)([smhd])$/.exec(value);
 
   if (!match) {
@@ -35,7 +54,8 @@ function parseRefreshExpiry(value: string): Date {
   }
 
   const amount = Number(amountValue);
-  const unit = unitValue as "s" | "m" | "h" | "d";
+  const unit =
+    unitValue as "s" | "m" | "h" | "d";
 
   const multipliers: Record<
     "s" | "m" | "h" | "d",
@@ -68,6 +88,7 @@ function toAuthenticatedUser(user: {
 
 async function issueTokens(
   app: FastifyInstance,
+  repository: AuthRepository,
   user: AuthenticatedUser
 ): Promise<AuthTokens> {
   const accessPayload: AccessTokenPayload = {
@@ -82,22 +103,30 @@ async function issueTokens(
     type: "refresh"
   };
 
-  const accessToken = app.jwt.sign(accessPayload, {
-    expiresIn: app.config.jwtAccessExpiresIn
-  });
-
-  const refreshToken = app.refreshJwt.sign(refreshPayload, {
-    expiresIn: app.config.jwtRefreshExpiresIn
-  });
-
-  await app.prisma.refreshToken.create({
-    data: {
-      tokenHash: hashRefreshToken(refreshToken),
-      userId: user.id,
-      expiresAt: parseRefreshExpiry(
-        app.config.jwtRefreshExpiresIn
-      )
+  const accessToken = app.jwt.sign(
+    accessPayload,
+    {
+      expiresIn:
+        app.config.jwtAccessExpiresIn
     }
+  );
+
+  const refreshToken =
+    app.refreshJwt.sign(
+      refreshPayload,
+      {
+        expiresIn:
+          app.config.jwtRefreshExpiresIn
+      }
+    );
+
+  await repository.createRefreshToken({
+    tokenHash:
+      hashRefreshToken(refreshToken),
+    userId: user.id,
+    expiresAt: parseRefreshExpiry(
+      app.config.jwtRefreshExpiresIn
+    )
   });
 
   return {
@@ -106,162 +135,194 @@ async function issueTokens(
   };
 }
 
-export async function registerUser(
-  app: FastifyInstance,
-  input: RegisterInput
-): Promise<{
-  user: AuthenticatedUser;
-  tokens: AuthTokens;
-}> {
-  const email = input.email.trim().toLowerCase();
+export class AuthService {
+  private readonly repository: AuthRepository;
 
-  const existingUser = await app.prisma.user.findUnique({
-    where: {
-      email
-    }
-  });
-
-  if (existingUser) {
-    throw app.httpErrors.conflict(
-      "An account with this email already exists."
-    );
-  }
-
-  const passwordHash = await bcrypt.hash(
-    input.password,
-    PASSWORD_ROUNDS
-  );
-
-  const createdUser = await app.prisma.user.create({
-    data: {
-      email,
-      name: input.name?.trim() || null,
-      passwordHash
-    }
-  });
-
-  const user = toAuthenticatedUser(createdUser);
-  const tokens = await issueTokens(app, user);
-
-  return {
-    user,
-    tokens
-  };
-}
-
-export async function loginUser(
-  app: FastifyInstance,
-  input: LoginInput
-): Promise<{
-  user: AuthenticatedUser;
-  tokens: AuthTokens;
-}> {
-  const email = input.email.trim().toLowerCase();
-
-  const existingUser = await app.prisma.user.findUnique({
-    where: {
-      email
-    }
-  });
-
-  if (!existingUser) {
-    throw app.httpErrors.unauthorized(
-      "Invalid email or password."
-    );
-  }
-
-  const passwordMatches = await bcrypt.compare(
-    input.password,
-    existingUser.passwordHash
-  );
-
-  if (!passwordMatches) {
-    throw app.httpErrors.unauthorized(
-      "Invalid email or password."
-    );
-  }
-
-  const user = toAuthenticatedUser(existingUser);
-  const tokens = await issueTokens(app, user);
-
-  return {
-    user,
-    tokens
-  };
-}
-
-export async function refreshUserTokens(
-  app: FastifyInstance,
-  refreshToken: string
-): Promise<AuthTokens> {
-  let payload: RefreshTokenPayload;
-
-  try {
-    payload = app.refreshJwt.verify<RefreshTokenPayload>(
-      refreshToken
-    );
-  } catch {
-    throw app.httpErrors.unauthorized(
-      "Invalid or expired refresh token."
-    );
-  }
-
-  if (payload.type !== "refresh") {
-    throw app.httpErrors.unauthorized(
-      "Invalid refresh token."
-    );
-  }
-
-  const tokenHash = hashRefreshToken(refreshToken);
-
-  const storedToken =
-    await app.prisma.refreshToken.findUnique({
-      where: {
-        tokenHash
-      },
-      include: {
-        user: true
-      }
-    });
-
-  if (
-    !storedToken ||
-    storedToken.revokedAt ||
-    storedToken.expiresAt <= new Date()
+  constructor(
+    private readonly app: FastifyInstance
   ) {
-    throw app.httpErrors.unauthorized(
-      "Refresh token is no longer valid."
+    this.repository =
+      new AuthRepository(app.prisma);
+  }
+
+  async register(
+    input: RegisterInput
+  ): Promise<{
+    user: AuthenticatedUser;
+    tokens: AuthTokens;
+  }> {
+    const email =
+      input.email.trim().toLowerCase();
+
+    const existingUser =
+      await this.repository.findUserByEmail(
+        email
+      );
+
+    if (existingUser) {
+      throw new ApplicationError({
+        statusCode: 409,
+        code: ErrorCode.ResourceConflict,
+        message:
+          "An account with this email already exists."
+      });
+    }
+
+    const passwordHash =
+      await bcrypt.hash(
+        input.password,
+        PASSWORD_ROUNDS
+      );
+
+    const createdUser =
+      await this.repository.createUser({
+        email,
+        name:
+          input.name?.trim() || null,
+        passwordHash
+      });
+
+    const user =
+      toAuthenticatedUser(createdUser);
+
+    const tokens = await issueTokens(
+      this.app,
+      this.repository,
+      user
+    );
+
+    return {
+      user,
+      tokens
+    };
+  }
+
+  async login(
+    input: LoginInput
+  ): Promise<{
+    user: AuthenticatedUser;
+    tokens: AuthTokens;
+  }> {
+    const email =
+      input.email.trim().toLowerCase();
+
+    const existingUser =
+      await this.repository.findUserByEmail(
+        email
+      );
+
+    if (!existingUser) {
+      throw new ApplicationError({
+        statusCode: 401,
+        code: ErrorCode.InvalidCredentials,
+        message:
+          "Invalid email or password."
+      });
+    }
+
+    const passwordMatches =
+      await bcrypt.compare(
+        input.password,
+        existingUser.passwordHash
+      );
+
+    if (!passwordMatches) {
+      throw new ApplicationError({
+        statusCode: 401,
+        code: ErrorCode.InvalidCredentials,
+        message:
+          "Invalid email or password."
+      });
+    }
+
+    const user =
+      toAuthenticatedUser(existingUser);
+
+    const tokens = await issueTokens(
+      this.app,
+      this.repository,
+      user
+    );
+
+    return {
+      user,
+      tokens
+    };
+  }
+
+  async refresh(
+    refreshToken: string
+  ): Promise<AuthTokens> {
+    let payload: RefreshTokenPayload;
+
+    try {
+      payload =
+        this.app.refreshJwt.verify<
+          RefreshTokenPayload
+        >(refreshToken);
+    } catch {
+      throw new ApplicationError({
+        statusCode: 401,
+        code:
+          ErrorCode.AuthenticationRequired,
+        message:
+          "Invalid or expired refresh token."
+      });
+    }
+
+    if (payload.type !== "refresh") {
+      throw new ApplicationError({
+        statusCode: 401,
+        code:
+          ErrorCode.AuthenticationRequired,
+        message:
+          "Invalid refresh token."
+      });
+    }
+
+    const tokenHash =
+      hashRefreshToken(refreshToken);
+
+    const storedToken =
+      await this.repository
+        .findRefreshTokenWithUser(
+          tokenHash
+        );
+
+    if (
+      !storedToken ||
+      storedToken.revokedAt ||
+      storedToken.expiresAt <= new Date()
+    ) {
+      throw new ApplicationError({
+        statusCode: 401,
+        code:
+          ErrorCode.AuthenticationRequired,
+        message:
+          "Refresh token is no longer valid."
+      });
+    }
+
+    await this.repository
+      .revokeRefreshToken(
+        storedToken.id
+      );
+
+    return issueTokens(
+      this.app,
+      this.repository,
+      toAuthenticatedUser(
+        storedToken.user
+      )
     );
   }
 
-  await app.prisma.refreshToken.update({
-    where: {
-      id: storedToken.id
-    },
-    data: {
-      revokedAt: new Date()
-    }
-  });
-
-  return issueTokens(
-    app,
-    toAuthenticatedUser(storedToken.user)
-  );
-}
-
-export async function revokeRefreshToken(
-  app: FastifyInstance,
-  refreshToken: string
-): Promise<void> {
-  const tokenHash = hashRefreshToken(refreshToken);
-
-  await app.prisma.refreshToken.updateMany({
-    where: {
-      tokenHash,
-      revokedAt: null
-    },
-    data: {
-      revokedAt: new Date()
-    }
-  });
+  async logout(
+    refreshToken: string
+  ): Promise<void> {
+    await this.repository
+      .revokeRefreshTokensByHash(
+        hashRefreshToken(refreshToken)
+      );
+  }
 }
