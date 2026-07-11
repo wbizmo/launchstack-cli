@@ -1,7 +1,7 @@
 {
   "name": "launchstack-cli",
-  "version": "1.0.0",
-  "description": "A TypeScript CLI for backend API scaffolding, deployment automation, configuration management, and developer workflows.",
+  "version": "2.0.0",
+  "description": "A TypeScript CLI for production-ready backend API scaffolding, deployment automation, configuration management, and developer workflows.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -16,7 +16,8 @@
     "format": "prettier --write .",
     "test:run": "vitest run --config vitest.config.ts",
     "check": "npm run test:run && npm run build && npm pack --dry-run",
-    "copy:templates": "node scripts/copy-templates.cjs"
+    "copy:templates": "node scripts/copy-templates.cjs",
+    "release:check": "npm run test:run && npm run build && npm pack --dry-run"
   },
   "keywords": [
     "launchstack",
@@ -36,7 +37,15 @@
     "api-generator",
     "project-scaffolding",
     "backend-starter",
-    "create-api"
+    "create-api",
+    "fastify-cli",
+    "prisma-generator",
+    "postgresql-starter",
+    "jwt-authentication",
+    "openapi-generator",
+    "zod-validation",
+    "backend-scaffolding",
+    "api-starter"
   ],
   "author": "Williams",
   "license": "MIT",

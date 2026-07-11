@@ -2,6 +2,7 @@
 
 import { Command } from "commander";
 import { createCommand } from "./commands/create";
+import { doctorCommand } from "./commands/doctor";
 import { deployCommand } from "./commands/deploy";
 import { dockerCommand } from "./commands/docker";
 import { envCommand } from "./commands/env";
@@ -21,9 +22,10 @@ program
   .description(
     "Backend API scaffolding, deployment automation, and developer workflow CLI"
   )
-  .version("1.0.0");
+  .version("2.0.0");
 
 program.addCommand(createCommand);
+program.addCommand(doctorCommand);
 program.addCommand(initCommand);
 program.addCommand(statusCommand);
 program.addCommand(deployCommand);

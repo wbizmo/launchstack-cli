@@ -2,7 +2,7 @@
 "use strict";
 
 // src/cli.ts
-var import_commander13 = require("commander");
+var import_commander14 = require("commander");
 
 // src/commands/create.ts
 var import_node_fs4 = require("fs");
@@ -229,15 +229,186 @@ var createCommand = new import_commander.Command("create").description("Create a
   }
 });
 
-// src/commands/deploy.ts
-var import_node_child_process3 = require("child_process");
-var import_node_fs7 = require("fs");
-var import_node_path8 = require("path");
+// src/commands/doctor.ts
 var import_commander2 = require("commander");
 
-// src/config.ts
+// src/release/doctor.ts
 var import_node_fs5 = require("fs");
 var import_node_path6 = require("path");
+function checkFile(projectDirectory, file, label) {
+  const path = (0, import_node_path6.resolve)(projectDirectory, file);
+  const passed = (0, import_node_fs5.existsSync)(path);
+  return {
+    name: label,
+    passed,
+    detail: passed ? `${file} found` : `${file} is missing`
+  };
+}
+function checkPackageScripts(projectDirectory) {
+  const packagePath = (0, import_node_path6.resolve)(
+    projectDirectory,
+    "package.json"
+  );
+  if (!(0, import_node_fs5.existsSync)(packagePath)) {
+    return {
+      name: "Package scripts",
+      passed: false,
+      detail: "package.json is missing"
+    };
+  }
+  const packageJson = JSON.parse(
+    (0, import_node_fs5.readFileSync)(packagePath, "utf8")
+  );
+  const requiredScripts = [
+    "dev",
+    "build",
+    "start",
+    "test",
+    "typecheck",
+    "prisma:generate",
+    "prisma:migrate",
+    "prisma:deploy"
+  ];
+  const missingScripts = requiredScripts.filter(
+    (script) => !packageJson.scripts?.[script]
+  );
+  return {
+    name: "Package scripts",
+    passed: missingScripts.length === 0,
+    detail: missingScripts.length === 0 ? "Required scripts are present" : `Missing scripts: ${missingScripts.join(", ")}`
+  };
+}
+function checkEnvironmentExample(projectDirectory) {
+  const path = (0, import_node_path6.resolve)(
+    projectDirectory,
+    ".env.example"
+  );
+  if (!(0, import_node_fs5.existsSync)(path)) {
+    return {
+      name: "Environment example",
+      passed: false,
+      detail: ".env.example is missing"
+    };
+  }
+  const content = (0, import_node_fs5.readFileSync)(path, "utf8");
+  const requiredVariables = [
+    "DATABASE_URL",
+    "JWT_ACCESS_SECRET",
+    "JWT_REFRESH_SECRET"
+  ];
+  const missingVariables = requiredVariables.filter(
+    (variable) => !content.includes(`${variable}=`)
+  );
+  return {
+    name: "Environment example",
+    passed: missingVariables.length === 0,
+    detail: missingVariables.length === 0 ? "Required environment variables are documented" : `Missing variables: ${missingVariables.join(", ")}`
+  };
+}
+function runDoctor(projectDirectory = process.cwd()) {
+  const checks = [
+    checkFile(
+      projectDirectory,
+      "package.json",
+      "Package manifest"
+    ),
+    checkFile(
+      projectDirectory,
+      "tsconfig.json",
+      "TypeScript configuration"
+    ),
+    checkFile(
+      projectDirectory,
+      "prisma/schema.prisma",
+      "Prisma schema"
+    ),
+    checkFile(
+      projectDirectory,
+      "src/app.ts",
+      "Fastify application"
+    ),
+    checkFile(
+      projectDirectory,
+      "src/server.ts",
+      "Server entrypoint"
+    ),
+    checkFile(
+      projectDirectory,
+      "Dockerfile",
+      "Dockerfile"
+    ),
+    checkFile(
+      projectDirectory,
+      "docker-compose.yml",
+      "Docker Compose"
+    ),
+    checkFile(
+      projectDirectory,
+      ".github/workflows/ci.yml",
+      "CI workflow"
+    ),
+    checkPackageScripts(projectDirectory),
+    checkEnvironmentExample(projectDirectory)
+  ];
+  return {
+    healthy: checks.every((check) => check.passed),
+    projectDirectory: (0, import_node_path6.resolve)(projectDirectory),
+    checks
+  };
+}
+
+// src/commands/doctor.ts
+var doctorCommand = new import_commander2.Command("doctor").description(
+  "Inspect a generated LaunchStack project for missing production files and configuration"
+).option(
+  "-d, --directory <path>",
+  "Project directory to inspect"
+).option(
+  "--json",
+  "Print the doctor report as JSON"
+).action((options) => {
+  const report = runDoctor(
+    options.directory ?? process.cwd()
+  );
+  if (options.json) {
+    console.log(
+      JSON.stringify(report, null, 2)
+    );
+    process.exitCode = report.healthy ? 0 : 1;
+    return;
+  }
+  console.log(
+    `LaunchStack doctor: ${report.projectDirectory}`
+  );
+  console.log("");
+  for (const check of report.checks) {
+    const marker = check.passed ? "PASS" : "FAIL";
+    console.log(
+      `${marker}  ${check.name}: ${check.detail}`
+    );
+  }
+  console.log("");
+  if (report.healthy) {
+    console.log(
+      "Project health check passed."
+    );
+  } else {
+    console.error(
+      "Project health check failed."
+    );
+    process.exitCode = 1;
+  }
+});
+
+// src/commands/deploy.ts
+var import_node_child_process3 = require("child_process");
+var import_node_fs8 = require("fs");
+var import_node_path9 = require("path");
+var import_commander3 = require("commander");
+
+// src/config.ts
+var import_node_fs6 = require("fs");
+var import_node_path7 = require("path");
 var import_zod = require("zod");
 var CONFIG_FILE_NAME = "launchstack.config.json";
 var launchStackConfigSchema = import_zod.z.object({
@@ -249,10 +420,10 @@ var launchStackConfigSchema = import_zod.z.object({
   deployTarget: import_zod.z.string().min(1)
 });
 function getConfigPath() {
-  return (0, import_node_path6.resolve)(process.cwd(), CONFIG_FILE_NAME);
+  return (0, import_node_path7.resolve)(process.cwd(), CONFIG_FILE_NAME);
 }
 function configExists() {
-  return (0, import_node_fs5.existsSync)(getConfigPath());
+  return (0, import_node_fs6.existsSync)(getConfigPath());
 }
 function createDefaultConfig(appName) {
   return {
@@ -265,10 +436,10 @@ function createDefaultConfig(appName) {
   };
 }
 function writeConfig(config) {
-  (0, import_node_fs5.writeFileSync)(getConfigPath(), JSON.stringify(config, null, 2));
+  (0, import_node_fs6.writeFileSync)(getConfigPath(), JSON.stringify(config, null, 2));
 }
 function readConfig() {
-  const raw = (0, import_node_fs5.readFileSync)(getConfigPath(), "utf-8");
+  const raw = (0, import_node_fs6.readFileSync)(getConfigPath(), "utf-8");
   const parsed = JSON.parse(raw);
   return launchStackConfigSchema.parse(parsed);
 }
@@ -299,31 +470,31 @@ function getGitMetadata() {
 }
 
 // src/history.ts
-var import_node_fs6 = require("fs");
-var import_node_path7 = require("path");
+var import_node_fs7 = require("fs");
+var import_node_path8 = require("path");
 var STORE_DIR = ".launchstack";
 var HISTORY_FILE = "history.json";
 function getStorePath() {
-  return (0, import_node_path7.resolve)(process.cwd(), STORE_DIR);
+  return (0, import_node_path8.resolve)(process.cwd(), STORE_DIR);
 }
 function getHistoryPath() {
-  return (0, import_node_path7.resolve)(getStorePath(), HISTORY_FILE);
+  return (0, import_node_path8.resolve)(getStorePath(), HISTORY_FILE);
 }
 function ensureStore() {
-  if (!(0, import_node_fs6.existsSync)(getStorePath())) {
-    (0, import_node_fs6.mkdirSync)(getStorePath(), { recursive: true });
+  if (!(0, import_node_fs7.existsSync)(getStorePath())) {
+    (0, import_node_fs7.mkdirSync)(getStorePath(), { recursive: true });
   }
 }
 function readHistory() {
   ensureStore();
-  if (!(0, import_node_fs6.existsSync)(getHistoryPath())) {
+  if (!(0, import_node_fs7.existsSync)(getHistoryPath())) {
     return [];
   }
-  return JSON.parse((0, import_node_fs6.readFileSync)(getHistoryPath(), "utf-8"));
+  return JSON.parse((0, import_node_fs7.readFileSync)(getHistoryPath(), "utf-8"));
 }
 function writeHistory(records) {
   ensureStore();
-  (0, import_node_fs6.writeFileSync)(getHistoryPath(), JSON.stringify(records, null, 2));
+  (0, import_node_fs7.writeFileSync)(getHistoryPath(), JSON.stringify(records, null, 2));
 }
 function addDeploymentRecord(record) {
   const records = readHistory();
@@ -332,7 +503,7 @@ function addDeploymentRecord(record) {
 }
 
 // src/commands/deploy.ts
-var deployCommand = new import_commander2.Command("deploy").description("Run the configured LaunchStack deployment workflow").option("--skip-build", "Skip the build command").action((options) => {
+var deployCommand = new import_commander3.Command("deploy").description("Run the configured LaunchStack deployment workflow").option("--skip-build", "Skip the build command").action((options) => {
   const createdAt = (/* @__PURE__ */ new Date()).toISOString();
   try {
     const config = readConfig();
@@ -356,8 +527,8 @@ var deployCommand = new import_commander2.Command("deploy").description("Run the
         cwd: process.cwd()
       });
     }
-    const outputPath = (0, import_node_path8.resolve)(process.cwd(), config.outputDirectory);
-    if (!(0, import_node_fs7.existsSync)(outputPath)) {
+    const outputPath = (0, import_node_path9.resolve)(process.cwd(), config.outputDirectory);
+    if (!(0, import_node_fs8.existsSync)(outputPath)) {
       addDeploymentRecord({
         id: `dep_${Date.now()}`,
         appName: config.appName,
@@ -397,17 +568,17 @@ var deployCommand = new import_commander2.Command("deploy").description("Run the
 });
 
 // src/commands/docker.ts
-var import_node_fs8 = require("fs");
-var import_commander3 = require("commander");
+var import_node_fs9 = require("fs");
+var import_commander4 = require("commander");
 function writeFileIfAllowed(path, content, force) {
-  if ((0, import_node_fs8.existsSync)(path) && !force) {
+  if ((0, import_node_fs9.existsSync)(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  (0, import_node_fs8.writeFileSync)(path, content);
+  (0, import_node_fs9.writeFileSync)(path, content);
   console.log(`Created ${path}`);
 }
-var dockerCommand = new import_commander3.Command("docker").description("Generate Docker deployment files");
+var dockerCommand = new import_commander4.Command("docker").description("Generate Docker deployment files");
 dockerCommand.command("init").description("Create Dockerfile, .dockerignore, and docker-compose.yml").option("-f, --force", "Overwrite existing Docker files").action((options) => {
   const config = readConfig();
   const force = Boolean(options.force);
@@ -448,9 +619,9 @@ npm-debug.log
 });
 
 // src/commands/env.ts
-var import_commander4 = require("commander");
+var import_commander5 = require("commander");
 var allowedEnvironments = ["development", "staging", "production"];
-var envCommand = new import_commander4.Command("env").description("View or update the LaunchStack environment").argument("[environment]", "development, staging, or production").action((environment) => {
+var envCommand = new import_commander5.Command("env").description("View or update the LaunchStack environment").argument("[environment]", "development, staging, or production").action((environment) => {
   try {
     const config = readConfig();
     if (!environment) {
@@ -474,19 +645,19 @@ var envCommand = new import_commander4.Command("env").description("View or updat
 });
 
 // src/commands/github.ts
-var import_node_fs9 = require("fs");
-var import_node_path9 = require("path");
-var import_commander5 = require("commander");
+var import_node_fs10 = require("fs");
+var import_node_path10 = require("path");
+var import_commander6 = require("commander");
 function writeWorkflowFile(path, content, force) {
-  if ((0, import_node_fs9.existsSync)(path) && !force) {
+  if ((0, import_node_fs10.existsSync)(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  (0, import_node_fs9.mkdirSync)((0, import_node_path9.dirname)(path), { recursive: true });
-  (0, import_node_fs9.writeFileSync)(path, content);
+  (0, import_node_fs10.mkdirSync)((0, import_node_path10.dirname)(path), { recursive: true });
+  (0, import_node_fs10.writeFileSync)(path, content);
   console.log(`Created ${path}`);
 }
-var githubCommand = new import_commander5.Command("github").description("Generate GitHub Actions workflows");
+var githubCommand = new import_commander6.Command("github").description("Generate GitHub Actions workflows");
 githubCommand.command("init").description("Create a deployment workflow").option("-f, --force", "Overwrite existing workflow").action((options) => {
   const config = readConfig();
   const workflow = `name: Deploy
@@ -523,8 +694,8 @@ jobs:
 });
 
 // src/commands/history.ts
-var import_commander6 = require("commander");
-var historyCommand = new import_commander6.Command("history").description("Show recent LaunchStack deployments").option("-l, --limit <number>", "Number of records to show", "10").action((options) => {
+var import_commander7 = require("commander");
+var historyCommand = new import_commander7.Command("history").description("Show recent LaunchStack deployments").option("-l, --limit <number>", "Number of records to show", "10").action((options) => {
   const records = readHistory();
   const limit = Number(options.limit);
   if (records.length === 0) {
@@ -548,8 +719,8 @@ var historyCommand = new import_commander6.Command("history").description("Show 
 });
 
 // src/commands/init.ts
-var import_commander7 = require("commander");
-var initCommand = new import_commander7.Command("init").description("Create a LaunchStack config file").option("-n, --name <name>", "Project name").option("-f, --force", "Overwrite existing config file").action((options) => {
+var import_commander8 = require("commander");
+var initCommand = new import_commander8.Command("init").description("Create a LaunchStack config file").option("-n, --name <name>", "Project name").option("-f, --force", "Overwrite existing config file").action((options) => {
   if (configExists() && !options.force) {
     console.log("launchstack.config.json already exists. Use --force to overwrite.");
     return;
@@ -561,9 +732,9 @@ var initCommand = new import_commander7.Command("init").description("Create a La
 });
 
 // src/commands/provider.ts
-var import_commander8 = require("commander");
+var import_commander9 = require("commander");
 var allowedProviders = ["vercel", "netlify", "render", "railway", "docker", "custom"];
-var providerCommand = new import_commander8.Command("provider").description("View or update the LaunchStack deployment provider").argument("[provider]", "vercel, netlify, render, railway, docker, or custom").action((provider) => {
+var providerCommand = new import_commander9.Command("provider").description("View or update the LaunchStack deployment provider").argument("[provider]", "vercel, netlify, render, railway, docker, or custom").action((provider) => {
   try {
     const config = readConfig();
     if (!provider) {
@@ -587,8 +758,8 @@ var providerCommand = new import_commander8.Command("provider").description("Vie
 });
 
 // src/commands/rollback.ts
-var import_commander9 = require("commander");
-var rollbackCommand = new import_commander9.Command("rollback").description("Show the latest successful deployment available for rollback").action(() => {
+var import_commander10 = require("commander");
+var rollbackCommand = new import_commander10.Command("rollback").description("Show the latest successful deployment available for rollback").action(() => {
   const records = readHistory();
   const latestSuccess = records.find((record) => record.status === "success");
   if (!latestSuccess) {
@@ -605,34 +776,34 @@ var rollbackCommand = new import_commander9.Command("rollback").description("Sho
 });
 
 // src/commands/secrets.ts
-var import_node_fs10 = require("fs");
-var import_node_path10 = require("path");
-var import_commander10 = require("commander");
+var import_node_fs11 = require("fs");
+var import_node_path11 = require("path");
+var import_commander11 = require("commander");
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
 function getStorePath2() {
-  return (0, import_node_path10.resolve)(process.cwd(), STORE_DIR2);
+  return (0, import_node_path11.resolve)(process.cwd(), STORE_DIR2);
 }
 function getSecretsPath() {
-  return (0, import_node_path10.resolve)(getStorePath2(), SECRETS_FILE);
+  return (0, import_node_path11.resolve)(getStorePath2(), SECRETS_FILE);
 }
 function ensureStore2() {
-  if (!(0, import_node_fs10.existsSync)(getStorePath2())) {
-    (0, import_node_fs10.mkdirSync)(getStorePath2(), { recursive: true });
+  if (!(0, import_node_fs11.existsSync)(getStorePath2())) {
+    (0, import_node_fs11.mkdirSync)(getStorePath2(), { recursive: true });
   }
 }
 function readSecrets() {
   ensureStore2();
-  if (!(0, import_node_fs10.existsSync)(getSecretsPath())) {
+  if (!(0, import_node_fs11.existsSync)(getSecretsPath())) {
     return {};
   }
-  return JSON.parse((0, import_node_fs10.readFileSync)(getSecretsPath(), "utf-8"));
+  return JSON.parse((0, import_node_fs11.readFileSync)(getSecretsPath(), "utf-8"));
 }
 function writeSecrets(secrets) {
   ensureStore2();
-  (0, import_node_fs10.writeFileSync)(getSecretsPath(), JSON.stringify(secrets, null, 2));
+  (0, import_node_fs11.writeFileSync)(getSecretsPath(), JSON.stringify(secrets, null, 2));
 }
-var secretsCommand = new import_commander10.Command("secrets").description("Manage local LaunchStack secrets");
+var secretsCommand = new import_commander11.Command("secrets").description("Manage local LaunchStack secrets");
 secretsCommand.command("add").description("Add or update a local secret").argument("<key>", "Secret key").argument("<value>", "Secret value").action((key, value) => {
   const secrets = readSecrets();
   secrets[key] = value;
@@ -662,8 +833,8 @@ secretsCommand.command("remove").description("Remove a local secret").argument("
 });
 
 // src/commands/status.ts
-var import_commander11 = require("commander");
-var statusCommand = new import_commander11.Command("status").description("Show LaunchStack project status").action(() => {
+var import_commander12 = require("commander");
+var statusCommand = new import_commander12.Command("status").description("Show LaunchStack project status").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack project status");
@@ -683,8 +854,8 @@ var statusCommand = new import_commander11.Command("status").description("Show L
 });
 
 // src/commands/validate.ts
-var import_commander12 = require("commander");
-var validateCommand = new import_commander12.Command("validate").description("Validate the LaunchStack config file").action(() => {
+var import_commander13 = require("commander");
+var validateCommand = new import_commander13.Command("validate").description("Validate the LaunchStack config file").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack config is valid");
@@ -701,11 +872,12 @@ var validateCommand = new import_commander12.Command("validate").description("Va
 });
 
 // src/cli.ts
-var program = new import_commander13.Command();
+var program = new import_commander14.Command();
 program.name("launchstack").description(
   "Backend API scaffolding, deployment automation, and developer workflow CLI"
-).version("1.0.0");
+).version("2.0.0");
 program.addCommand(createCommand);
+program.addCommand(doctorCommand);
 program.addCommand(initCommand);
 program.addCommand(statusCommand);
 program.addCommand(deployCommand);

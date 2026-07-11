@@ -5,7 +5,7 @@ import {
 } from "./chunk-JDDSGIQ5.mjs";
 
 // src/cli.ts
-import { Command as Command13 } from "commander";
+import { Command as Command14 } from "commander";
 
 // src/commands/create.ts
 import { existsSync } from "fs";
@@ -51,15 +51,189 @@ var createCommand = new Command("create").description("Create a new backend API 
   }
 });
 
-// src/commands/deploy.ts
-import { execSync as execSync2 } from "child_process";
-import { existsSync as existsSync4 } from "fs";
-import { resolve as resolve4 } from "path";
+// src/commands/doctor.ts
 import { Command as Command2 } from "commander";
 
-// src/config.ts
-import { existsSync as existsSync2, readFileSync, writeFileSync } from "fs";
+// src/release/doctor.ts
+import {
+  existsSync as existsSync2,
+  readFileSync
+} from "fs";
 import { resolve as resolve2 } from "path";
+function checkFile(projectDirectory, file, label) {
+  const path = resolve2(projectDirectory, file);
+  const passed = existsSync2(path);
+  return {
+    name: label,
+    passed,
+    detail: passed ? `${file} found` : `${file} is missing`
+  };
+}
+function checkPackageScripts(projectDirectory) {
+  const packagePath = resolve2(
+    projectDirectory,
+    "package.json"
+  );
+  if (!existsSync2(packagePath)) {
+    return {
+      name: "Package scripts",
+      passed: false,
+      detail: "package.json is missing"
+    };
+  }
+  const packageJson = JSON.parse(
+    readFileSync(packagePath, "utf8")
+  );
+  const requiredScripts = [
+    "dev",
+    "build",
+    "start",
+    "test",
+    "typecheck",
+    "prisma:generate",
+    "prisma:migrate",
+    "prisma:deploy"
+  ];
+  const missingScripts = requiredScripts.filter(
+    (script) => !packageJson.scripts?.[script]
+  );
+  return {
+    name: "Package scripts",
+    passed: missingScripts.length === 0,
+    detail: missingScripts.length === 0 ? "Required scripts are present" : `Missing scripts: ${missingScripts.join(", ")}`
+  };
+}
+function checkEnvironmentExample(projectDirectory) {
+  const path = resolve2(
+    projectDirectory,
+    ".env.example"
+  );
+  if (!existsSync2(path)) {
+    return {
+      name: "Environment example",
+      passed: false,
+      detail: ".env.example is missing"
+    };
+  }
+  const content = readFileSync(path, "utf8");
+  const requiredVariables = [
+    "DATABASE_URL",
+    "JWT_ACCESS_SECRET",
+    "JWT_REFRESH_SECRET"
+  ];
+  const missingVariables = requiredVariables.filter(
+    (variable) => !content.includes(`${variable}=`)
+  );
+  return {
+    name: "Environment example",
+    passed: missingVariables.length === 0,
+    detail: missingVariables.length === 0 ? "Required environment variables are documented" : `Missing variables: ${missingVariables.join(", ")}`
+  };
+}
+function runDoctor(projectDirectory = process.cwd()) {
+  const checks = [
+    checkFile(
+      projectDirectory,
+      "package.json",
+      "Package manifest"
+    ),
+    checkFile(
+      projectDirectory,
+      "tsconfig.json",
+      "TypeScript configuration"
+    ),
+    checkFile(
+      projectDirectory,
+      "prisma/schema.prisma",
+      "Prisma schema"
+    ),
+    checkFile(
+      projectDirectory,
+      "src/app.ts",
+      "Fastify application"
+    ),
+    checkFile(
+      projectDirectory,
+      "src/server.ts",
+      "Server entrypoint"
+    ),
+    checkFile(
+      projectDirectory,
+      "Dockerfile",
+      "Dockerfile"
+    ),
+    checkFile(
+      projectDirectory,
+      "docker-compose.yml",
+      "Docker Compose"
+    ),
+    checkFile(
+      projectDirectory,
+      ".github/workflows/ci.yml",
+      "CI workflow"
+    ),
+    checkPackageScripts(projectDirectory),
+    checkEnvironmentExample(projectDirectory)
+  ];
+  return {
+    healthy: checks.every((check) => check.passed),
+    projectDirectory: resolve2(projectDirectory),
+    checks
+  };
+}
+
+// src/commands/doctor.ts
+var doctorCommand = new Command2("doctor").description(
+  "Inspect a generated LaunchStack project for missing production files and configuration"
+).option(
+  "-d, --directory <path>",
+  "Project directory to inspect"
+).option(
+  "--json",
+  "Print the doctor report as JSON"
+).action((options) => {
+  const report = runDoctor(
+    options.directory ?? process.cwd()
+  );
+  if (options.json) {
+    console.log(
+      JSON.stringify(report, null, 2)
+    );
+    process.exitCode = report.healthy ? 0 : 1;
+    return;
+  }
+  console.log(
+    `LaunchStack doctor: ${report.projectDirectory}`
+  );
+  console.log("");
+  for (const check of report.checks) {
+    const marker = check.passed ? "PASS" : "FAIL";
+    console.log(
+      `${marker}  ${check.name}: ${check.detail}`
+    );
+  }
+  console.log("");
+  if (report.healthy) {
+    console.log(
+      "Project health check passed."
+    );
+  } else {
+    console.error(
+      "Project health check failed."
+    );
+    process.exitCode = 1;
+  }
+});
+
+// src/commands/deploy.ts
+import { execSync as execSync2 } from "child_process";
+import { existsSync as existsSync5 } from "fs";
+import { resolve as resolve5 } from "path";
+import { Command as Command3 } from "commander";
+
+// src/config.ts
+import { existsSync as existsSync3, readFileSync as readFileSync2, writeFileSync } from "fs";
+import { resolve as resolve3 } from "path";
 import { z } from "zod";
 var CONFIG_FILE_NAME = "launchstack.config.json";
 var launchStackConfigSchema = z.object({
@@ -71,10 +245,10 @@ var launchStackConfigSchema = z.object({
   deployTarget: z.string().min(1)
 });
 function getConfigPath() {
-  return resolve2(process.cwd(), CONFIG_FILE_NAME);
+  return resolve3(process.cwd(), CONFIG_FILE_NAME);
 }
 function configExists() {
-  return existsSync2(getConfigPath());
+  return existsSync3(getConfigPath());
 }
 function createDefaultConfig(appName) {
   return {
@@ -90,7 +264,7 @@ function writeConfig(config) {
   writeFileSync(getConfigPath(), JSON.stringify(config, null, 2));
 }
 function readConfig() {
-  const raw = readFileSync(getConfigPath(), "utf-8");
+  const raw = readFileSync2(getConfigPath(), "utf-8");
   const parsed = JSON.parse(raw);
   return launchStackConfigSchema.parse(parsed);
 }
@@ -121,27 +295,27 @@ function getGitMetadata() {
 }
 
 // src/history.ts
-import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "fs";
-import { resolve as resolve3 } from "path";
+import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync3, writeFileSync as writeFileSync2 } from "fs";
+import { resolve as resolve4 } from "path";
 var STORE_DIR = ".launchstack";
 var HISTORY_FILE = "history.json";
 function getStorePath() {
-  return resolve3(process.cwd(), STORE_DIR);
+  return resolve4(process.cwd(), STORE_DIR);
 }
 function getHistoryPath() {
-  return resolve3(getStorePath(), HISTORY_FILE);
+  return resolve4(getStorePath(), HISTORY_FILE);
 }
 function ensureStore() {
-  if (!existsSync3(getStorePath())) {
+  if (!existsSync4(getStorePath())) {
     mkdirSync(getStorePath(), { recursive: true });
   }
 }
 function readHistory() {
   ensureStore();
-  if (!existsSync3(getHistoryPath())) {
+  if (!existsSync4(getHistoryPath())) {
     return [];
   }
-  return JSON.parse(readFileSync2(getHistoryPath(), "utf-8"));
+  return JSON.parse(readFileSync3(getHistoryPath(), "utf-8"));
 }
 function writeHistory(records) {
   ensureStore();
@@ -154,7 +328,7 @@ function addDeploymentRecord(record) {
 }
 
 // src/commands/deploy.ts
-var deployCommand = new Command2("deploy").description("Run the configured LaunchStack deployment workflow").option("--skip-build", "Skip the build command").action((options) => {
+var deployCommand = new Command3("deploy").description("Run the configured LaunchStack deployment workflow").option("--skip-build", "Skip the build command").action((options) => {
   const createdAt = (/* @__PURE__ */ new Date()).toISOString();
   try {
     const config = readConfig();
@@ -178,8 +352,8 @@ var deployCommand = new Command2("deploy").description("Run the configured Launc
         cwd: process.cwd()
       });
     }
-    const outputPath = resolve4(process.cwd(), config.outputDirectory);
-    if (!existsSync4(outputPath)) {
+    const outputPath = resolve5(process.cwd(), config.outputDirectory);
+    if (!existsSync5(outputPath)) {
       addDeploymentRecord({
         id: `dep_${Date.now()}`,
         appName: config.appName,
@@ -219,17 +393,17 @@ var deployCommand = new Command2("deploy").description("Run the configured Launc
 });
 
 // src/commands/docker.ts
-import { existsSync as existsSync5, writeFileSync as writeFileSync3 } from "fs";
-import { Command as Command3 } from "commander";
+import { existsSync as existsSync6, writeFileSync as writeFileSync3 } from "fs";
+import { Command as Command4 } from "commander";
 function writeFileIfAllowed(path, content, force) {
-  if (existsSync5(path) && !force) {
+  if (existsSync6(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
   writeFileSync3(path, content);
   console.log(`Created ${path}`);
 }
-var dockerCommand = new Command3("docker").description("Generate Docker deployment files");
+var dockerCommand = new Command4("docker").description("Generate Docker deployment files");
 dockerCommand.command("init").description("Create Dockerfile, .dockerignore, and docker-compose.yml").option("-f, --force", "Overwrite existing Docker files").action((options) => {
   const config = readConfig();
   const force = Boolean(options.force);
@@ -270,9 +444,9 @@ npm-debug.log
 });
 
 // src/commands/env.ts
-import { Command as Command4 } from "commander";
+import { Command as Command5 } from "commander";
 var allowedEnvironments = ["development", "staging", "production"];
-var envCommand = new Command4("env").description("View or update the LaunchStack environment").argument("[environment]", "development, staging, or production").action((environment) => {
+var envCommand = new Command5("env").description("View or update the LaunchStack environment").argument("[environment]", "development, staging, or production").action((environment) => {
   try {
     const config = readConfig();
     if (!environment) {
@@ -296,11 +470,11 @@ var envCommand = new Command4("env").description("View or update the LaunchStack
 });
 
 // src/commands/github.ts
-import { existsSync as existsSync6, mkdirSync as mkdirSync2, writeFileSync as writeFileSync4 } from "fs";
+import { existsSync as existsSync7, mkdirSync as mkdirSync2, writeFileSync as writeFileSync4 } from "fs";
 import { dirname } from "path";
-import { Command as Command5 } from "commander";
+import { Command as Command6 } from "commander";
 function writeWorkflowFile(path, content, force) {
-  if (existsSync6(path) && !force) {
+  if (existsSync7(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
@@ -308,7 +482,7 @@ function writeWorkflowFile(path, content, force) {
   writeFileSync4(path, content);
   console.log(`Created ${path}`);
 }
-var githubCommand = new Command5("github").description("Generate GitHub Actions workflows");
+var githubCommand = new Command6("github").description("Generate GitHub Actions workflows");
 githubCommand.command("init").description("Create a deployment workflow").option("-f, --force", "Overwrite existing workflow").action((options) => {
   const config = readConfig();
   const workflow = `name: Deploy
@@ -345,8 +519,8 @@ jobs:
 });
 
 // src/commands/history.ts
-import { Command as Command6 } from "commander";
-var historyCommand = new Command6("history").description("Show recent LaunchStack deployments").option("-l, --limit <number>", "Number of records to show", "10").action((options) => {
+import { Command as Command7 } from "commander";
+var historyCommand = new Command7("history").description("Show recent LaunchStack deployments").option("-l, --limit <number>", "Number of records to show", "10").action((options) => {
   const records = readHistory();
   const limit = Number(options.limit);
   if (records.length === 0) {
@@ -370,8 +544,8 @@ var historyCommand = new Command6("history").description("Show recent LaunchStac
 });
 
 // src/commands/init.ts
-import { Command as Command7 } from "commander";
-var initCommand = new Command7("init").description("Create a LaunchStack config file").option("-n, --name <name>", "Project name").option("-f, --force", "Overwrite existing config file").action((options) => {
+import { Command as Command8 } from "commander";
+var initCommand = new Command8("init").description("Create a LaunchStack config file").option("-n, --name <name>", "Project name").option("-f, --force", "Overwrite existing config file").action((options) => {
   if (configExists() && !options.force) {
     console.log("launchstack.config.json already exists. Use --force to overwrite.");
     return;
@@ -383,9 +557,9 @@ var initCommand = new Command7("init").description("Create a LaunchStack config 
 });
 
 // src/commands/provider.ts
-import { Command as Command8 } from "commander";
+import { Command as Command9 } from "commander";
 var allowedProviders = ["vercel", "netlify", "render", "railway", "docker", "custom"];
-var providerCommand = new Command8("provider").description("View or update the LaunchStack deployment provider").argument("[provider]", "vercel, netlify, render, railway, docker, or custom").action((provider) => {
+var providerCommand = new Command9("provider").description("View or update the LaunchStack deployment provider").argument("[provider]", "vercel, netlify, render, railway, docker, or custom").action((provider) => {
   try {
     const config = readConfig();
     if (!provider) {
@@ -409,8 +583,8 @@ var providerCommand = new Command8("provider").description("View or update the L
 });
 
 // src/commands/rollback.ts
-import { Command as Command9 } from "commander";
-var rollbackCommand = new Command9("rollback").description("Show the latest successful deployment available for rollback").action(() => {
+import { Command as Command10 } from "commander";
+var rollbackCommand = new Command10("rollback").description("Show the latest successful deployment available for rollback").action(() => {
   const records = readHistory();
   const latestSuccess = records.find((record) => record.status === "success");
   if (!latestSuccess) {
@@ -427,34 +601,34 @@ var rollbackCommand = new Command9("rollback").description("Show the latest succ
 });
 
 // src/commands/secrets.ts
-import { existsSync as existsSync7, mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync as writeFileSync5 } from "fs";
-import { resolve as resolve5 } from "path";
-import { Command as Command10 } from "commander";
+import { existsSync as existsSync8, mkdirSync as mkdirSync3, readFileSync as readFileSync4, writeFileSync as writeFileSync5 } from "fs";
+import { resolve as resolve6 } from "path";
+import { Command as Command11 } from "commander";
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
 function getStorePath2() {
-  return resolve5(process.cwd(), STORE_DIR2);
+  return resolve6(process.cwd(), STORE_DIR2);
 }
 function getSecretsPath() {
-  return resolve5(getStorePath2(), SECRETS_FILE);
+  return resolve6(getStorePath2(), SECRETS_FILE);
 }
 function ensureStore2() {
-  if (!existsSync7(getStorePath2())) {
+  if (!existsSync8(getStorePath2())) {
     mkdirSync3(getStorePath2(), { recursive: true });
   }
 }
 function readSecrets() {
   ensureStore2();
-  if (!existsSync7(getSecretsPath())) {
+  if (!existsSync8(getSecretsPath())) {
     return {};
   }
-  return JSON.parse(readFileSync3(getSecretsPath(), "utf-8"));
+  return JSON.parse(readFileSync4(getSecretsPath(), "utf-8"));
 }
 function writeSecrets(secrets) {
   ensureStore2();
   writeFileSync5(getSecretsPath(), JSON.stringify(secrets, null, 2));
 }
-var secretsCommand = new Command10("secrets").description("Manage local LaunchStack secrets");
+var secretsCommand = new Command11("secrets").description("Manage local LaunchStack secrets");
 secretsCommand.command("add").description("Add or update a local secret").argument("<key>", "Secret key").argument("<value>", "Secret value").action((key, value) => {
   const secrets = readSecrets();
   secrets[key] = value;
@@ -484,8 +658,8 @@ secretsCommand.command("remove").description("Remove a local secret").argument("
 });
 
 // src/commands/status.ts
-import { Command as Command11 } from "commander";
-var statusCommand = new Command11("status").description("Show LaunchStack project status").action(() => {
+import { Command as Command12 } from "commander";
+var statusCommand = new Command12("status").description("Show LaunchStack project status").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack project status");
@@ -505,8 +679,8 @@ var statusCommand = new Command11("status").description("Show LaunchStack projec
 });
 
 // src/commands/validate.ts
-import { Command as Command12 } from "commander";
-var validateCommand = new Command12("validate").description("Validate the LaunchStack config file").action(() => {
+import { Command as Command13 } from "commander";
+var validateCommand = new Command13("validate").description("Validate the LaunchStack config file").action(() => {
   try {
     const config = readConfig();
     console.log("LaunchStack config is valid");
@@ -523,11 +697,12 @@ var validateCommand = new Command12("validate").description("Validate the Launch
 });
 
 // src/cli.ts
-var program = new Command13();
+var program = new Command14();
 program.name("launchstack").description(
   "Backend API scaffolding, deployment automation, and developer workflow CLI"
-).version("1.0.0");
+).version("2.0.0");
 program.addCommand(createCommand);
+program.addCommand(doctorCommand);
 program.addCommand(initCommand);
 program.addCommand(statusCommand);
 program.addCommand(deployCommand);

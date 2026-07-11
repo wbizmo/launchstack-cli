@@ -1,464 +1,169 @@
 # LaunchStack CLI
 
-A TypeScript CLI for deployment automation, configuration management, Docker scaffolding, GitHub Actions generation, deployment tracking, and developer workflow tooling.
+LaunchStack CLI is a TypeScript command-line tool for creating production-ready backend API starters and managing deployment workflows.
 
-LaunchStack CLI helps developers standardize deployment workflows across projects through a lightweight, local-first command-line experience. It provides project initialization, configuration validation, deployment history tracking, rollback visibility, secrets management, infrastructure scaffolding, and workflow generation.
-
-## Features
-
-* Project initialization with `launchstack.config.json`
-* Configuration validation
-* Environment management
-* Deployment provider management
-* Deployment workflow execution
-* Deployment history tracking
-* Rollback target lookup
-* Local secrets management
-* Git metadata tracking
-* Docker scaffolding generation
-* GitHub Actions workflow generation
-* TypeScript-first architecture
-* Lightweight and extensible CLI design
-
----
+It generates a Fastify API with TypeScript, Prisma, PostgreSQL, JWT authentication, refresh tokens, Zod validation, Swagger/OpenAPI, Docker, GitHub Actions, and deployment presets.
 
 ## Installation
 
-### Install from npm
+Install globally:
 
-```bash
-npm install -g launchstack-cli
-```
+    npm install -g launchstack-cli
 
-Verify installation:
+Verify:
 
-```bash
-launchstack --help
-```
+    launchstack --help
 
-### Build from Source
+## Create a Backend API
 
-```bash
-git clone https://github.com/wbizmo/launchstack-cli.git
+    launchstack create my-api
 
-cd launchstack-cli
+Then:
 
-npm install
+    cd my-api
+    npm install
+    npm run db:up
+    npm run prisma:migrate -- --name init
+    npm run dev
 
-npm run build
-```
+Swagger UI:
 
-Run locally:
+    http://localhost:3000/docs
 
-```bash
-node dist/cli.js --help
-```
+Health:
 
----
+    http://localhost:3000/health
 
-## Quick Start
+Readiness:
 
-Create a new project configuration:
+    http://localhost:3000/ready
 
-```bash
-launchstack init --name my-app
-```
+## Generated Stack
 
-Check project status:
+- Fastify
+- TypeScript
+- Prisma
+- PostgreSQL
+- JWT access and refresh tokens
+- bcrypt password hashing
+- Zod validation
+- Swagger/OpenAPI
+- Controllers, services, repositories, and DTOs
+- Docker and Docker Compose
+- GitHub Actions
+- Render, Railway, and Fly.io presets
+- Vitest
 
-```bash
-launchstack status
-```
+## Core Commands
+
+Create a project:
+
+    launchstack create my-api
+
+Skip installation:
+
+    launchstack create my-api --no-install
+
+Inspect a generated project:
+
+    launchstack doctor --directory my-api
+
+JSON doctor report:
+
+    launchstack doctor --directory my-api --json
+
+Initialize LaunchStack configuration:
+
+    launchstack init --name my-app
 
 Validate configuration:
 
-```bash
-launchstack validate
-```
+    launchstack validate
 
-Generate deployment assets:
+View status:
 
-```bash
-launchstack docker init
+    launchstack status
 
-launchstack github init
-```
+Switch environment:
 
-Run a deployment workflow:
+    launchstack env staging
 
-```bash
-launchstack deploy
-```
+Set provider:
 
----
+    launchstack provider render
 
-## Commands
+Run deployment workflow:
 
-### Initialize a Project
+    launchstack deploy
 
-Create a new configuration file.
+View history:
 
-```bash
-launchstack init --name my-app
-```
+    launchstack history
 
-Overwrite an existing configuration:
+Find rollback target:
 
-```bash
-launchstack init --name my-app --force
-```
+    launchstack rollback
 
----
+Manage secrets:
 
-### View Project Status
-
-```bash
-launchstack status
-```
-
-Displays:
-
-* Application name
-* Environment
-* Provider
-* Build command
-* Output directory
-* Deploy target
-* Configuration status
-
----
-
-### Validate Configuration
-
-```bash
-launchstack validate
-```
-
-Validates the current `launchstack.config.json`.
-
----
-
-### Manage Environments
-
-View current environment:
-
-```bash
-launchstack env
-```
-
-Update environment:
-
-```bash
-launchstack env staging
-```
-
-Supported environments:
-
-```text
-development
-staging
-production
-```
-
----
-
-### Manage Providers
-
-View current provider:
-
-```bash
-launchstack provider
-```
-
-Update provider:
-
-```bash
-launchstack provider docker
-```
-
-Supported providers:
-
-```text
-vercel
-netlify
-render
-railway
-docker
-custom
-```
-
----
-
-### Deploy
-
-Run the configured deployment workflow:
-
-```bash
-launchstack deploy
-```
-
-Skip build execution:
-
-```bash
-launchstack deploy --skip-build
-```
-
-Deployment execution includes:
-
-* Configuration loading
-* Build execution
-* Output validation
-* Git metadata collection
-* Deployment history recording
-
----
-
-### Deployment History
-
-View deployment history:
-
-```bash
-launchstack history
-```
-
-Limit results:
-
-```bash
-launchstack history --limit 3
-```
-
-History location:
-
-```text
-.launchstack/history.json
-```
-
----
-
-### Rollback Lookup
-
-Display the most recent successful deployment:
-
-```bash
-launchstack rollback
-```
-
----
-
-### Secrets Management
-
-Add a secret:
-
-```bash
-launchstack secrets add API_KEY abc123
-```
-
-List secrets:
-
-```bash
-launchstack secrets list
-```
-
-Remove a secret:
-
-```bash
-launchstack secrets remove API_KEY
-```
-
-Secrets location:
-
-```text
-.launchstack/secrets.json
-```
-
-This file should never be committed.
-
----
-
-### Docker Scaffolding
+    launchstack secrets add API_KEY value
+    launchstack secrets list
+    launchstack secrets remove API_KEY
 
 Generate Docker assets:
 
-```bash
-launchstack docker init
-```
+    launchstack docker init
 
-Overwrite existing files:
+Generate GitHub Actions:
 
-```bash
-launchstack docker init --force
-```
+    launchstack github init
 
-Generated files:
+## Generated Project Quality Commands
 
-```text
-Dockerfile
-.dockerignore
-docker-compose.yml
-```
+    npm run typecheck
+    npm test
+    npm run build
+    npm run check
+    npm run validation:check
 
----
+## Production Commands
 
-### GitHub Actions Workflow Generation
-
-Generate a deployment workflow:
-
-```bash
-launchstack github init
-```
-
-Overwrite existing workflows:
-
-```bash
-launchstack github init --force
-```
-
-Generated file:
-
-```text
-.github/workflows/deploy.yml
-```
-
----
-
-## Configuration
-
-LaunchStack uses a project-level configuration file:
-
-```text
-launchstack.config.json
-```
-
-Example:
-
-```json
-{
-  "appName": "my-app",
-  "environment": "production",
-  "provider": "custom",
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "deployTarget": "https://example.com"
-}
-```
-
----
-
-## Project Structure
-
-```text
-src/
-├── commands/
-│   ├── deploy.ts
-│   ├── docker.ts
-│   ├── env.ts
-│   ├── github.ts
-│   ├── history.ts
-│   ├── init.ts
-│   ├── provider.ts
-│   ├── rollback.ts
-│   ├── secrets.ts
-│   ├── status.ts
-│   └── validate.ts
-├── cli.ts
-├── config.ts
-├── git.ts
-├── history.ts
-├── index.ts
-├── types.ts
-└── errors.ts
-
-tests/
-examples/
-```
-
----
+    npm run docker:build
+    npm run docker:up
+    npm run docker:prod
+    npm run docker:down
+    npm run docker:logs
+    npm run prisma:deploy
 
 ## Development
 
 Install dependencies:
 
-```bash
-npm install
-```
-
-Start development build watcher:
-
-```bash
-npm run dev
-```
-
-Build:
-
-```bash
-npm run build
-```
+    npm install
 
 Run tests:
 
-```bash
-npm test
-```
+    npm run test:run
 
-Format files:
+Build:
 
-```bash
-npm run format
-```
+    npm run build
 
----
+Inspect package contents:
 
-## Tech Stack
+    npm pack --dry-run
 
-* TypeScript
-* Node.js
-* Commander
-* Zod
-* tsup
-* Vitest
-* ESLint
-* Prettier
+Run the release quality gate:
 
----
-
-## Use Cases
-
-LaunchStack CLI is designed for:
-
-* Deployment workflow standardization
-* Local DevOps automation
-* Infrastructure scaffolding
-* Team onboarding
-* Environment management
-* Developer tooling experimentation
-* CI/CD workflow generation
-
----
-
-## Roadmap
-
-Future improvements may include:
-
-* Interactive project setup prompts
-* Encrypted secrets storage
-* Provider-specific deployment adapters
-* Deployment preview URLs
-* Rollback execution workflows
-* JSON output support
-* Plugin architecture
-* Custom deployment providers
-
----
+    npm run release:check
 
 ## License
 
 MIT
 
----
-
 ## Author
 
-Williams Ashibuogwu (wbizmo)
+Williams Ashibuogwu
 
 GitHub: https://github.com/wbizmo
 
