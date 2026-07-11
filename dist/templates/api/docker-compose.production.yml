@@ -1,0 +1,10 @@
+services:
+  postgres:
+    ports: []
+
+  api:
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: warn
+    ports:
+      - "3000:3000"

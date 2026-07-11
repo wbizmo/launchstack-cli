@@ -2,21 +2,61 @@ import { buildApp } from "./app";
 
 async function start(): Promise<void> {
   const app = await buildApp();
+  let shuttingDown = false;
 
   const shutdown = async (signal: string): Promise<void> => {
-    app.log.info({ signal }, "Shutting down server");
+    if (shuttingDown) {
+      return;
+    }
 
-    await app.close();
+    shuttingDown = true;
 
-    process.exit(0);
+    app.log.info(
+      {
+        signal
+      },
+      "Shutting down server"
+    );
+
+    const forceShutdownTimer = setTimeout(() => {
+      app.log.error("Forced shutdown after timeout");
+      process.exit(1);
+    }, 10000);
+
+    forceShutdownTimer.unref();
+
+    try {
+      await app.close();
+      clearTimeout(forceShutdownTimer);
+      process.exit(0);
+    } catch (error) {
+      app.log.error(error, "Graceful shutdown failed");
+      process.exit(1);
+    }
   };
 
-  process.on("SIGINT", () => {
+  process.once("SIGINT", () => {
     void shutdown("SIGINT");
   });
 
-  process.on("SIGTERM", () => {
+  process.once("SIGTERM", () => {
     void shutdown("SIGTERM");
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    app.log.error(
+      {
+        reason
+      },
+      "Unhandled rejection"
+    );
+
+    void shutdown("unhandledRejection");
+  });
+
+  process.on("uncaughtException", (error) => {
+    app.log.error(error, "Uncaught exception");
+    void shutdown("uncaughtException");
   });
 
   try {

@@ -11,6 +11,7 @@ import { basename, dirname, join, resolve } from "node:path";
 
 const RENAMED_TEMPLATE_FILES: Record<string, string> = {
   "_gitignore": ".gitignore",
+  "_dockerignore": ".dockerignore",
   "_npmrc": ".npmrc",
   "_env": ".env",
   "_env.example": ".env.example"

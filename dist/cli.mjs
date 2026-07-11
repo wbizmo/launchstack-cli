@@ -2,7 +2,7 @@
 import {
   generateProject,
   installDependencies
-} from "./chunk-CDBUM2GZ.mjs";
+} from "./chunk-JDDSGIQ5.mjs";
 
 // src/cli.ts
 import { Command as Command13 } from "commander";

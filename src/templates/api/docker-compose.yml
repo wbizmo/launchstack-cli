@@ -19,5 +19,36 @@ services:
       timeout: 5s
       retries: 10
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: {{PROJECT_NAME}}-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      LOG_LEVEL: info
+      CORS_ORIGIN: "*"
+      DATABASE_URL: postgresql://launchstack:launchstack@postgres:5432/{{PROJECT_NAME}}?schema=public
+      JWT_ACCESS_SECRET: replace-with-a-production-access-secret-at-least-32-characters
+      JWT_REFRESH_SECRET: replace-with-a-production-refresh-secret-at-least-32-characters
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - scripts/healthcheck.cjs
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres_data:

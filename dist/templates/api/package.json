@@ -19,7 +19,14 @@
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f postgres",
     "openapi:check": "npm run typecheck && npm test && npm run build",
-    "validation:check": "npm run typecheck && npm test && npm run build"
+    "validation:check": "npm run typecheck && npm test && npm run build",
+    "docker:build": "docker build -t {{PROJECT_NAME}} .",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f api",
+    "docker:prod": "docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build",
+    "db:wait": "node scripts/wait-for-database.cjs",
+    "deploy:prepare": "npm run prisma:deploy && npm run build"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",

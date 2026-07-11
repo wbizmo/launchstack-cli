@@ -113,6 +113,7 @@ var import_node_fs = require("fs");
 var import_node_path = require("path");
 var RENAMED_TEMPLATE_FILES = {
   "_gitignore": ".gitignore",
+  "_dockerignore": ".dockerignore",
   "_npmrc": ".npmrc",
   "_env": ".env",
   "_env.example": ".env.example"
