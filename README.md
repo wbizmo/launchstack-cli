@@ -1,170 +1,335 @@
 # LaunchStack CLI
 
-LaunchStack CLI is a TypeScript command-line tool for creating production-ready backend API starters and managing deployment workflows.
+Production-ready backend scaffolding and deployment toolkit for TypeScript developers.
 
-It generates a Fastify API with TypeScript, Prisma, PostgreSQL, JWT authentication, refresh tokens, Zod validation, Swagger/OpenAPI, Docker, GitHub Actions, and deployment presets.
+LaunchStack CLI generates enterprise-grade Fastify APIs with authentication, Prisma, PostgreSQL, Swagger/OpenAPI, Docker, CI/CD, deployment presets, and opinionated project architecture in a single command.
+
+```bash
+npm install -g launchstack-cli
+```
+
+---
+
+## Features
+
+- Fastify + TypeScript API starter
+- Prisma ORM with PostgreSQL
+- JWT Access & Refresh Token authentication
+- Secure Refresh Token rotation and revocation
+- bcrypt password hashing
+- Zod request and response validation
+- Swagger / OpenAPI documentation
+- Layered architecture (Controllers, Services, Repositories & DTOs)
+- Health and Readiness endpoints
+- Docker and Docker Compose support
+- GitHub Actions CI workflow
+- Render, Railway and Fly.io deployment presets
+- Vitest testing setup
+- Environment configuration
+- Production-ready project structure
+
+---
+
+## Requirements
+
+- Node.js 20 or newer
+- PostgreSQL (or Docker Desktop)
+
+---
 
 ## Installation
 
-Install globally:
+Install LaunchStack globally:
 
-    npm install -g launchstack-cli
+```bash
+npm install -g launchstack-cli
+```
 
-Verify:
+Verify the installation:
 
-    launchstack --help
+```bash
+launchstack --help
+```
 
-## Create a Backend API
+---
 
-    launchstack create my-api
+## Quick Start
 
-Then:
+Create a new backend API:
 
-    cd my-api
-    npm install
-    npm run db:up
-    npm run prisma:migrate -- --name init
-    npm run dev
+```bash
+launchstack create my-api
+```
 
-Swagger UI:
+Move into the project and install dependencies:
 
-    http://localhost:3000/docs
+```bash
+cd my-api
+npm install
+```
 
-Health:
+Start the local database:
 
-    http://localhost:3000/health
+```bash
+npm run db:up
+```
 
-Readiness:
+Create the initial database schema:
 
-    http://localhost:3000/ready
+```bash
+npm run prisma:migrate -- --name init
+```
 
-## Generated Stack
+Start the development server:
+
+```bash
+npm run dev
+```
+
+Open the generated API:
+
+| Endpoint | URL |
+|----------|-----|
+| Swagger UI | http://localhost:3000/docs |
+| Health | http://localhost:3000/health |
+| Readiness | http://localhost:3000/ready |
+
+---
+
+## Generated Project Structure
+
+```text
+my-api/
+├── prisma/
+├── src/
+│   ├── config/
+│   ├── core/
+│   ├── lib/
+│   ├── middleware/
+│   ├── modules/
+│   │   ├── auth/
+│   │   └── users/
+│   ├── plugins/
+│   ├── routes/
+│   ├── schemas/
+│   └── types/
+├── tests/
+├── Dockerfile
+├── docker-compose.yml
+├── README.md
+└── package.json
+```
+
+---
+
+## Generated Technology Stack
 
 - Fastify
 - TypeScript
 - Prisma
 - PostgreSQL
-- JWT access and refresh tokens
-- bcrypt password hashing
-- Zod validation
-- Swagger/OpenAPI
-- Controllers, services, repositories, and DTOs
-- Docker and Docker Compose
+- JWT Authentication
+- bcrypt
+- Zod
+- Swagger / OpenAPI
+- Docker
+- Docker Compose
 - GitHub Actions
-- Render, Railway, and Fly.io presets
+- Render
+- Railway
+- Fly.io
 - Vitest
+
+---
 
 ## Core Commands
 
-Create a project:
+### Create a new API
 
-    launchstack create my-api
+```bash
+launchstack create my-api
+```
 
-Skip installation:
+Skip dependency installation:
 
-    launchstack create my-api --no-install
+```bash
+launchstack create my-api --no-install
+```
 
 Inspect a generated project:
 
-    launchstack doctor --directory my-api
+```bash
+launchstack doctor --directory my-api
+```
 
-JSON doctor report:
+Generate a JSON health report:
 
-    launchstack doctor --directory my-api --json
+```bash
+launchstack doctor --directory my-api --json
+```
 
 Initialize LaunchStack configuration:
 
-    launchstack init --name my-app
+```bash
+launchstack init --name my-app
+```
 
 Validate configuration:
 
-    launchstack validate
+```bash
+launchstack validate
+```
 
-View status:
+View project status:
 
-    launchstack status
+```bash
+launchstack status
+```
 
-Switch environment:
+Switch deployment environment:
 
-    launchstack env staging
+```bash
+launchstack env staging
+```
 
-Set provider:
+Select a deployment provider:
 
-    launchstack provider render
+```bash
+launchstack provider render
+```
 
-Run deployment workflow:
+Deploy:
 
-    launchstack deploy
+```bash
+launchstack deploy
+```
 
-View history:
+View deployment history:
 
-    launchstack history
+```bash
+launchstack history
+```
 
-Find rollback target:
+Find the latest rollback target:
 
-    launchstack rollback
+```bash
+launchstack rollback
+```
 
 Manage secrets:
 
-    launchstack secrets add API_KEY value
-    launchstack secrets list
-    launchstack secrets remove API_KEY
+```bash
+launchstack secrets add API_KEY value
+launchstack secrets list
+launchstack secrets remove API_KEY
+```
 
 Generate Docker assets:
 
-    launchstack docker init
+```bash
+launchstack docker init
+```
 
-Generate GitHub Actions:
+Generate GitHub Actions workflows:
 
-    launchstack github init
+```bash
+launchstack github init
+```
 
-## Generated Project Quality Commands
+---
 
-    npm run typecheck
-    npm test
-    npm run build
-    npm run check
-    npm run validation:check
+## Generated Project Commands
 
-## Production Commands
+### Quality
 
-    npm run docker:build
-    npm run docker:up
-    npm run docker:prod
-    npm run docker:down
-    npm run docker:logs
-    npm run prisma:deploy
+```bash
+npm run typecheck
+npm test
+npm run build
+npm run check
+npm run validation:check
+```
+
+### Production
+
+```bash
+npm run docker:build
+npm run docker:up
+npm run docker:prod
+npm run docker:down
+npm run docker:logs
+npm run prisma:deploy
+```
+
+---
 
 ## Development
 
-Install dependencies:
+Install project dependencies:
 
-    npm install
+```bash
+npm install
+```
 
-Run tests:
+Run the LaunchStack test suite:
 
-    npm run test:run
+```bash
+npm run test:run
+```
 
-Build:
+Build LaunchStack:
 
-    npm run build
+```bash
+npm run build
+```
 
-Inspect package contents:
+Inspect the npm package:
 
-    npm pack --dry-run
+```bash
+npm pack --dry-run
+```
 
 Run the release quality gate:
 
-    npm run release:check
+```bash
+npm run release:check
+```
 
-## License
+---
 
-MIT
+## Roadmap
+
+Upcoming improvements planned for future releases include:
+
+- Additional backend templates
+- Background job scaffolding
+- Redis integration
+- Queue workers
+- WebSocket support
+- Microservice templates
+- OAuth providers
+- Kubernetes deployment presets
+- Additional cloud providers
+
+---
+
+## Contributing
+
+Issues, feature requests and pull requests are welcome.
+
+If you'd like to contribute:
+
+1. Fork the repository.
+2. Create a feature branch.
+3. Commit your changes.
+4. Submit a pull request.
+
+---
 
 ## Author
 
-Williams Ashibuogwu
+**Williams Ashibuogwu**
 
-GitHub: https://github.com/wbizmo
-
-npm: https://www.npmjs.com/package/launchstack-cli
+- GitHub: https://github.com/wbizmo
+- LinkedIn: https://linkedin.com/in/wbizmo
+- npm: https://www.npmjs.com/package/launchstack-cli

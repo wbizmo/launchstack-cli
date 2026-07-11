@@ -1,6 +1,6 @@
 {
   "name": "{{PROJECT_NAME}}",
-  "version": "0.1.0",
+  "version": "2.0.2",
   "private": true,
   "description": "{{PROJECT_DISPLAY_NAME}} backend API generated with LaunchStack CLI.",
   "scripts": {
