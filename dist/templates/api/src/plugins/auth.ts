@@ -10,11 +10,6 @@ export const authPlugin = fp(
       secret: app.config.jwtAccessSecret
     });
 
-    await app.register(jwt, {
-      namespace: "refreshJwt",
-      secret: app.config.jwtRefreshSecret
-    });
-
     app.decorate(
       "authenticate",
       async (request) => {

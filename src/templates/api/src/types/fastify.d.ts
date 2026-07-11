@@ -1,4 +1,3 @@
-import type { JWT } from "@fastify/jwt";
 import type { PrismaClient } from "@prisma/client";
 import type {
   FastifyReply,
@@ -11,7 +10,6 @@ declare module "fastify" {
   interface FastifyInstance {
     config: AppEnvironment;
     prisma: PrismaClient;
-    refreshJwt: JWT;
     authenticate: (
       request: FastifyRequest,
       reply: FastifyReply

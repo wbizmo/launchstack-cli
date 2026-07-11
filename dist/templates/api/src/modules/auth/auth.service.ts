@@ -1,5 +1,6 @@
 import {
-  createHash
+  createHash,
+  randomUUID
 } from "node:crypto";
 import bcrypt from "bcryptjs";
 import type {
@@ -100,6 +101,7 @@ async function issueTokens(
 
   const refreshPayload: RefreshTokenPayload = {
     sub: user.id,
+    jti: randomUUID(),
     type: "refresh"
   };
 
@@ -112,9 +114,11 @@ async function issueTokens(
   );
 
   const refreshToken =
-    app.refreshJwt.sign(
+    app.jwt.sign(
       refreshPayload,
       {
+        key:
+          app.config.jwtRefreshSecret,
         expiresIn:
           app.config.jwtRefreshExpiresIn
       }
@@ -257,9 +261,15 @@ export class AuthService {
 
     try {
       payload =
-        this.app.refreshJwt.verify<
+        this.app.jwt.verify<
           RefreshTokenPayload
-        >(refreshToken);
+        >(
+          refreshToken,
+          {
+            key:
+              this.app.config.jwtRefreshSecret
+          }
+        );
     } catch {
       throw new ApplicationError({
         statusCode: 401,
