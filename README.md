@@ -1,225 +1,182 @@
 # LaunchStack CLI
 
-Production-ready backend scaffolding and workflow tooling for TypeScript developers.
+Production-ready backend scaffolding **and lifecycle management** for TypeScript services.
 
-LaunchStack CLI generates Fastify APIs with TypeScript, Prisma/PostgreSQL, JWT authentication, Zod validation, Swagger/OpenAPI, Docker, CI, deployment presets, testing, and an opinionated layered architecture.
+LaunchStack generates hardened Fastify APIs with TypeScript, Prisma/PostgreSQL, JWT authentication, Zod validation, OpenAPI, Docker and CI, then keeps those projects manageable as they evolve: capabilities, drift-safe upgrades, local orchestration, typed SDKs, production audits, resource generation, preview stages and validated plugins all share one project-state model.
 
 ```bash
 npm install -g launchstack-cli
 ```
 
-## What LaunchStack generates
-
-- Fastify + strict TypeScript API starter
-- Prisma ORM with PostgreSQL
-- JWT access and refresh token authentication
-- Database-enforced single-use refresh-token rotation
-- bcrypt password hashing
-- Bounded Zod request/response validation
-- Auth endpoint rate limiting
-- Production CORS safeguards
-- Swagger / OpenAPI documentation
-- Layered controllers, services, repositories, schemas, and DTOs
-- Health and readiness endpoints
-- Multi-stage non-root Docker image
-- Docker Compose support
-- GitHub Actions CI workflow
-- Render, Railway, and Fly.io deployment presets
-- Vitest test setup, including concurrency fixtures
-- Environment validation that fails fast on unsafe production settings
-
 ## Requirements
 
-- Node.js 20 or newer
-- PostgreSQL (or Docker Desktop)
+- Node.js 20+
+- PostgreSQL or Docker for generated API runtime work
 
-## Quick start
-
-Create a new backend API. Dependencies are installed by default:
+## Create a backend
 
 ```bash
 launchstack create my-api
 cd my-api
-```
-
-Start PostgreSQL and initialize the schema:
-
-```bash
 npm run db:up
 npm run prisma:migrate -- --name init
+launchstack dev
 ```
 
-Start development:
+Fresh v3 projects contain `launchstack.json` for desired LaunchStack state and `.launchstack/state.json` for LaunchStack-owned hashes, installed extensions and stage metadata. Business/domain code remains user-owned.
+
+## Lifecycle commands
+
+### Add capabilities
 
 ```bash
-npm run dev
+launchstack add --list
+launchstack add redis
+launchstack add queue
+launchstack add oauth google
+launchstack add storage s3
+launchstack add observability
+launchstack add webhooks
 ```
 
-Generated endpoints include:
+Capability dependency planning is topological and cycle-safe. Re-applying the same version is a no-op. Managed files are hashed; LaunchStack refuses to silently replace user files or locally drifted generated files.
 
-| Endpoint | URL |
-| --- | --- |
-| Swagger UI | http://localhost:3000/docs |
-| Health | http://localhost:3000/health |
-| Readiness | http://localhost:3000/ready |
-
-## Core CLI commands
-
-Create without installing dependencies:
+### Plan, drift and upgrades
 
 ```bash
-launchstack create my-api --no-install
+launchstack diff
+launchstack plan
+launchstack plan --json
+launchstack apply
+launchstack reconcile
+launchstack upgrade --plan
+launchstack upgrade
+launchstack doctor --fix
 ```
 
-Inspect a generated project:
+Plans are read-only. Mutations are path-confined, protected by an exclusive project lock, staged before commit and journaled for rollback/recovery. Existing v2 projects can adopt v3 metadata through the ordered upgrade path; ambiguous edits are reported as conflicts instead of overwritten.
+
+### Local development orchestration
 
 ```bash
-launchstack doctor --directory my-api
-launchstack doctor --directory my-api --json
+launchstack dev
+launchstack dev --json
 ```
 
-Initialize and validate LaunchStack project configuration:
+The orchestrator derives required PostgreSQL/Redis/workers/API services from the project manifest, starts dependencies in deterministic order, checks ports, uses bounded readiness timeouts and terminates LaunchStack-owned children on failure or signals.
+
+### Typed API clients
+
+```bash
+launchstack client generate --schema ./openapi.json --output ./src/sdk.ts
+launchstack client generate --target react
+launchstack client generate --target react-native
+launchstack client generate --check
+```
+
+OpenAPI generation preserves optional/nullable types, produces deterministic operation names, injects authentication through a token provider rather than hard-coded browser storage, and exposes typed non-2xx `ApiError` responses.
+
+### Architecture-aware modules and CRUD resources
+
+```bash
+launchstack generate module billing
+launchstack generate resource invoice --field total:number --field paid:boolean
+launchstack generate resource invoice --dry-run --json
+```
+
+Generated CRUD is authenticated by default and database access is scoped by `ownerId` for user-facing lookup/update/delete operations. LaunchStack generates the mechanical boundary; application-specific RBAC, invariants and privileged workflows still belong in the service/domain layer.
+
+### Production audit
+
+```bash
+launchstack audit
+launchstack audit --production
+launchstack audit --json
+launchstack audit --fail-on high
+```
+
+Audit findings have stable rule IDs and severities. Local deterministic checks cover lockfiles, CORS, auth throttling, JWT placeholders, Git-tracked secret-like files, container users, migrations, health/readiness, generated drift, source maps and capability state. Suppressions live in `launchstack.json` and require a reason. Secret values are never emitted.
+
+### Preview and stage lifecycle
+
+```bash
+launchstack preview pr-142
+launchstack deploy --stage pr-142
+launchstack status --stage pr-142 --json
+launchstack destroy --stage pr-142
+```
+
+v3 ships Docker Compose as the first complete preview lifecycle adapter. Stage resource IDs are deterministic per project/path, stage metadata records source commit/provider/status, production is never inferred, and destruction verifies the stored resource identity before teardown. Other providers fail explicitly until they implement the lifecycle adapter contract.
+
+### Plugins / recipes
+
+```bash
+launchstack plugin validate @vendor/plugin
+launchstack plugin add @vendor/plugin
+launchstack plugin list --json
+launchstack plugin remove @vendor/plugin
+```
+
+Third-party extensions use the same declarative mutation engine as first-party capabilities. Plugin manifests are schema-validated and file operations remain project-root confined. Executable hooks are a supply-chain trust boundary: LaunchStack refuses hook-bearing plugins unless they are explicitly acknowledged and does not execute hooks automatically during reconciliation.
+
+## Generated API security baseline
+
+Generated APIs include database-enforced single-use refresh-token rotation, duplicate-registration race handling, bounded auth payloads, auth rate limiting, explicit production CORS, startup JWT duration validation, non-root multi-stage Docker builds and PostgreSQL-backed concurrency tests.
+
+Swagger UI is available at `http://localhost:3000/docs`, health at `/health`, and readiness at `/ready`.
+
+## Existing workflow commands
 
 ```bash
 launchstack init --name my-app
 launchstack validate
 launchstack status
-```
-
-Switch environment or deployment preset:
-
-```bash
 launchstack env staging
 launchstack provider render
-launchstack provider fly
-```
-
-### Deployment preparation
-
-`launchstack deploy` currently builds and validates local deployment artifacts and records them as `prepared`. It does **not** claim a remote provider deployment succeeded unless a provider adapter confirms that state.
-
-```bash
 launchstack deploy
 launchstack history
-```
-
-`launchstack rollback` only reports an actually successful remote deployment record. Prepared local artifacts are not presented as rollback targets.
-
-### Local secrets
-
-Secret values are no longer accepted as positional command arguments, so they do not need to appear in shell history or process arguments.
-
-Interactive hidden input:
-
-```bash
-launchstack secrets add API_KEY
-```
-
-Automation/stdin:
-
-```bash
-printf '%s' "$API_KEY" | launchstack secrets add API_KEY --stdin
-```
-
-List or remove keys:
-
-```bash
-launchstack secrets list
-launchstack secrets remove API_KEY
-```
-
-Local secret state is stored under `.launchstack/`, written atomically with restrictive permissions where the platform supports them, and ignored by generated projects.
-
-### Docker and CI assets
-
-```bash
+launchstack rollback
 launchstack docker init
 launchstack github init
 ```
 
-Docker generation and generated API projects share the same hardened Docker renderer: multi-stage builds, lockfile-driven installs when available, production-only runtime dependencies, secret-safe build contexts, and a non-root runtime user.
+`launchstack deploy` without `--stage` prepares and validates artifacts and records `prepared`; it does not claim a remote deployment succeeded without provider confirmation.
 
-## Generated project commands
-
-Quality checks:
+## Secrets
 
 ```bash
-npm run typecheck
-npm test
-npm run build
-npm run check
+launchstack secrets add API_KEY
+printf '%s' "$API_KEY" | launchstack secrets add API_KEY --stdin
+launchstack secrets list
+launchstack secrets remove API_KEY
 ```
 
-Production helpers:
+Secret values are not accepted positionally. Local state is atomic, restrictive where supported, and ignored from normal generated-project Git state.
 
-```bash
-npm run docker:build
-npm run docker:up
-npm run docker:prod
-npm run docker:down
-npm run docker:logs
-npm run prisma:deploy
-```
-
-## Production configuration notes
-
-Generated applications reject placeholder JWT secrets in production, validate JWT expiry durations during startup, and require an explicit `CORS_ORIGIN` allowlist. Wildcard production CORS is only permitted through the explicit `ALLOW_INSECURE_CORS=true` escape hatch.
-
-Authentication endpoints use configurable limits:
-
-```env
-AUTH_RATE_LIMIT_MAX=20
-AUTH_RATE_LIMIT_WINDOW_MS=60000
-```
-
-`CORS_ORIGIN` accepts a comma-separated allowlist:
-
-```env
-CORS_ORIGIN=https://app.example.com,https://admin.example.com
-```
-
-## LaunchStack development
-
-Install exactly from the lockfile:
+## Quality and release gates
 
 ```bash
 npm ci
-```
-
-Run the normal quality gate:
-
-```bash
 npm run check
-```
-
-The normal gate includes linting, TypeScript typechecking, tests, a deterministic `dist/` rebuild check, and npm pack inspection.
-
-Run the full release gate. It installs the packed npm artifact in a clean temporary project, checks the packed security behavior/version, generates a fresh API, runs database-backed registration/refresh concurrency tests against PostgreSQL, typechecks/builds/tests the generated application, and audits runtime dependencies:
-
-```bash
 npm run release:check
 ```
 
-## npm releases
+The release gate runs linting, strict TypeScript checks, unit/integration tests, deterministic `dist/` verification, `npm pack` inspection, packed-artifact smoke tests, a fresh generated API install/build/test against PostgreSQL, auth race/concurrency tests and runtime vulnerability audits.
 
-Release procedure is documented in [`docs/RELEASING.md`](docs/RELEASING.md). Each published release from v2.1.0 onward gets a root-level `RELEASE_NOTES_<version>.md` file in addition to `CHANGELOG.md`.
+## Releases
 
-When a new package version is merged to `main`, `.github/workflows/publish.yml` reruns the full release gate, verifies the matching release notes, creates the `v<version>` tag at that exact merged commit, publishes to npm with provenance, and creates the corresponding GitHub Release. If that exact npm version already exists, the workflow exits without republishing it.
+Every release from v2.1.0 onward has `RELEASE_NOTES_<version>.md` plus the cumulative `CHANGELOG.md`. `docs/RELEASING.md` documents the process.
 
-The npm credential is stored only as the GitHub repository secret `LAUNCHSTACK_NPM_TOKEN`. The workflow exposes it to npm as `NODE_AUTH_TOKEN` only for the guarded publish step; it is never committed to the repository or written to release notes.
+When a new version reaches `main`, `.github/workflows/publish.yml` reruns the full release gate, verifies the versioned release notes, creates `v<version>` on the exact merged SHA, publishes with npm provenance using the repository secret `LAUNCHSTACK_NPM_TOKEN` exposed only as `NODE_AUTH_TOKEN`, and creates the GitHub Release. Already-published versions are not republished.
 
-## Roadmap
+## Complexity targets
 
-The active feature roadmap is tracked in GitHub issues. Current directions include composable capabilities, project upgrades/drift detection, local orchestration, typed API clients, production auditing, architecture-aware resource generation, preview environments, plugins/recipes, and a declarative LaunchStack project manifest.
+The v3 lifecycle design keeps capability dependency planning at **O(V+E)**, managed drift/reconciliation at **O(M)** managed entries plus bytes read, OpenAPI traversal at **O(P+S)** paths/schema nodes, and stage state lookup at **O(1)** by key. Mutating commands avoid repeated whole-project scans.
 
 ## Contributing
 
-Issues and pull requests are welcome. Please run `npm run check` for ordinary changes and `npm run release:check` for release-affecting changes before requesting merge.
+Run `npm run check` for normal changes and `npm run release:check` for release-affecting changes. Do not merge a release PR until its exact head is green.
 
 ## Author
 
-**Williams Ashibuogwu**
-
-- GitHub: https://github.com/wbizmo
-- LinkedIn: https://linkedin.com/in/wbizmo
-- npm: https://www.npmjs.com/package/launchstack-cli
+**Williams Ashibuogwu** — [GitHub](https://github.com/wbizmo) · [LinkedIn](https://linkedin.com/in/wbizmo) · [npm](https://www.npmjs.com/package/launchstack-cli)

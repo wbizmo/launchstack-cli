@@ -1,18 +1,8 @@
 # Changelog
 
-## 0.1.0
+## 3.0.0
 
-Initial project generated with LaunchStack CLI 2.0.0.
-
-Included:
-
-- Fastify and TypeScript
-- Prisma and PostgreSQL
-- JWT authentication
-- Refresh-token rotation
-- Zod validation
-- Swagger/OpenAPI
-- Layered architecture
-- Docker
-- GitHub Actions
-- Deployment presets
+- Add LaunchStack v3 manifest/state metadata and generated route/capability ownership boundaries.
+- Preserve the hardened Fastify/Prisma/JWT baseline from v2.1.
+- Keep database-backed registration and refresh-token concurrency tests in CI.
+- Make projects compatible with lifecycle capabilities, drift-safe upgrades, typed clients, audits, generators and preview stages.
