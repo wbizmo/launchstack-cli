@@ -32,7 +32,26 @@ function fileMutations(projectDirectory: string, state: ProjectState, extensions
   }
   return output;
 }
-function metadataMutations(projectDirectory: string, manifest: ProjectManifest, state: ProjectState): FileMutation[] { return [{ path: "launchstack.json", content: serializeProjectManifest(manifest) }, { path: ".launchstack/state.json", content: serializeProjectState(state) }].map(({ path, content }) => { const absolute = resolveProjectPath(projectDirectory, path); const existing = existsSync(absolute) ? readFileSync(absolute, "utf8") : null; if (existing === content) return null; return { type: "write" as const, path, content, owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: existsSync(absolute) ? hashFile(absolute) : null }; }).filter((value): value is FileMutation => value !== null); }
+function metadataMutations(projectDirectory: string, manifest: ProjectManifest, state: ProjectState): FileMutation[] {
+  const output: FileMutation[] = [];
+  for (const item of [
+    { path: "launchstack.json", content: serializeProjectManifest(manifest) },
+    { path: ".launchstack/state.json", content: serializeProjectState(state) }
+  ]) {
+    const absolute = resolveProjectPath(projectDirectory, item.path);
+    const existing = existsSync(absolute) ? readFileSync(absolute, "utf8") : null;
+    if (existing === item.content) continue;
+    output.push({
+      type: "write",
+      path: item.path,
+      content: item.content,
+      owner: "launchstack:metadata",
+      version: currentLaunchStackVersion(),
+      expectedSha256: existsSync(absolute) ? hashFile(absolute) : null
+    });
+  }
+  return output;
+}
 export function planExtensionInstall(input: { projectDirectory: string; requested: string[]; registry: Record<string, ExtensionManifest> }): PreparedExtensionPlan {
   const projectDirectory = resolve(input.projectDirectory); const manifest = loadProjectManifest(projectDirectory); const state = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() }); const ordered = resolveExtensionOrder(input.requested, input.registry); const selected = new Set(ordered.map((item) => item.id));
   for (const item of ordered) { if (!compatible(manifest.project.templateVersion, item.supportedLaunchStack)) throw new Error(`${item.id}@${item.version} does not support project ${manifest.project.templateVersion}`); for (const conflict of item.conflicts ?? []) if (selected.has(conflict) || state.extensions[conflict]) throw new Error(`${item.id} conflicts with ${conflict}`); }
