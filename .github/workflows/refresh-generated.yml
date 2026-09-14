@@ -12,7 +12,7 @@ on:
       - .github/workflows/refresh-generated.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   refresh:
@@ -23,6 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: hardening/2-18-release
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -42,13 +43,16 @@ jobs:
       - name: Rebuild distributable artifacts
         run: npm run build
 
-      - name: Upload regenerated release artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: launchstack-generated-release-artifacts
-          if-no-files-found: error
-          retention-days: 1
-          path: |
-            package-lock.json
-            src/templates/api/package-lock.json
-            dist
+      - name: Commit regenerated release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json src/templates/api/package-lock.json dist
+          if git diff --cached --quiet; then
+            echo "Generated release artifacts are already current."
+            exit 0
+          fi
+          git commit -m "build: refresh generated 2.1.0 release artifacts"
+          git push origin HEAD:hardening/2-18-release
