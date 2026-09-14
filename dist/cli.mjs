@@ -4,7 +4,7 @@ import {
   installDependencies,
   renderDockerIgnore,
   renderDockerfile
-} from "./chunk-HWK3JAAC.mjs";
+} from "./chunk-L3N2Y4XD.mjs";
 
 // src/cli.ts
 import { Command as Command14 } from "commander";

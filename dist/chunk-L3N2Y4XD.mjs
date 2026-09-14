@@ -273,13 +273,16 @@ CMD ${dockerJsonCommand(startCommand)}
 function renderDockerIgnore() {
   return `node_modules
 dist
+coverage
 .git
+.github
 .env
 .env.*
 !.env.example
 .launchstack
-coverage
-npm-debug.log
+*.log
+npm-debug.log*
+docker-compose*.yml
 `;
 }
 function writeCanonicalDockerAssets(projectDirectory, options) {
@@ -409,4 +412,4 @@ export {
   generateProject,
   installDependencies
 };
-//# sourceMappingURL=chunk-HWK3JAAC.mjs.map
+//# sourceMappingURL=chunk-L3N2Y4XD.mjs.map

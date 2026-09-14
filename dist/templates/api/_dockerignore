@@ -5,6 +5,7 @@ coverage
 .github
 .env
 .env.*
+!.env.example
 .launchstack
 *.log
 npm-debug.log*
