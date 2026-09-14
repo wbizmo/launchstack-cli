@@ -1,3 +1,4 @@
+# Temporary release-preparation workflow; remove after committing the generated artifacts.
 name: Refresh generated release artifacts
 
 on:
