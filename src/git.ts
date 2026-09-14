@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 export type GitMetadata = {
   branch: string;
@@ -7,25 +7,50 @@ export type GitMetadata = {
   dirty: boolean;
 };
 
-function run(command: string): string {
-  return execSync(command, {
+function run(
+  args: string[],
+  cwd: string
+): string {
+  return execFileSync("git", args, {
+    cwd,
     encoding: "utf-8",
-    stdio: ["pipe", "pipe", "ignore"]
+    stdio: ["ignore", "pipe", "ignore"]
   }).trim();
 }
 
-export function getGitMetadata(): GitMetadata | null {
+export function getGitMetadata(
+  cwd = process.cwd()
+): GitMetadata | null {
   try {
-    const branch = run("git rev-parse --abbrev-ref HEAD");
-    const commitHash = run("git rev-parse HEAD");
-    const commitMessage = run("git log -1 --pretty=%B");
-    const dirty = run("git status --porcelain").length > 0;
+    const status = run(
+      ["status", "--porcelain=v2", "--branch"],
+      cwd
+    );
+    const lines = status.split("\n").filter(Boolean);
+    const branch = lines
+      .find((line) => line.startsWith("# branch.head "))
+      ?.slice("# branch.head ".length);
+    const commitHash = lines
+      .find((line) => line.startsWith("# branch.oid "))
+      ?.slice("# branch.oid ".length);
+
+    if (!commitHash || commitHash === "(initial)") {
+      return null;
+    }
+
+    const commitMessage = run(
+      ["log", "-1", "--pretty=%B"],
+      cwd
+    );
 
     return {
-      branch,
+      branch:
+        !branch || branch === "(detached)"
+          ? "HEAD"
+          : branch,
       commitHash,
       commitMessage,
-      dirty
+      dirty: lines.some((line) => !line.startsWith("# "))
     };
   } catch {
     return null;

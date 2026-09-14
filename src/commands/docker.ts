@@ -17,26 +17,30 @@ export const dockerCommand = new Command("docker")
 
 dockerCommand
   .command("init")
-  .description("Create Dockerfile, .dockerignore, and docker-compose.yml")
+  .description("Create hardened Dockerfile, .dockerignore, and docker-compose.yml")
   .option("-f, --force", "Overwrite existing Docker files")
   .action((options) => {
     const config = readConfig();
     const force = Boolean(options.force);
 
-    const dockerfile = `FROM node:20-alpine
-
+    const dockerfile = `FROM node:20-alpine AS dependencies
 WORKDIR /app
-
 COPY package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-RUN npm install
-
+FROM dependencies AS build
 COPY . .
-
 RUN ${config.buildCommand}
 
+FROM node:20-alpine AS production
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi \\
+  && npm cache clean --force
+COPY --from=build /app/${config.outputDirectory} ./${config.outputDirectory}
+USER node
 EXPOSE 3000
-
 CMD ["npm", "start"]
 `;
 

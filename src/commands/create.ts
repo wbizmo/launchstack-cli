@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { Command } from "commander";
 import { generateProject } from "../generator/generate";
 import { installDependencies } from "../generator/install";
@@ -17,7 +17,7 @@ export const createCommand = new Command("create")
     "-d, --directory <path>",
     "Directory where the project should be created"
   )
-  .option("-f, --force", "Allow writing into a non-empty directory")
+  .option("-f, --force", "Allow replacing a non-empty destination after staging succeeds")
   .option("--no-install", "Skip dependency installation")
   .action((projectName: string, options: CreateCommandOptions) => {
     try {
@@ -50,7 +50,8 @@ export const createCommand = new Command("create")
       console.log("Next steps:");
 
       if (!destinationAlreadyExists || destinationDirectory !== process.cwd()) {
-        console.log(`  cd ${projectName}`);
+        const relativeDestination = relative(process.cwd(), destinationDirectory) || ".";
+        console.log(`  cd ${relativeDestination}`);
       }
 
       if (!options.install) {

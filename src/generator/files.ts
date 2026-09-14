@@ -5,9 +5,10 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
-  statSync
+  statSync,
+  unlinkSync
 } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 
 const RENAMED_TEMPLATE_FILES: Record<string, string> = {
   "_gitignore": ".gitignore",
@@ -54,7 +55,7 @@ export function copyDirectory(
 
 function renameTemplateFiles(directory: string): void {
   for (const entry of readdirSync(directory)) {
-    const currentPath = join(directory, entry);
+    const currentPath = resolve(directory, entry);
     const stats = statSync(currentPath);
 
     if (stats.isDirectory()) {
@@ -80,6 +81,7 @@ function renameTemplateFiles(directory: string): void {
         );
       }
 
+      unlinkSync(currentPath);
       continue;
     }
 
