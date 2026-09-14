@@ -23,6 +23,7 @@
     "lint": "eslint src tests",
     "format": "prettier --write .",
     "test:run": "vitest run --config vitest.config.ts",
+    "bench:template": "vitest bench bench/template-render.bench.ts",
     "audit:runtime": "npm audit --omit=dev --audit-level=high",
     "check": "npm run lint && npm run test:run && npm run build && npm pack --dry-run",
     "copy:templates": "node scripts/copy-templates.cjs",

@@ -14,12 +14,14 @@ afterEach(async () => {
     await app.close();
     app = undefined;
   }
+
+  delete process.env.AUTH_RATE_LIMIT_MAX;
+  delete process.env.AUTH_RATE_LIMIT_WINDOW_MS;
 });
 
 describe("Zod request validation", () => {
   it("rejects an invalid registration email", async () => {
     process.env.NODE_ENV = "test";
-
     app = await buildApp();
 
     const response = await app.inject({
@@ -77,6 +79,28 @@ describe("Zod request validation", () => {
     });
 
     expect(response.statusCode).toBe(400);
+  });
+
+  it("rate limits repeated authentication attempts", async () => {
+    process.env.NODE_ENV = "test";
+    process.env.AUTH_RATE_LIMIT_MAX = "1";
+    process.env.AUTH_RATE_LIMIT_WINDOW_MS = "60000";
+    app = await buildApp();
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: {}
+    });
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: {}
+    });
+
+    expect(first.statusCode).toBe(400);
+    expect(second.statusCode).toBe(429);
+    expect(second.json<{ requestId: string }>().requestId).toBeTruthy();
   });
 
   it("rejects an oversized refresh token", async () => {

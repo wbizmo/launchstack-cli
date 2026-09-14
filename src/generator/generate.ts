@@ -1,4 +1,5 @@
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -81,6 +82,13 @@ export function generateProject(options: GenerateProjectOptions): string {
   );
 
   try {
+    if (overwrite && existsSync(destinationDirectory)) {
+      cpSync(destinationDirectory, stagedDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+
     copyDirectory(templateDirectory, stagedDirectory);
 
     renderDirectory(stagedDirectory, {

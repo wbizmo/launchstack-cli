@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { Command } from "commander";
 import { readConfig } from "../config";
+import { atomicWriteText } from "../storage";
 
 function writeWorkflowFile(
   path: string,
@@ -14,7 +15,7 @@ function writeWorkflowFile(
   }
 
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, content);
+  atomicWriteText(path, content);
 
   console.log(`Created ${path}`);
 }
@@ -24,40 +25,48 @@ export const githubCommand = new Command("github")
 
 githubCommand
   .command("init")
-  .description("Create a deployment workflow")
+  .description("Create a lockfile-first CI workflow")
   .option("-f, --force", "Overwrite existing workflow")
   .action((options) => {
     const config = readConfig();
 
-    const workflow = `name: Deploy
+    const workflow = `name: CI
 
 on:
   push:
     branches:
       - main
+  pull_request:
+
+permissions:
+  contents: read
 
 jobs:
-  build:
+  quality:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
-      - name: Install Dependencies
-        run: npm install
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build Project
+      - name: Run project checks when available
+        run: npm run check --if-present
+
+      - name: Build project
         run: ${config.buildCommand}
 `;
 
     writeWorkflowFile(
-      ".github/workflows/deploy.yml",
+      ".github/workflows/ci.yml",
       workflow,
       Boolean(options.force)
     );
