@@ -200,7 +200,7 @@ function renderDirectory(directory, variables) {
 // src/generator/generate.ts
 import {
   cpSync as cpSync2,
-  existsSync as existsSync4,
+  existsSync as existsSync5,
   mkdirSync as mkdirSync2,
   mkdtempSync,
   renameSync as renameSync2,
@@ -209,12 +209,99 @@ import {
 import {
   basename as basename3,
   dirname as dirname2,
-  join as join2,
+  join as join3,
   resolve as resolve3
 } from "path";
 import { randomUUID } from "crypto";
+
+// src/docker-assets.ts
+import { existsSync as existsSync4, writeFileSync as writeFileSync2 } from "fs";
+import { join as join2 } from "path";
+function packageInstallCommand(hasLockfile, productionOnly = false) {
+  if (hasLockfile) {
+    return productionOnly ? "npm ci --omit=dev" : "npm ci";
+  }
+  return productionOnly ? "npm install --omit=dev" : "npm install";
+}
+function dockerJsonCommand(command) {
+  return JSON.stringify(command);
+}
+function renderDockerfile(options) {
+  const install = packageInstallCommand(options.hasLockfile);
+  const productionInstall = packageInstallCommand(options.hasLockfile, true);
+  const startCommand = options.startCommand ?? ["npm", "start"];
+  const port = options.port ?? 3e3;
+  const packageFiles = options.hasLockfile ? "COPY package.json package-lock.json ./" : "COPY package.json ./";
+  const prismaCopy = options.prisma ? "COPY prisma ./prisma\n" : "";
+  const prismaRuntimeCopy = options.prisma ? "COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma\nCOPY --from=build /app/node_modules/@prisma ./node_modules/@prisma\n" : "";
+  return `FROM node:20-alpine AS dependencies
+
+WORKDIR /app
+
+${packageFiles}
+${prismaCopy}
+RUN ${install}
+
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY . .
+
+RUN ${options.buildCommand}
+
+FROM node:20-alpine AS production
+
+ENV NODE_ENV=production
+
+WORKDIR /app
+
+${packageFiles}
+${prismaCopy}
+RUN ${productionInstall} && npm cache clean --force
+
+COPY --from=build /app/${options.outputDirectory} ./${options.outputDirectory}
+${prismaRuntimeCopy}
+USER node
+
+EXPOSE ${port}
+
+CMD ${dockerJsonCommand(startCommand)}
+`;
+}
+function renderDockerIgnore() {
+  return `node_modules
+dist
+.git
+.env
+.env.*
+!.env.example
+.launchstack
+coverage
+npm-debug.log
+`;
+}
+function writeCanonicalDockerAssets(projectDirectory, options) {
+  const hasLockfile = options.hasLockfile ?? existsSync4(join2(projectDirectory, "package-lock.json"));
+  const prisma = options.prisma ?? existsSync4(join2(projectDirectory, "prisma", "schema.prisma"));
+  writeFileSync2(
+    join2(projectDirectory, "Dockerfile"),
+    renderDockerfile({
+      ...options,
+      hasLockfile,
+      prisma
+    })
+  );
+  writeFileSync2(
+    join2(projectDirectory, ".dockerignore"),
+    renderDockerIgnore()
+  );
+}
+
+// src/generator/generate.ts
 function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
-  if (!existsSync4(destinationDirectory)) {
+  if (!existsSync5(destinationDirectory)) {
     renameSync2(stagedDirectory, destinationDirectory);
     return;
   }
@@ -226,7 +313,7 @@ function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
       "Refusing to replace the current working directory with --force. Choose a parent directory instead."
     );
   }
-  const backupDirectory = join2(
+  const backupDirectory = join3(
     dirname2(destinationDirectory),
     `.${basename3(destinationDirectory)}.launchstack-backup-${randomUUID()}`
   );
@@ -238,7 +325,7 @@ function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
       force: true
     });
   } catch (error) {
-    if (existsSync4(destinationDirectory)) {
+    if (existsSync5(destinationDirectory)) {
       rmSync(destinationDirectory, {
         recursive: true,
         force: true
@@ -257,10 +344,10 @@ function generateProject(options) {
   const parentDirectory = dirname2(destinationDirectory);
   mkdirSync2(parentDirectory, { recursive: true });
   const stagedDirectory = mkdtempSync(
-    join2(parentDirectory, `.${basename3(destinationDirectory)}.launchstack-stage-`)
+    join3(parentDirectory, `.${basename3(destinationDirectory)}.launchstack-stage-`)
   );
   try {
-    if (overwrite && existsSync4(destinationDirectory)) {
+    if (overwrite && existsSync5(destinationDirectory)) {
       cpSync2(destinationDirectory, stagedDirectory, {
         recursive: true,
         force: true
@@ -271,13 +358,23 @@ function generateProject(options) {
       PROJECT_NAME: options.projectName,
       PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
     });
+    if (options.template === "api") {
+      writeCanonicalDockerAssets(stagedDirectory, {
+        buildCommand: "npm run build",
+        outputDirectory: "dist",
+        hasLockfile: true,
+        prisma: true,
+        startCommand: ["node", "dist/server.js"],
+        port: 3e3
+      });
+    }
     commitStagedProject(
       stagedDirectory,
       destinationDirectory,
       overwrite
     );
   } catch (error) {
-    if (existsSync4(stagedDirectory)) {
+    if (existsSync5(stagedDirectory)) {
       rmSync(stagedDirectory, {
         recursive: true,
         force: true
@@ -299,6 +396,8 @@ function installDependencies(projectDirectory) {
 }
 
 export {
+  renderDockerfile,
+  renderDockerIgnore,
   ensureDestinationAvailable,
   copyDirectory,
   validateProjectName,
@@ -310,4 +409,4 @@ export {
   generateProject,
   installDependencies
 };
-//# sourceMappingURL=chunk-TSEGMBRD.mjs.map
+//# sourceMappingURL=chunk-HWK3JAAC.mjs.map

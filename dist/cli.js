@@ -5,18 +5,103 @@
 var import_commander14 = require("commander");
 
 // src/commands/create.ts
-var import_node_fs5 = require("fs");
-var import_node_path5 = require("path");
+var import_node_fs6 = require("fs");
+var import_node_path6 = require("path");
 var import_commander = require("commander");
 
 // src/generator/generate.ts
-var import_node_fs4 = require("fs");
-var import_node_path4 = require("path");
+var import_node_fs5 = require("fs");
+var import_node_path5 = require("path");
 var import_node_crypto = require("crypto");
 
-// src/generator/files.ts
+// src/docker-assets.ts
 var import_node_fs = require("fs");
 var import_node_path = require("path");
+function packageInstallCommand(hasLockfile, productionOnly = false) {
+  if (hasLockfile) {
+    return productionOnly ? "npm ci --omit=dev" : "npm ci";
+  }
+  return productionOnly ? "npm install --omit=dev" : "npm install";
+}
+function dockerJsonCommand(command) {
+  return JSON.stringify(command);
+}
+function renderDockerfile(options) {
+  const install = packageInstallCommand(options.hasLockfile);
+  const productionInstall = packageInstallCommand(options.hasLockfile, true);
+  const startCommand = options.startCommand ?? ["npm", "start"];
+  const port = options.port ?? 3e3;
+  const packageFiles = options.hasLockfile ? "COPY package.json package-lock.json ./" : "COPY package.json ./";
+  const prismaCopy = options.prisma ? "COPY prisma ./prisma\n" : "";
+  const prismaRuntimeCopy = options.prisma ? "COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma\nCOPY --from=build /app/node_modules/@prisma ./node_modules/@prisma\n" : "";
+  return `FROM node:20-alpine AS dependencies
+
+WORKDIR /app
+
+${packageFiles}
+${prismaCopy}
+RUN ${install}
+
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY . .
+
+RUN ${options.buildCommand}
+
+FROM node:20-alpine AS production
+
+ENV NODE_ENV=production
+
+WORKDIR /app
+
+${packageFiles}
+${prismaCopy}
+RUN ${productionInstall} && npm cache clean --force
+
+COPY --from=build /app/${options.outputDirectory} ./${options.outputDirectory}
+${prismaRuntimeCopy}
+USER node
+
+EXPOSE ${port}
+
+CMD ${dockerJsonCommand(startCommand)}
+`;
+}
+function renderDockerIgnore() {
+  return `node_modules
+dist
+.git
+.env
+.env.*
+!.env.example
+.launchstack
+coverage
+npm-debug.log
+`;
+}
+function writeCanonicalDockerAssets(projectDirectory, options) {
+  const hasLockfile = options.hasLockfile ?? (0, import_node_fs.existsSync)((0, import_node_path.join)(projectDirectory, "package-lock.json"));
+  const prisma = options.prisma ?? (0, import_node_fs.existsSync)((0, import_node_path.join)(projectDirectory, "prisma", "schema.prisma"));
+  (0, import_node_fs.writeFileSync)(
+    (0, import_node_path.join)(projectDirectory, "Dockerfile"),
+    renderDockerfile({
+      ...options,
+      hasLockfile,
+      prisma
+    })
+  );
+  (0, import_node_fs.writeFileSync)(
+    (0, import_node_path.join)(projectDirectory, ".dockerignore"),
+    renderDockerIgnore()
+  );
+}
+
+// src/generator/files.ts
+var import_node_fs2 = require("fs");
+var import_node_path2 = require("path");
 var RENAMED_TEMPLATE_FILES = {
   "_gitignore": ".gitignore",
   "_dockerignore": ".dockerignore",
@@ -25,10 +110,10 @@ var RENAMED_TEMPLATE_FILES = {
   "_env.example": ".env.example"
 };
 function ensureDestinationAvailable(destinationDirectory, overwrite = false) {
-  if (!(0, import_node_fs.existsSync)(destinationDirectory)) {
+  if (!(0, import_node_fs2.existsSync)(destinationDirectory)) {
     return;
   }
-  const contents = (0, import_node_fs.readdirSync)(destinationDirectory);
+  const contents = (0, import_node_fs2.readdirSync)(destinationDirectory);
   if (contents.length > 0 && !overwrite) {
     throw new Error(
       `Destination is not empty: ${destinationDirectory}. Use --force to overwrite it.`
@@ -36,41 +121,41 @@ function ensureDestinationAvailable(destinationDirectory, overwrite = false) {
   }
 }
 function copyDirectory(sourceDirectory, destinationDirectory) {
-  if (!(0, import_node_fs.existsSync)(sourceDirectory)) {
+  if (!(0, import_node_fs2.existsSync)(sourceDirectory)) {
     throw new Error(`Template directory not found: ${sourceDirectory}`);
   }
-  (0, import_node_fs.mkdirSync)(destinationDirectory, { recursive: true });
-  (0, import_node_fs.cpSync)(sourceDirectory, destinationDirectory, {
+  (0, import_node_fs2.mkdirSync)(destinationDirectory, { recursive: true });
+  (0, import_node_fs2.cpSync)(sourceDirectory, destinationDirectory, {
     recursive: true,
     force: true
   });
   renameTemplateFiles(destinationDirectory);
 }
 function renameTemplateFiles(directory) {
-  for (const entry of (0, import_node_fs.readdirSync)(directory)) {
-    const currentPath = (0, import_node_path.resolve)(directory, entry);
-    const stats = (0, import_node_fs.statSync)(currentPath);
+  for (const entry of (0, import_node_fs2.readdirSync)(directory)) {
+    const currentPath = (0, import_node_path2.resolve)(directory, entry);
+    const stats = (0, import_node_fs2.statSync)(currentPath);
     if (stats.isDirectory()) {
       renameTemplateFiles(currentPath);
       continue;
     }
-    const replacementName = RENAMED_TEMPLATE_FILES[(0, import_node_path.basename)(currentPath)];
+    const replacementName = RENAMED_TEMPLATE_FILES[(0, import_node_path2.basename)(currentPath)];
     if (!replacementName) {
       continue;
     }
-    const replacementPath = (0, import_node_path.resolve)((0, import_node_path.dirname)(currentPath), replacementName);
-    if ((0, import_node_fs.existsSync)(replacementPath)) {
-      const existingContent = (0, import_node_fs.readFileSync)(replacementPath);
-      const sourceContent = (0, import_node_fs.readFileSync)(currentPath);
+    const replacementPath = (0, import_node_path2.resolve)((0, import_node_path2.dirname)(currentPath), replacementName);
+    if ((0, import_node_fs2.existsSync)(replacementPath)) {
+      const existingContent = (0, import_node_fs2.readFileSync)(replacementPath);
+      const sourceContent = (0, import_node_fs2.readFileSync)(currentPath);
       if (!existingContent.equals(sourceContent)) {
         throw new Error(
           `Cannot rename template file because the destination exists: ${replacementPath}`
         );
       }
-      (0, import_node_fs.unlinkSync)(currentPath);
+      (0, import_node_fs2.unlinkSync)(currentPath);
       continue;
     }
-    (0, import_node_fs.renameSync)(currentPath, replacementPath);
+    (0, import_node_fs2.renameSync)(currentPath, replacementPath);
   }
 }
 
@@ -91,8 +176,8 @@ function toDisplayName(projectName) {
 }
 
 // src/generator/paths.ts
-var import_node_fs2 = require("fs");
-var import_node_path2 = require("path");
+var import_node_fs3 = require("fs");
+var import_node_path3 = require("path");
 function getRuntimeDirectory() {
   if (typeof __dirname === "string") {
     return __dirname;
@@ -104,13 +189,13 @@ function getPackageRoot() {
   const candidates = [
     process.cwd(),
     runtimeDirectory,
-    (0, import_node_path2.resolve)(runtimeDirectory, ".."),
-    (0, import_node_path2.resolve)(runtimeDirectory, "../.."),
-    (0, import_node_path2.resolve)(process.cwd(), ".."),
-    (0, import_node_path2.resolve)(process.cwd(), "../..")
+    (0, import_node_path3.resolve)(runtimeDirectory, ".."),
+    (0, import_node_path3.resolve)(runtimeDirectory, "../.."),
+    (0, import_node_path3.resolve)(process.cwd(), ".."),
+    (0, import_node_path3.resolve)(process.cwd(), "../..")
   ];
   for (const candidate of candidates) {
-    if ((0, import_node_fs2.existsSync)((0, import_node_path2.resolve)(candidate, "package.json"))) {
+    if ((0, import_node_fs3.existsSync)((0, import_node_path3.resolve)(candidate, "package.json"))) {
       return candidate;
     }
   }
@@ -120,13 +205,13 @@ function getTemplateDirectory(templateName) {
   const runtimeDirectory = getRuntimeDirectory();
   const packageRoot = getPackageRoot();
   const candidates = [
-    (0, import_node_path2.resolve)(runtimeDirectory, "templates", templateName),
-    (0, import_node_path2.resolve)(packageRoot, "dist", "templates", templateName),
-    (0, import_node_path2.resolve)(packageRoot, "src", "templates", templateName),
-    (0, import_node_path2.resolve)(packageRoot, "templates", templateName)
+    (0, import_node_path3.resolve)(runtimeDirectory, "templates", templateName),
+    (0, import_node_path3.resolve)(packageRoot, "dist", "templates", templateName),
+    (0, import_node_path3.resolve)(packageRoot, "src", "templates", templateName),
+    (0, import_node_path3.resolve)(packageRoot, "templates", templateName)
   ];
   const templateDirectory = candidates.find(
-    (candidate) => (0, import_node_fs2.existsSync)(candidate)
+    (candidate) => (0, import_node_fs3.existsSync)(candidate)
   );
   if (!templateDirectory) {
     throw new Error(
@@ -137,8 +222,8 @@ function getTemplateDirectory(templateName) {
 }
 
 // src/generator/template.ts
-var import_node_fs3 = require("fs");
-var import_node_path3 = require("path");
+var import_node_fs4 = require("fs");
+var import_node_path4 = require("path");
 var TEXT_EXTENSIONS = /* @__PURE__ */ new Set([
   ".cjs",
   ".css",
@@ -173,16 +258,16 @@ function renderTemplate(content, variables) {
   );
 }
 function isTextTemplateFile(path) {
-  const name = (0, import_node_path3.basename)(path);
-  return TEXT_FILENAMES.has(name) || TEXT_EXTENSIONS.has((0, import_node_path3.extname)(name).toLowerCase());
+  const name = (0, import_node_path4.basename)(path);
+  return TEXT_FILENAMES.has(name) || TEXT_EXTENSIONS.has((0, import_node_path4.extname)(name).toLowerCase());
 }
 function renderDirectory(directory, variables) {
-  if (!(0, import_node_fs3.existsSync)(directory)) {
+  if (!(0, import_node_fs4.existsSync)(directory)) {
     throw new Error(`Directory not found: ${directory}`);
   }
-  for (const entry of (0, import_node_fs3.readdirSync)(directory)) {
-    const path = (0, import_node_path3.join)(directory, entry);
-    const stats = (0, import_node_fs3.statSync)(path);
+  for (const entry of (0, import_node_fs4.readdirSync)(directory)) {
+    const path = (0, import_node_path4.join)(directory, entry);
+    const stats = (0, import_node_fs4.statSync)(path);
     if (stats.isDirectory()) {
       renderDirectory(path, variables);
       continue;
@@ -190,64 +275,64 @@ function renderDirectory(directory, variables) {
     if (!isTextTemplateFile(path)) {
       continue;
     }
-    const content = (0, import_node_fs3.readFileSync)(path, "utf8");
+    const content = (0, import_node_fs4.readFileSync)(path, "utf8");
     const rendered = renderTemplate(content, variables);
     if (rendered !== content) {
-      (0, import_node_fs3.writeFileSync)(path, rendered);
+      (0, import_node_fs4.writeFileSync)(path, rendered);
     }
   }
 }
 
 // src/generator/generate.ts
 function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
-  if (!(0, import_node_fs4.existsSync)(destinationDirectory)) {
-    (0, import_node_fs4.renameSync)(stagedDirectory, destinationDirectory);
+  if (!(0, import_node_fs5.existsSync)(destinationDirectory)) {
+    (0, import_node_fs5.renameSync)(stagedDirectory, destinationDirectory);
     return;
   }
   if (!overwrite) {
     throw new Error(`Destination already exists: ${destinationDirectory}`);
   }
-  if ((0, import_node_path4.resolve)(destinationDirectory) === (0, import_node_path4.resolve)(process.cwd())) {
+  if ((0, import_node_path5.resolve)(destinationDirectory) === (0, import_node_path5.resolve)(process.cwd())) {
     throw new Error(
       "Refusing to replace the current working directory with --force. Choose a parent directory instead."
     );
   }
-  const backupDirectory = (0, import_node_path4.join)(
-    (0, import_node_path4.dirname)(destinationDirectory),
-    `.${(0, import_node_path4.basename)(destinationDirectory)}.launchstack-backup-${(0, import_node_crypto.randomUUID)()}`
+  const backupDirectory = (0, import_node_path5.join)(
+    (0, import_node_path5.dirname)(destinationDirectory),
+    `.${(0, import_node_path5.basename)(destinationDirectory)}.launchstack-backup-${(0, import_node_crypto.randomUUID)()}`
   );
-  (0, import_node_fs4.renameSync)(destinationDirectory, backupDirectory);
+  (0, import_node_fs5.renameSync)(destinationDirectory, backupDirectory);
   try {
-    (0, import_node_fs4.renameSync)(stagedDirectory, destinationDirectory);
-    (0, import_node_fs4.rmSync)(backupDirectory, {
+    (0, import_node_fs5.renameSync)(stagedDirectory, destinationDirectory);
+    (0, import_node_fs5.rmSync)(backupDirectory, {
       recursive: true,
       force: true
     });
   } catch (error) {
-    if ((0, import_node_fs4.existsSync)(destinationDirectory)) {
-      (0, import_node_fs4.rmSync)(destinationDirectory, {
+    if ((0, import_node_fs5.existsSync)(destinationDirectory)) {
+      (0, import_node_fs5.rmSync)(destinationDirectory, {
         recursive: true,
         force: true
       });
     }
-    (0, import_node_fs4.renameSync)(backupDirectory, destinationDirectory);
+    (0, import_node_fs5.renameSync)(backupDirectory, destinationDirectory);
     throw error;
   }
 }
 function generateProject(options) {
   validateProjectName(options.projectName);
-  const destinationDirectory = (0, import_node_path4.resolve)(options.destinationDirectory);
+  const destinationDirectory = (0, import_node_path5.resolve)(options.destinationDirectory);
   const overwrite = options.overwrite ?? false;
   ensureDestinationAvailable(destinationDirectory, overwrite);
   const templateDirectory = getTemplateDirectory(options.template);
-  const parentDirectory = (0, import_node_path4.dirname)(destinationDirectory);
-  (0, import_node_fs4.mkdirSync)(parentDirectory, { recursive: true });
-  const stagedDirectory = (0, import_node_fs4.mkdtempSync)(
-    (0, import_node_path4.join)(parentDirectory, `.${(0, import_node_path4.basename)(destinationDirectory)}.launchstack-stage-`)
+  const parentDirectory = (0, import_node_path5.dirname)(destinationDirectory);
+  (0, import_node_fs5.mkdirSync)(parentDirectory, { recursive: true });
+  const stagedDirectory = (0, import_node_fs5.mkdtempSync)(
+    (0, import_node_path5.join)(parentDirectory, `.${(0, import_node_path5.basename)(destinationDirectory)}.launchstack-stage-`)
   );
   try {
-    if (overwrite && (0, import_node_fs4.existsSync)(destinationDirectory)) {
-      (0, import_node_fs4.cpSync)(destinationDirectory, stagedDirectory, {
+    if (overwrite && (0, import_node_fs5.existsSync)(destinationDirectory)) {
+      (0, import_node_fs5.cpSync)(destinationDirectory, stagedDirectory, {
         recursive: true,
         force: true
       });
@@ -257,14 +342,24 @@ function generateProject(options) {
       PROJECT_NAME: options.projectName,
       PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
     });
+    if (options.template === "api") {
+      writeCanonicalDockerAssets(stagedDirectory, {
+        buildCommand: "npm run build",
+        outputDirectory: "dist",
+        hasLockfile: true,
+        prisma: true,
+        startCommand: ["node", "dist/server.js"],
+        port: 3e3
+      });
+    }
     commitStagedProject(
       stagedDirectory,
       destinationDirectory,
       overwrite
     );
   } catch (error) {
-    if ((0, import_node_fs4.existsSync)(stagedDirectory)) {
-      (0, import_node_fs4.rmSync)(stagedDirectory, {
+    if ((0, import_node_fs5.existsSync)(stagedDirectory)) {
+      (0, import_node_fs5.rmSync)(stagedDirectory, {
         recursive: true,
         force: true
       });
@@ -290,8 +385,8 @@ var createCommand = new import_commander.Command("create").description("Create a
   "Directory where the project should be created"
 ).option("-f, --force", "Allow replacing a non-empty destination after staging succeeds").option("--no-install", "Skip dependency installation").action((projectName, options) => {
   try {
-    const destinationDirectory = options.directory ? (0, import_node_path5.resolve)(options.directory) : (0, import_node_path5.resolve)(process.cwd(), projectName);
-    const destinationAlreadyExists = (0, import_node_fs5.existsSync)(destinationDirectory);
+    const destinationDirectory = options.directory ? (0, import_node_path6.resolve)(options.directory) : (0, import_node_path6.resolve)(process.cwd(), projectName);
+    const destinationAlreadyExists = (0, import_node_fs6.existsSync)(destinationDirectory);
     console.log(`Creating ${projectName}...`);
     const generatedDirectory = generateProject({
       projectName,
@@ -310,7 +405,7 @@ var createCommand = new import_commander.Command("create").description("Create a
     console.log("");
     console.log("Next steps:");
     if (!destinationAlreadyExists || destinationDirectory !== process.cwd()) {
-      const relativeDestination = (0, import_node_path5.relative)(process.cwd(), destinationDirectory) || ".";
+      const relativeDestination = (0, import_node_path6.relative)(process.cwd(), destinationDirectory) || ".";
       console.log(`  cd ${relativeDestination}`);
     }
     if (!options.install) {
@@ -330,11 +425,11 @@ var createCommand = new import_commander.Command("create").description("Create a
 var import_commander2 = require("commander");
 
 // src/release/doctor.ts
-var import_node_fs6 = require("fs");
-var import_node_path6 = require("path");
+var import_node_fs7 = require("fs");
+var import_node_path7 = require("path");
 function checkFile(projectDirectory, file, label) {
-  const path = (0, import_node_path6.resolve)(projectDirectory, file);
-  const passed = (0, import_node_fs6.existsSync)(path);
+  const path = (0, import_node_path7.resolve)(projectDirectory, file);
+  const passed = (0, import_node_fs7.existsSync)(path);
   return {
     name: label,
     passed,
@@ -342,11 +437,11 @@ function checkFile(projectDirectory, file, label) {
   };
 }
 function checkPackageScripts(projectDirectory) {
-  const packagePath = (0, import_node_path6.resolve)(
+  const packagePath = (0, import_node_path7.resolve)(
     projectDirectory,
     "package.json"
   );
-  if (!(0, import_node_fs6.existsSync)(packagePath)) {
+  if (!(0, import_node_fs7.existsSync)(packagePath)) {
     return {
       name: "Package scripts",
       passed: false,
@@ -354,7 +449,7 @@ function checkPackageScripts(projectDirectory) {
     };
   }
   const packageJson = JSON.parse(
-    (0, import_node_fs6.readFileSync)(packagePath, "utf8")
+    (0, import_node_fs7.readFileSync)(packagePath, "utf8")
   );
   const requiredScripts = [
     "dev",
@@ -376,18 +471,18 @@ function checkPackageScripts(projectDirectory) {
   };
 }
 function checkEnvironmentExample(projectDirectory) {
-  const path = (0, import_node_path6.resolve)(
+  const path = (0, import_node_path7.resolve)(
     projectDirectory,
     ".env.example"
   );
-  if (!(0, import_node_fs6.existsSync)(path)) {
+  if (!(0, import_node_fs7.existsSync)(path)) {
     return {
       name: "Environment example",
       passed: false,
       detail: ".env.example is missing"
     };
   }
-  const content = (0, import_node_fs6.readFileSync)(path, "utf8");
+  const content = (0, import_node_fs7.readFileSync)(path, "utf8");
   const requiredVariables = [
     "DATABASE_URL",
     "JWT_ACCESS_SECRET",
@@ -449,7 +544,7 @@ function runDoctor(projectDirectory = process.cwd()) {
   ];
   return {
     healthy: checks.every((check) => check.passed),
-    projectDirectory: (0, import_node_path6.resolve)(projectDirectory),
+    projectDirectory: (0, import_node_path7.resolve)(projectDirectory),
     checks
   };
 }
@@ -502,8 +597,8 @@ var import_node_child_process3 = require("child_process");
 var import_commander3 = require("commander");
 
 // src/config.ts
-var import_node_fs8 = require("fs");
-var import_node_path8 = require("path");
+var import_node_fs9 = require("fs");
+var import_node_path9 = require("path");
 var import_zod = require("zod");
 
 // src/providers.ts
@@ -568,43 +663,43 @@ function providerHelpText() {
 }
 
 // src/storage.ts
-var import_node_fs7 = require("fs");
-var import_node_path7 = require("path");
+var import_node_fs8 = require("fs");
+var import_node_path8 = require("path");
 var import_node_crypto2 = require("crypto");
 function atomicWriteText(path, content, mode) {
-  const directory = (0, import_node_path7.dirname)(path);
-  (0, import_node_fs7.mkdirSync)(directory, { recursive: true });
-  const temporaryPath = (0, import_node_path7.join)(
+  const directory = (0, import_node_path8.dirname)(path);
+  (0, import_node_fs8.mkdirSync)(directory, { recursive: true });
+  const temporaryPath = (0, import_node_path8.join)(
     directory,
-    `.${(0, import_node_path7.basename)(path)}.${process.pid}.${(0, import_node_crypto2.randomUUID)()}.tmp`
+    `.${(0, import_node_path8.basename)(path)}.${process.pid}.${(0, import_node_crypto2.randomUUID)()}.tmp`
   );
   try {
-    (0, import_node_fs7.writeFileSync)(temporaryPath, content, {
+    (0, import_node_fs8.writeFileSync)(temporaryPath, content, {
       encoding: "utf8",
       flag: "wx",
       ...mode === void 0 ? {} : { mode }
     });
     if (mode !== void 0) {
-      (0, import_node_fs7.chmodSync)(temporaryPath, mode);
+      (0, import_node_fs8.chmodSync)(temporaryPath, mode);
     }
-    (0, import_node_fs7.renameSync)(temporaryPath, path);
+    (0, import_node_fs8.renameSync)(temporaryPath, path);
     if (mode !== void 0) {
-      (0, import_node_fs7.chmodSync)(path, mode);
+      (0, import_node_fs8.chmodSync)(path, mode);
     }
   } finally {
-    if ((0, import_node_fs7.existsSync)(temporaryPath)) {
-      (0, import_node_fs7.rmSync)(temporaryPath, { force: true });
+    if ((0, import_node_fs8.existsSync)(temporaryPath)) {
+      (0, import_node_fs8.rmSync)(temporaryPath, { force: true });
     }
   }
 }
 function readJsonFile(path, fallback) {
-  if (!(0, import_node_fs7.existsSync)(path)) {
+  if (!(0, import_node_fs8.existsSync)(path)) {
     return fallback;
   }
   try {
-    return JSON.parse((0, import_node_fs7.readFileSync)(path, "utf8"));
+    return JSON.parse((0, import_node_fs8.readFileSync)(path, "utf8"));
   } catch {
-    throw new Error(`Invalid JSON in ${(0, import_node_path7.basename)(path)}.`);
+    throw new Error(`Invalid JSON in ${(0, import_node_path8.basename)(path)}.`);
   }
 }
 
@@ -619,10 +714,10 @@ var launchStackConfigSchema = import_zod.z.object({
   deployTarget: import_zod.z.string().min(1)
 });
 function getConfigPath() {
-  return (0, import_node_path8.resolve)(process.cwd(), CONFIG_FILE_NAME);
+  return (0, import_node_path9.resolve)(process.cwd(), CONFIG_FILE_NAME);
 }
 function configExists() {
-  return (0, import_node_fs8.existsSync)(getConfigPath());
+  return (0, import_node_fs9.existsSync)(getConfigPath());
 }
 function createDefaultConfig(appName) {
   return {
@@ -643,29 +738,29 @@ function writeConfig(config) {
   );
 }
 function readConfig() {
-  const raw = (0, import_node_fs8.readFileSync)(getConfigPath(), "utf-8");
+  const raw = (0, import_node_fs9.readFileSync)(getConfigPath(), "utf-8");
   const parsed = JSON.parse(raw);
   return launchStackConfigSchema.parse(parsed);
 }
 
 // src/deployment.ts
-var import_node_fs9 = require("fs");
-var import_node_path9 = require("path");
+var import_node_fs10 = require("fs");
+var import_node_path10 = require("path");
 function resolveVerifiedOutputDirectory(projectDirectory, configuredOutputDirectory) {
-  const projectRoot = (0, import_node_path9.resolve)(projectDirectory);
-  const outputPath = (0, import_node_path9.resolve)(projectRoot, configuredOutputDirectory);
-  const relativePath = (0, import_node_path9.relative)(projectRoot, outputPath);
-  if (relativePath === ".." || relativePath.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || (0, import_node_path9.isAbsolute)(relativePath)) {
+  const projectRoot = (0, import_node_path10.resolve)(projectDirectory);
+  const outputPath = (0, import_node_path10.resolve)(projectRoot, configuredOutputDirectory);
+  const relativePath = (0, import_node_path10.relative)(projectRoot, outputPath);
+  if (relativePath === ".." || relativePath.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || (0, import_node_path10.isAbsolute)(relativePath)) {
     throw new Error(
       "Configured output directory must stay inside the project directory."
     );
   }
-  if (!(0, import_node_fs9.existsSync)(outputPath)) {
+  if (!(0, import_node_fs10.existsSync)(outputPath)) {
     throw new Error(
       `Output directory not found: ${configuredOutputDirectory}`
     );
   }
-  if (!(0, import_node_fs9.statSync)(outputPath).isDirectory()) {
+  if (!(0, import_node_fs10.statSync)(outputPath).isDirectory()) {
     throw new Error(
       `Configured output path is not a directory: ${configuredOutputDirectory}`
     );
@@ -710,11 +805,11 @@ function getGitMetadata(cwd = process.cwd()) {
 }
 
 // src/history.ts
-var import_node_path10 = require("path");
+var import_node_path11 = require("path");
 var STORE_DIR = ".launchstack";
 var HISTORY_FILE = "history.json";
 function getHistoryPath(projectDirectory = process.cwd()) {
-  return (0, import_node_path10.resolve)(
+  return (0, import_node_path11.resolve)(
     projectDirectory,
     STORE_DIR,
     HISTORY_FILE
@@ -803,47 +898,28 @@ var deployCommand = new import_commander3.Command("deploy").description("Build a
 });
 
 // src/commands/docker.ts
-var import_node_fs10 = require("fs");
+var import_node_fs11 = require("fs");
 var import_commander4 = require("commander");
 function writeFileIfAllowed(path, content, force) {
-  if ((0, import_node_fs10.existsSync)(path) && !force) {
+  if ((0, import_node_fs11.existsSync)(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  (0, import_node_fs10.writeFileSync)(path, content);
+  (0, import_node_fs11.writeFileSync)(path, content);
   console.log(`Created ${path}`);
 }
 var dockerCommand = new import_commander4.Command("docker").description("Generate Docker deployment files");
 dockerCommand.command("init").description("Create hardened Dockerfile, .dockerignore, and docker-compose.yml").option("-f, --force", "Overwrite existing Docker files").action((options) => {
   const config = readConfig();
   const force = Boolean(options.force);
-  const dockerfile = `FROM node:20-alpine AS dependencies
-WORKDIR /app
-COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
-
-FROM dependencies AS build
-COPY . .
-RUN ${config.buildCommand}
-
-FROM node:20-alpine AS production
-WORKDIR /app
-ENV NODE_ENV=production
-COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi \\
-  && npm cache clean --force
-COPY --from=build /app/${config.outputDirectory} ./${config.outputDirectory}
-USER node
-EXPOSE 3000
-CMD ["npm", "start"]
-`;
-  const dockerignore = `node_modules
-dist
-.git
-.env
-.launchstack
-npm-debug.log
-`;
+  const hasLockfile = (0, import_node_fs11.existsSync)("package-lock.json");
+  const prisma = (0, import_node_fs11.existsSync)("prisma/schema.prisma");
+  const dockerfile = renderDockerfile({
+    buildCommand: config.buildCommand,
+    outputDirectory: config.outputDirectory,
+    hasLockfile,
+    prisma
+  });
   const compose = `services:
   ${config.appName}:
     build: .
@@ -853,7 +929,7 @@ npm-debug.log
       NODE_ENV: ${config.environment}
 `;
   writeFileIfAllowed("Dockerfile", dockerfile, force);
-  writeFileIfAllowed(".dockerignore", dockerignore, force);
+  writeFileIfAllowed(".dockerignore", renderDockerIgnore(), force);
   writeFileIfAllowed("docker-compose.yml", compose, force);
 });
 
@@ -884,15 +960,15 @@ var envCommand = new import_commander5.Command("env").description("View or updat
 });
 
 // src/commands/github.ts
-var import_node_fs11 = require("fs");
-var import_node_path11 = require("path");
+var import_node_fs12 = require("fs");
+var import_node_path12 = require("path");
 var import_commander6 = require("commander");
 function writeWorkflowFile(path, content, force) {
-  if ((0, import_node_fs11.existsSync)(path) && !force) {
+  if ((0, import_node_fs12.existsSync)(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  (0, import_node_fs11.mkdirSync)((0, import_node_path11.dirname)(path), { recursive: true });
+  (0, import_node_fs12.mkdirSync)((0, import_node_path12.dirname)(path), { recursive: true });
   atomicWriteText(path, content);
   console.log(`Created ${path}`);
 }
@@ -1030,8 +1106,8 @@ var rollbackCommand = new import_commander10.Command("rollback").description("Sh
 var import_commander11 = require("commander");
 
 // src/secrets-store.ts
-var import_node_fs12 = require("fs");
-var import_node_path12 = require("path");
+var import_node_fs13 = require("fs");
+var import_node_path13 = require("path");
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
 var SECRET_MODE = 384;
@@ -1041,7 +1117,7 @@ var RESERVED_KEYS = /* @__PURE__ */ new Set([
   "prototype"
 ]);
 function getSecretsPath(projectDirectory = process.cwd()) {
-  return (0, import_node_path12.resolve)(
+  return (0, import_node_path13.resolve)(
     projectDirectory,
     STORE_DIR2,
     SECRETS_FILE
@@ -1073,8 +1149,8 @@ function readSecrets(projectDirectory = process.cwd()) {
   return secrets;
 }
 function writeSecrets(secrets, projectDirectory = process.cwd()) {
-  const storeDirectory = (0, import_node_path12.resolve)(projectDirectory, STORE_DIR2);
-  (0, import_node_fs12.mkdirSync)(storeDirectory, { recursive: true });
+  const storeDirectory = (0, import_node_path13.resolve)(projectDirectory, STORE_DIR2);
+  (0, import_node_fs13.mkdirSync)(storeDirectory, { recursive: true });
   atomicWriteText(
     getSecretsPath(projectDirectory),
     `${JSON.stringify(secrets, null, 2)}

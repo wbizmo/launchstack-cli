@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import {
   generateProject,
-  installDependencies
-} from "./chunk-TSEGMBRD.mjs";
+  installDependencies,
+  renderDockerIgnore,
+  renderDockerfile
+} from "./chunk-HWK3JAAC.mjs";
 
 // src/cli.ts
 import { Command as Command14 } from "commander";
@@ -561,33 +563,14 @@ var dockerCommand = new Command4("docker").description("Generate Docker deployme
 dockerCommand.command("init").description("Create hardened Dockerfile, .dockerignore, and docker-compose.yml").option("-f, --force", "Overwrite existing Docker files").action((options) => {
   const config = readConfig();
   const force = Boolean(options.force);
-  const dockerfile = `FROM node:20-alpine AS dependencies
-WORKDIR /app
-COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
-
-FROM dependencies AS build
-COPY . .
-RUN ${config.buildCommand}
-
-FROM node:20-alpine AS production
-WORKDIR /app
-ENV NODE_ENV=production
-COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi \\
-  && npm cache clean --force
-COPY --from=build /app/${config.outputDirectory} ./${config.outputDirectory}
-USER node
-EXPOSE 3000
-CMD ["npm", "start"]
-`;
-  const dockerignore = `node_modules
-dist
-.git
-.env
-.launchstack
-npm-debug.log
-`;
+  const hasLockfile = existsSync6("package-lock.json");
+  const prisma = existsSync6("prisma/schema.prisma");
+  const dockerfile = renderDockerfile({
+    buildCommand: config.buildCommand,
+    outputDirectory: config.outputDirectory,
+    hasLockfile,
+    prisma
+  });
   const compose = `services:
   ${config.appName}:
     build: .
@@ -597,7 +580,7 @@ npm-debug.log
       NODE_ENV: ${config.environment}
 `;
   writeFileIfAllowed("Dockerfile", dockerfile, force);
-  writeFileIfAllowed(".dockerignore", dockerignore, force);
+  writeFileIfAllowed(".dockerignore", renderDockerIgnore(), force);
   writeFileIfAllowed("docker-compose.yml", compose, force);
 });
 
