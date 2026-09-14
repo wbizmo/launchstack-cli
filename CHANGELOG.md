@@ -16,16 +16,17 @@
 
 - Validate JWT expiry durations during startup.
 - Derive the CLI version from `package.json` at build time instead of maintaining a second hard-coded version.
-- Add lint, tests, build, packed-artifact smoke tests, generated-project tests, runtime audits, and database-backed concurrency tests to the release gate.
-- Add reproducible lockfile handling, repository metadata, npm provenance, and automated tag-based npm publishing.
-- Pin intentional dependency ranges and upgrade Vitest to a patched release.
+- Add lint, TypeScript typechecking, tests, deterministic `dist/` verification, packed-artifact smoke tests, generated-project checks, runtime audits, and database-backed concurrency tests to the release gate.
+- Add reproducible lockfile handling, repository metadata, npm provenance, and guarded automatic npm/GitHub release creation from verified `main` versions.
+- Use the `LAUNCHSTACK_NPM_TOKEN` repository secret only as npm's `NODE_AUTH_TOKEN` during publishing.
+- Pin intentional dependency ranges, keep the CLI compatible with its documented Node.js 20 baseline, and upgrade Vitest to a patched release.
 
 ### Correctness and developer experience
 
 - Make project generation transactional and clean up template alias collisions.
 - Render templates in one placeholder pass and avoid decoding binary/static assets as UTF-8.
 - Reduce Git metadata process spawning and remove shell interpolation from fixed Git commands.
-- Harden `launchstack docker init` with a multi-stage, lockfile-aware, non-root image.
+- Centralize hardened Docker generation so `launchstack docker init` and generated API projects share the same multi-stage, lockfile-aware, non-root baseline.
 - Align Fly.io/provider support through a shared provider registry.
 - Reframe `launchstack deploy` as deployment preparation until a remote provider confirms deployment success.
 - Validate deployment output paths before recording prepared artifacts.
