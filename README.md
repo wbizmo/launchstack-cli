@@ -137,7 +137,7 @@ launchstack docker init
 launchstack github init
 ```
 
-Docker generation uses a multi-stage runtime image and runs as a non-root user by default.
+Docker generation and generated API projects share the same hardened Docker renderer: multi-stage builds, lockfile-driven installs when available, production-only runtime dependencies, secret-safe build contexts, and a non-root runtime user.
 
 ## Generated project commands
 
@@ -192,7 +192,9 @@ Run the normal quality gate:
 npm run check
 ```
 
-Run the release gate. This builds and tests LaunchStack, installs the packed npm artifact in a clean temporary project, checks the packed security behavior/version, generates a fresh API, runs its database-backed concurrency tests, builds it, and audits its runtime dependency graph:
+The normal gate includes linting, TypeScript typechecking, tests, a deterministic `dist/` rebuild check, and npm pack inspection.
+
+Run the full release gate. It installs the packed npm artifact in a clean temporary project, checks the packed security behavior/version, generates a fresh API, runs database-backed registration/refresh concurrency tests against PostgreSQL, typechecks/builds/tests the generated application, and audits runtime dependencies:
 
 ```bash
 npm run release:check
@@ -202,7 +204,9 @@ npm run release:check
 
 Release procedure is documented in [`docs/RELEASING.md`](docs/RELEASING.md). Each published release from v2.1.0 onward gets a root-level `RELEASE_NOTES_<version>.md` file in addition to `CHANGELOG.md`.
 
-Pushing a version-matching tag such as `v2.1.0` triggers the npm publish workflow after the full release gate passes. The workflow reads the repository secret `LAUNCHSTACK_NPM_TOKEN` and exposes it to npm only as `NODE_AUTH_TOKEN` during token verification/publishing. Published packages use npm provenance.
+When a new package version is merged to `main`, `.github/workflows/publish.yml` reruns the full release gate, verifies the matching release notes, creates the `v<version>` tag at that exact merged commit, publishes to npm with provenance, and creates the corresponding GitHub Release. If that exact npm version already exists, the workflow exits without republishing it.
+
+The npm credential is stored only as the GitHub repository secret `LAUNCHSTACK_NPM_TOKEN`. The workflow exposes it to npm as `NODE_AUTH_TOKEN` only for the guarded publish step; it is never committed to the repository or written to release notes.
 
 ## Roadmap
 
