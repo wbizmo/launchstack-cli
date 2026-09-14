@@ -1,5 +1,14 @@
 import tseslint from "typescript-eslint";
 
+const safetyRules = {
+  eqeqeq: ["error", "always"],
+  "no-constant-condition": "error",
+  "no-debugger": "error",
+  "no-duplicate-imports": "error",
+  "no-unsafe-finally": "error",
+  "no-unreachable": "error"
+};
+
 export default [
   {
     ignores: [
@@ -10,7 +19,8 @@ export default [
   {
     files: [
       "src/**/*.ts",
-      "tests/**/*.ts"
+      "tests/**/*.ts",
+      "bench/**/*.ts"
     ],
     languageOptions: {
       parser: tseslint.parser,
@@ -19,16 +29,18 @@ export default [
         sourceType: "module"
       }
     },
-    rules: {
-      "eqeqeq": [
-        "error",
-        "always"
-      ],
-      "no-constant-condition": "error",
-      "no-debugger": "error",
-      "no-duplicate-imports": "error",
-      "no-unsafe-finally": "error",
-      "no-unreachable": "error"
-    }
+    rules: safetyRules
+  },
+  {
+    files: [
+      "scripts/**/*.js",
+      "scripts/**/*.cjs",
+      "scripts/**/*.mjs"
+    ],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "commonjs"
+    },
+    rules: safetyRules
   }
 ];
