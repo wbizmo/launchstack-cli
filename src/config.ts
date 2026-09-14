@@ -1,13 +1,15 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
+import { PROVIDER_IDS } from "./providers";
+import { atomicWriteText } from "./storage";
 
 export const CONFIG_FILE_NAME = "launchstack.config.json";
 
 export const launchStackConfigSchema = z.object({
   appName: z.string().min(1),
   environment: z.enum(["development", "staging", "production"]),
-  provider: z.enum(["vercel", "netlify", "render", "railway", "docker", "custom"]),
+  provider: z.enum(PROVIDER_IDS),
   buildCommand: z.string().min(1),
   outputDirectory: z.string().min(1),
   deployTarget: z.string().min(1)
@@ -35,7 +37,11 @@ export function createDefaultConfig(appName: string): LaunchStackProjectConfig {
 }
 
 export function writeConfig(config: LaunchStackProjectConfig) {
-  writeFileSync(getConfigPath(), JSON.stringify(config, null, 2));
+  const validated = launchStackConfigSchema.parse(config);
+  atomicWriteText(
+    getConfigPath(),
+    `${JSON.stringify(validated, null, 2)}\n`
+  );
 }
 
 export function readConfig(): LaunchStackProjectConfig {
