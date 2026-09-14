@@ -15,14 +15,16 @@ import { secretsCommand } from "./commands/secrets";
 import { statusCommand } from "./commands/status";
 import { validateCommand } from "./commands/validate";
 
+declare const __LAUNCHSTACK_VERSION__: string;
+
 const program = new Command();
 
 program
   .name("launchstack")
   .description(
-    "Backend API scaffolding, deployment automation, and developer workflow CLI"
+    "Backend API scaffolding, deployment preparation, and developer workflow CLI"
   )
-  .version("2.0.0");
+  .version(__LAUNCHSTACK_VERSION__);
 
 program.addCommand(createCommand);
 program.addCommand(doctorCommand);

@@ -1,0 +1,55 @@
+name: Refresh generated release artifacts
+
+on:
+  push:
+    branches:
+      - hardening/2-18-release
+    paths:
+      - package.json
+      - src/templates/api/package.json
+      - scripts/refresh-template-lock.cjs
+      - .github/workflows/refresh-generated.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout hardening branch
+        uses: actions/checkout@v4
+        with:
+          ref: hardening/2-18-release
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Refresh root lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Refresh generated template lockfile
+        run: npm run locks:template
+
+      - name: Rebuild distributable artifacts
+        run: npm run build
+
+      - name: Commit generated artifacts when changed
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json src/templates/api/package-lock.json dist
+          if git diff --cached --quiet; then
+            echo "Generated artifacts already current"
+            exit 0
+          fi
+          git commit -m "chore: refresh lockfiles and dist [generated]"
+          git push origin HEAD:hardening/2-18-release

@@ -88,7 +88,7 @@ export class LaunchStackClient {
   }
 
   getLaunch(id: string): Promise<Launch> {
-    return this.request<Launch>(`/launches/${id}`);
+    return this.request<Launch>(`/launches/${encodeURIComponent(id)}`);
   }
 
   createLaunch(input: CreateLaunchInput): Promise<Launch> {

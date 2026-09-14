@@ -1,0 +1,66 @@
+name: Publish npm package
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: launchstack_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d launchstack_smoke"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js for npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify release tag matches package version
+        run: npm run release:verify-tag
+
+      - name: Run release quality gate
+        run: npm run release:check
+        env:
+          LAUNCHSTACK_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/launchstack_smoke
+
+      - name: Verify npm publish token is configured
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.LAUNCHSTACK_NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::LAUNCHSTACK_NPM_TOKEN is not configured"
+            exit 1
+          fi
+
+      - name: Publish package to npm
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.LAUNCHSTACK_NPM_TOKEN }}
