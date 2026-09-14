@@ -1,0 +1,11 @@
+{
+  "$schema": "https://launchstack.dev/schemas/project-v1.json",
+  "schemaVersion": 1,
+  "project": {
+    "name": "{{PROJECT_NAME}}",
+    "templateVersion": "3.0.0"
+  },
+  "capabilities": {},
+  "provider": { "id": "docker" },
+  "stages": {}
+}

@@ -5,7 +5,8 @@ coverage
 .env
 .env.local
 .env.*.local
-.launchstack/
+.launchstack/*
+!.launchstack/state.json
 
 *.log
 npm-debug.log*
