@@ -28,7 +28,7 @@ function ensureDestinationAvailable(destinationDirectory, overwrite = false) {
     );
   }
 }
-function copyDirectory(sourceDirectory, destinationDirectory) {
+function copyDirectory(sourceDirectory, destinationDirectory, overwriteRenamedFiles = false) {
   if (!existsSync(sourceDirectory)) {
     throw new Error(`Template directory not found: ${sourceDirectory}`);
   }
@@ -37,14 +37,14 @@ function copyDirectory(sourceDirectory, destinationDirectory) {
     recursive: true,
     force: true
   });
-  renameTemplateFiles(destinationDirectory);
+  renameTemplateFiles(destinationDirectory, overwriteRenamedFiles);
 }
-function renameTemplateFiles(directory) {
+function renameTemplateFiles(directory, overwriteRenamedFiles) {
   for (const entry of readdirSync(directory)) {
     const currentPath = resolve(directory, entry);
     const stats = statSync(currentPath);
     if (stats.isDirectory()) {
-      renameTemplateFiles(currentPath);
+      renameTemplateFiles(currentPath, overwriteRenamedFiles);
       continue;
     }
     const replacementName = RENAMED_TEMPLATE_FILES[basename(currentPath)];
@@ -53,6 +53,11 @@ function renameTemplateFiles(directory) {
     }
     const replacementPath = resolve(dirname(currentPath), replacementName);
     if (existsSync(replacementPath)) {
+      if (overwriteRenamedFiles) {
+        unlinkSync(replacementPath);
+        renameSync(currentPath, replacementPath);
+        continue;
+      }
       const existingContent = readFileSync(replacementPath);
       const sourceContent = readFileSync(currentPath);
       if (!existingContent.equals(sourceContent)) {
@@ -203,6 +208,7 @@ import {
   existsSync as existsSync5,
   mkdirSync as mkdirSync2,
   mkdtempSync,
+  readdirSync as readdirSync3,
   renameSync as renameSync2,
   rmSync
 } from "fs";
@@ -309,6 +315,14 @@ function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
     return;
   }
   if (!overwrite) {
+    if (readdirSync3(destinationDirectory).length === 0) {
+      rmSync(destinationDirectory, {
+        recursive: true,
+        force: true
+      });
+      renameSync2(stagedDirectory, destinationDirectory);
+      return;
+    }
     throw new Error(`Destination already exists: ${destinationDirectory}`);
   }
   if (resolve3(destinationDirectory) === resolve3(process.cwd())) {
@@ -356,7 +370,11 @@ function generateProject(options) {
         force: true
       });
     }
-    copyDirectory(templateDirectory, stagedDirectory);
+    copyDirectory(
+      templateDirectory,
+      stagedDirectory,
+      overwrite
+    );
     renderDirectory(stagedDirectory, {
       PROJECT_NAME: options.projectName,
       PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
@@ -412,4 +430,4 @@ export {
   generateProject,
   installDependencies
 };
-//# sourceMappingURL=chunk-L3N2Y4XD.mjs.map
+//# sourceMappingURL=chunk-7REMXOP6.mjs.map

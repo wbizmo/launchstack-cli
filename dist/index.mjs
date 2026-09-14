@@ -9,7 +9,7 @@ import {
   renderTemplate,
   toDisplayName,
   validateProjectName
-} from "./chunk-L3N2Y4XD.mjs";
+} from "./chunk-7REMXOP6.mjs";
 
 // src/errors.ts
 var LaunchStackError = class extends Error {

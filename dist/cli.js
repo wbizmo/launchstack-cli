@@ -123,7 +123,7 @@ function ensureDestinationAvailable(destinationDirectory, overwrite = false) {
     );
   }
 }
-function copyDirectory(sourceDirectory, destinationDirectory) {
+function copyDirectory(sourceDirectory, destinationDirectory, overwriteRenamedFiles = false) {
   if (!(0, import_node_fs2.existsSync)(sourceDirectory)) {
     throw new Error(`Template directory not found: ${sourceDirectory}`);
   }
@@ -132,14 +132,14 @@ function copyDirectory(sourceDirectory, destinationDirectory) {
     recursive: true,
     force: true
   });
-  renameTemplateFiles(destinationDirectory);
+  renameTemplateFiles(destinationDirectory, overwriteRenamedFiles);
 }
-function renameTemplateFiles(directory) {
+function renameTemplateFiles(directory, overwriteRenamedFiles) {
   for (const entry of (0, import_node_fs2.readdirSync)(directory)) {
     const currentPath = (0, import_node_path2.resolve)(directory, entry);
     const stats = (0, import_node_fs2.statSync)(currentPath);
     if (stats.isDirectory()) {
-      renameTemplateFiles(currentPath);
+      renameTemplateFiles(currentPath, overwriteRenamedFiles);
       continue;
     }
     const replacementName = RENAMED_TEMPLATE_FILES[(0, import_node_path2.basename)(currentPath)];
@@ -148,6 +148,11 @@ function renameTemplateFiles(directory) {
     }
     const replacementPath = (0, import_node_path2.resolve)((0, import_node_path2.dirname)(currentPath), replacementName);
     if ((0, import_node_fs2.existsSync)(replacementPath)) {
+      if (overwriteRenamedFiles) {
+        (0, import_node_fs2.unlinkSync)(replacementPath);
+        (0, import_node_fs2.renameSync)(currentPath, replacementPath);
+        continue;
+      }
       const existingContent = (0, import_node_fs2.readFileSync)(replacementPath);
       const sourceContent = (0, import_node_fs2.readFileSync)(currentPath);
       if (!existingContent.equals(sourceContent)) {
@@ -293,6 +298,14 @@ function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
     return;
   }
   if (!overwrite) {
+    if ((0, import_node_fs5.readdirSync)(destinationDirectory).length === 0) {
+      (0, import_node_fs5.rmSync)(destinationDirectory, {
+        recursive: true,
+        force: true
+      });
+      (0, import_node_fs5.renameSync)(stagedDirectory, destinationDirectory);
+      return;
+    }
     throw new Error(`Destination already exists: ${destinationDirectory}`);
   }
   if ((0, import_node_path5.resolve)(destinationDirectory) === (0, import_node_path5.resolve)(process.cwd())) {
@@ -340,7 +353,11 @@ function generateProject(options) {
         force: true
       });
     }
-    copyDirectory(templateDirectory, stagedDirectory);
+    copyDirectory(
+      templateDirectory,
+      stagedDirectory,
+      overwrite
+    );
     renderDirectory(stagedDirectory, {
       PROJECT_NAME: options.projectName,
       PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
