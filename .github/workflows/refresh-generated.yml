@@ -7,7 +7,7 @@ on:
       - hardening/2-18-release
     paths:
       - package.json
-      - src/templates/api/package.json
+      - src/**
       - scripts/refresh-template-lock.cjs
       - .github/workflows/refresh-generated.yml
 
