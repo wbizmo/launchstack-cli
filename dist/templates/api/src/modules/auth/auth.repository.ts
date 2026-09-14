@@ -1,12 +1,15 @@
 import type {
+  Prisma,
   PrismaClient,
   RefreshToken,
   User
 } from "@prisma/client";
 
+type AuthDatabase = PrismaClient | Prisma.TransactionClient;
+
 export class AuthRepository {
   constructor(
-    private readonly prisma: PrismaClient
+    private readonly prisma: AuthDatabase
   ) {}
 
   findUserByEmail(email: string): Promise<User | null> {
@@ -48,13 +51,22 @@ export class AuthRepository {
     });
   }
 
-  revokeRefreshToken(id: string): Promise<RefreshToken> {
-    return this.prisma.refreshToken.update({
+  consumeRefreshToken(
+    tokenHash: string,
+    now: Date
+  ): Promise<{
+    count: number;
+  }> {
+    return this.prisma.refreshToken.updateMany({
       where: {
-        id
+        tokenHash,
+        revokedAt: null,
+        expiresAt: {
+          gt: now
+        }
       },
       data: {
-        revokedAt: new Date()
+        revokedAt: now
       }
     });
   }

@@ -6,11 +6,13 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
-  statSync
+  statSync,
+  unlinkSync
 } from "fs";
-import { basename, dirname, join, resolve } from "path";
+import { basename, dirname, resolve } from "path";
 var RENAMED_TEMPLATE_FILES = {
   "_gitignore": ".gitignore",
+  "_dockerignore": ".dockerignore",
   "_npmrc": ".npmrc",
   "_env": ".env",
   "_env.example": ".env.example"
@@ -39,7 +41,7 @@ function copyDirectory(sourceDirectory, destinationDirectory) {
 }
 function renameTemplateFiles(directory) {
   for (const entry of readdirSync(directory)) {
-    const currentPath = join(directory, entry);
+    const currentPath = resolve(directory, entry);
     const stats = statSync(currentPath);
     if (stats.isDirectory()) {
       renameTemplateFiles(currentPath);
@@ -58,6 +60,7 @@ function renameTemplateFiles(directory) {
           `Cannot rename template file because the destination exists: ${replacementPath}`
         );
       }
+      unlinkSync(currentPath);
       continue;
     }
     renameSync(currentPath, replacementPath);
@@ -134,22 +137,56 @@ import {
   statSync as statSync2,
   writeFileSync
 } from "fs";
-import { join as join2 } from "path";
+import { basename as basename2, extname, join } from "path";
+var TEXT_EXTENSIONS = /* @__PURE__ */ new Set([
+  ".cjs",
+  ".css",
+  ".example",
+  ".html",
+  ".js",
+  ".json",
+  ".md",
+  ".mjs",
+  ".prisma",
+  ".sh",
+  ".toml",
+  ".ts",
+  ".tsx",
+  ".txt",
+  ".yaml",
+  ".yml"
+]);
+var TEXT_FILENAMES = /* @__PURE__ */ new Set([
+  ".dockerignore",
+  ".env",
+  ".env.example",
+  ".gitignore",
+  ".npmrc",
+  "Dockerfile",
+  "LICENSE"
+]);
 function renderTemplate(content, variables) {
-  return Object.entries(variables).reduce(
-    (rendered, [key, value]) => rendered.split(`{{${key}}}`).join(value),
-    content
+  return content.replace(
+    /{{([A-Z0-9_]+)}}/g,
+    (token, key) => Object.prototype.hasOwnProperty.call(variables, key) ? variables[key] ?? token : token
   );
+}
+function isTextTemplateFile(path) {
+  const name = basename2(path);
+  return TEXT_FILENAMES.has(name) || TEXT_EXTENSIONS.has(extname(name).toLowerCase());
 }
 function renderDirectory(directory, variables) {
   if (!existsSync3(directory)) {
     throw new Error(`Directory not found: ${directory}`);
   }
   for (const entry of readdirSync2(directory)) {
-    const path = join2(directory, entry);
+    const path = join(directory, entry);
     const stats = statSync2(path);
     if (stats.isDirectory()) {
       renderDirectory(path, variables);
+      continue;
+    }
+    if (!isTextTemplateFile(path)) {
       continue;
     }
     const content = readFileSync2(path, "utf8");
@@ -161,20 +198,93 @@ function renderDirectory(directory, variables) {
 }
 
 // src/generator/generate.ts
-import { resolve as resolve3 } from "path";
+import {
+  cpSync as cpSync2,
+  existsSync as existsSync4,
+  mkdirSync as mkdirSync2,
+  mkdtempSync,
+  renameSync as renameSync2,
+  rmSync
+} from "fs";
+import {
+  basename as basename3,
+  dirname as dirname2,
+  join as join2,
+  resolve as resolve3
+} from "path";
+import { randomUUID } from "crypto";
+function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
+  if (!existsSync4(destinationDirectory)) {
+    renameSync2(stagedDirectory, destinationDirectory);
+    return;
+  }
+  if (!overwrite) {
+    throw new Error(`Destination already exists: ${destinationDirectory}`);
+  }
+  if (resolve3(destinationDirectory) === resolve3(process.cwd())) {
+    throw new Error(
+      "Refusing to replace the current working directory with --force. Choose a parent directory instead."
+    );
+  }
+  const backupDirectory = join2(
+    dirname2(destinationDirectory),
+    `.${basename3(destinationDirectory)}.launchstack-backup-${randomUUID()}`
+  );
+  renameSync2(destinationDirectory, backupDirectory);
+  try {
+    renameSync2(stagedDirectory, destinationDirectory);
+    rmSync(backupDirectory, {
+      recursive: true,
+      force: true
+    });
+  } catch (error) {
+    if (existsSync4(destinationDirectory)) {
+      rmSync(destinationDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+    renameSync2(backupDirectory, destinationDirectory);
+    throw error;
+  }
+}
 function generateProject(options) {
   validateProjectName(options.projectName);
   const destinationDirectory = resolve3(options.destinationDirectory);
-  ensureDestinationAvailable(
-    destinationDirectory,
-    options.overwrite ?? false
-  );
+  const overwrite = options.overwrite ?? false;
+  ensureDestinationAvailable(destinationDirectory, overwrite);
   const templateDirectory = getTemplateDirectory(options.template);
-  copyDirectory(templateDirectory, destinationDirectory);
-  renderDirectory(destinationDirectory, {
-    PROJECT_NAME: options.projectName,
-    PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
-  });
+  const parentDirectory = dirname2(destinationDirectory);
+  mkdirSync2(parentDirectory, { recursive: true });
+  const stagedDirectory = mkdtempSync(
+    join2(parentDirectory, `.${basename3(destinationDirectory)}.launchstack-stage-`)
+  );
+  try {
+    if (overwrite && existsSync4(destinationDirectory)) {
+      cpSync2(destinationDirectory, stagedDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+    copyDirectory(templateDirectory, stagedDirectory);
+    renderDirectory(stagedDirectory, {
+      PROJECT_NAME: options.projectName,
+      PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
+    });
+    commitStagedProject(
+      stagedDirectory,
+      destinationDirectory,
+      overwrite
+    );
+  } catch (error) {
+    if (existsSync4(stagedDirectory)) {
+      rmSync(stagedDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+    throw error;
+  }
   return destinationDirectory;
 }
 
@@ -200,3 +310,4 @@ export {
   generateProject,
   installDependencies
 };
+//# sourceMappingURL=chunk-TSEGMBRD.mjs.map

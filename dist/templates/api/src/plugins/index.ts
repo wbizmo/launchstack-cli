@@ -4,6 +4,7 @@ import { configPlugin } from "./config";
 import { corsPlugin } from "./cors";
 import { databasePlugin } from "./database";
 import { errorHandlerPlugin } from "./error-handler";
+import { rateLimitPlugin } from "./rate-limit";
 import { sensiblePlugin } from "./sensible";
 import { swaggerPlugin } from "./swagger";
 
@@ -14,6 +15,7 @@ export async function registerPlugins(
   await app.register(swaggerPlugin);
   await app.register(databasePlugin);
   await app.register(sensiblePlugin);
+  await app.register(rateLimitPlugin);
   await app.register(authPlugin);
   await app.register(corsPlugin);
   await app.register(errorHandlerPlugin);

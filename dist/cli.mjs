@@ -2,19 +2,19 @@
 import {
   generateProject,
   installDependencies
-} from "./chunk-JDDSGIQ5.mjs";
+} from "./chunk-TSEGMBRD.mjs";
 
 // src/cli.ts
 import { Command as Command14 } from "commander";
 
 // src/commands/create.ts
 import { existsSync } from "fs";
-import { resolve } from "path";
+import { relative, resolve } from "path";
 import { Command } from "commander";
 var createCommand = new Command("create").description("Create a new backend API project").argument("<project-name>", "Name of the project to create").option(
   "-d, --directory <path>",
   "Directory where the project should be created"
-).option("-f, --force", "Allow writing into a non-empty directory").option("--no-install", "Skip dependency installation").action((projectName, options) => {
+).option("-f, --force", "Allow replacing a non-empty destination after staging succeeds").option("--no-install", "Skip dependency installation").action((projectName, options) => {
   try {
     const destinationDirectory = options.directory ? resolve(options.directory) : resolve(process.cwd(), projectName);
     const destinationAlreadyExists = existsSync(destinationDirectory);
@@ -36,7 +36,8 @@ var createCommand = new Command("create").description("Create a new backend API 
     console.log("");
     console.log("Next steps:");
     if (!destinationAlreadyExists || destinationDirectory !== process.cwd()) {
-      console.log(`  cd ${projectName}`);
+      const relativeDestination = relative(process.cwd(), destinationDirectory) || ".";
+      console.log(`  cd ${relativeDestination}`);
     }
     if (!options.install) {
       console.log("  npm install");
@@ -226,20 +227,130 @@ var doctorCommand = new Command2("doctor").description(
 });
 
 // src/commands/deploy.ts
-import { execSync as execSync2 } from "child_process";
-import { existsSync as existsSync5 } from "fs";
-import { resolve as resolve5 } from "path";
+import { execSync } from "child_process";
 import { Command as Command3 } from "commander";
 
 // src/config.ts
-import { existsSync as existsSync3, readFileSync as readFileSync2, writeFileSync } from "fs";
+import { existsSync as existsSync4, readFileSync as readFileSync3 } from "fs";
 import { resolve as resolve3 } from "path";
 import { z } from "zod";
+
+// src/providers.ts
+var PROVIDER_IDS = [
+  "vercel",
+  "netlify",
+  "render",
+  "railway",
+  "fly",
+  "docker",
+  "custom"
+];
+var PROVIDERS = {
+  vercel: {
+    id: "vercel",
+    label: "Vercel",
+    hasGeneratedPreset: false,
+    remoteDeploymentSupported: false
+  },
+  netlify: {
+    id: "netlify",
+    label: "Netlify",
+    hasGeneratedPreset: false,
+    remoteDeploymentSupported: false
+  },
+  render: {
+    id: "render",
+    label: "Render",
+    hasGeneratedPreset: true,
+    remoteDeploymentSupported: false
+  },
+  railway: {
+    id: "railway",
+    label: "Railway",
+    hasGeneratedPreset: true,
+    remoteDeploymentSupported: false
+  },
+  fly: {
+    id: "fly",
+    label: "Fly.io",
+    hasGeneratedPreset: true,
+    remoteDeploymentSupported: false
+  },
+  docker: {
+    id: "docker",
+    label: "Docker",
+    hasGeneratedPreset: true,
+    remoteDeploymentSupported: false
+  },
+  custom: {
+    id: "custom",
+    label: "Custom",
+    hasGeneratedPreset: false,
+    remoteDeploymentSupported: false
+  }
+};
+function isProviderId(value) {
+  return PROVIDER_IDS.includes(value);
+}
+function providerHelpText() {
+  return PROVIDER_IDS.join(", ");
+}
+
+// src/storage.ts
+import {
+  chmodSync,
+  existsSync as existsSync3,
+  mkdirSync,
+  readFileSync as readFileSync2,
+  renameSync,
+  rmSync,
+  writeFileSync
+} from "fs";
+import { basename, dirname, join } from "path";
+import { randomUUID } from "crypto";
+function atomicWriteText(path, content, mode) {
+  const directory = dirname(path);
+  mkdirSync(directory, { recursive: true });
+  const temporaryPath = join(
+    directory,
+    `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`
+  );
+  try {
+    writeFileSync(temporaryPath, content, {
+      encoding: "utf8",
+      flag: "wx",
+      ...mode === void 0 ? {} : { mode }
+    });
+    if (mode !== void 0) {
+      chmodSync(temporaryPath, mode);
+    }
+    renameSync(temporaryPath, path);
+    if (mode !== void 0) {
+      chmodSync(path, mode);
+    }
+  } finally {
+    if (existsSync3(temporaryPath)) {
+      rmSync(temporaryPath, { force: true });
+    }
+  }
+}
+function readJsonFile(path, fallback) {
+  if (!existsSync3(path)) {
+    return fallback;
+  }
+  try {
+    return JSON.parse(readFileSync2(path, "utf8"));
+  } catch {
+    throw new Error(`Invalid JSON in ${basename(path)}.`);
+  }
+}
+
+// src/config.ts
 var CONFIG_FILE_NAME = "launchstack.config.json";
 var launchStackConfigSchema = z.object({
   appName: z.string().min(1),
   environment: z.enum(["development", "staging", "production"]),
-  provider: z.enum(["vercel", "netlify", "render", "railway", "docker", "custom"]),
+  provider: z.enum(PROVIDER_IDS),
   buildCommand: z.string().min(1),
   outputDirectory: z.string().min(1),
   deployTarget: z.string().min(1)
@@ -248,7 +359,7 @@ function getConfigPath() {
   return resolve3(process.cwd(), CONFIG_FILE_NAME);
 }
 function configExists() {
-  return existsSync3(getConfigPath());
+  return existsSync4(getConfigPath());
 }
 function createDefaultConfig(appName) {
   return {
@@ -261,33 +372,81 @@ function createDefaultConfig(appName) {
   };
 }
 function writeConfig(config) {
-  writeFileSync(getConfigPath(), JSON.stringify(config, null, 2));
+  const validated = launchStackConfigSchema.parse(config);
+  atomicWriteText(
+    getConfigPath(),
+    `${JSON.stringify(validated, null, 2)}
+`
+  );
 }
 function readConfig() {
-  const raw = readFileSync2(getConfigPath(), "utf-8");
+  const raw = readFileSync3(getConfigPath(), "utf-8");
   const parsed = JSON.parse(raw);
   return launchStackConfigSchema.parse(parsed);
 }
 
+// src/deployment.ts
+import {
+  existsSync as existsSync5,
+  statSync
+} from "fs";
+import {
+  isAbsolute,
+  relative as relative2,
+  resolve as resolve4
+} from "path";
+function resolveVerifiedOutputDirectory(projectDirectory, configuredOutputDirectory) {
+  const projectRoot = resolve4(projectDirectory);
+  const outputPath = resolve4(projectRoot, configuredOutputDirectory);
+  const relativePath = relative2(projectRoot, outputPath);
+  if (relativePath === ".." || relativePath.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || isAbsolute(relativePath)) {
+    throw new Error(
+      "Configured output directory must stay inside the project directory."
+    );
+  }
+  if (!existsSync5(outputPath)) {
+    throw new Error(
+      `Output directory not found: ${configuredOutputDirectory}`
+    );
+  }
+  if (!statSync(outputPath).isDirectory()) {
+    throw new Error(
+      `Configured output path is not a directory: ${configuredOutputDirectory}`
+    );
+  }
+  return outputPath;
+}
+
 // src/git.ts
-import { execSync } from "child_process";
-function run(command) {
-  return execSync(command, {
+import { execFileSync } from "child_process";
+function run(args, cwd) {
+  return execFileSync("git", args, {
+    cwd,
     encoding: "utf-8",
-    stdio: ["pipe", "pipe", "ignore"]
+    stdio: ["ignore", "pipe", "ignore"]
   }).trim();
 }
-function getGitMetadata() {
+function getGitMetadata(cwd = process.cwd()) {
   try {
-    const branch = run("git rev-parse --abbrev-ref HEAD");
-    const commitHash = run("git rev-parse HEAD");
-    const commitMessage = run("git log -1 --pretty=%B");
-    const dirty = run("git status --porcelain").length > 0;
+    const status = run(
+      ["status", "--porcelain=v2", "--branch"],
+      cwd
+    );
+    const lines = status.split("\n").filter(Boolean);
+    const branch = lines.find((line) => line.startsWith("# branch.head "))?.slice("# branch.head ".length);
+    const commitHash = lines.find((line) => line.startsWith("# branch.oid "))?.slice("# branch.oid ".length);
+    if (!commitHash || commitHash === "(initial)") {
+      return null;
+    }
+    const commitMessage = run(
+      ["log", "-1", "--pretty=%B"],
+      cwd
+    );
     return {
-      branch,
+      branch: !branch || branch === "(detached)" ? "HEAD" : branch,
       commitHash,
       commitMessage,
-      dirty
+      dirty: lines.some((line) => !line.startsWith("# "))
     };
   } catch {
     return null;
@@ -295,48 +454,50 @@ function getGitMetadata() {
 }
 
 // src/history.ts
-import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync3, writeFileSync as writeFileSync2 } from "fs";
-import { resolve as resolve4 } from "path";
+import { resolve as resolve5 } from "path";
 var STORE_DIR = ".launchstack";
 var HISTORY_FILE = "history.json";
-function getStorePath() {
-  return resolve4(process.cwd(), STORE_DIR);
+function getHistoryPath(projectDirectory = process.cwd()) {
+  return resolve5(
+    projectDirectory,
+    STORE_DIR,
+    HISTORY_FILE
+  );
 }
-function getHistoryPath() {
-  return resolve4(getStorePath(), HISTORY_FILE);
-}
-function ensureStore() {
-  if (!existsSync4(getStorePath())) {
-    mkdirSync(getStorePath(), { recursive: true });
+function readHistory(projectDirectory = process.cwd()) {
+  const records = readJsonFile(
+    getHistoryPath(projectDirectory),
+    []
+  );
+  if (!Array.isArray(records)) {
+    throw new Error("history.json must contain a JSON array.");
   }
+  return records;
 }
-function readHistory() {
-  ensureStore();
-  if (!existsSync4(getHistoryPath())) {
-    return [];
-  }
-  return JSON.parse(readFileSync3(getHistoryPath(), "utf-8"));
+function writeHistory(records, projectDirectory = process.cwd()) {
+  atomicWriteText(
+    getHistoryPath(projectDirectory),
+    `${JSON.stringify(records, null, 2)}
+`
+  );
 }
-function writeHistory(records) {
-  ensureStore();
-  writeFileSync2(getHistoryPath(), JSON.stringify(records, null, 2));
-}
-function addDeploymentRecord(record) {
-  const records = readHistory();
+function addDeploymentRecord(record, projectDirectory = process.cwd()) {
+  const records = readHistory(projectDirectory);
   records.unshift(record);
-  writeHistory(records.slice(0, 50));
+  writeHistory(records.slice(0, 50), projectDirectory);
 }
 
 // src/commands/deploy.ts
-var deployCommand = new Command3("deploy").description("Run the configured LaunchStack deployment workflow").option("--skip-build", "Skip the build command").action((options) => {
+var deployCommand = new Command3("deploy").description("Build and prepare the configured deployment artifacts").option("--skip-build", "Skip the build command").action((options) => {
   const createdAt = (/* @__PURE__ */ new Date()).toISOString();
   try {
     const config = readConfig();
     const git = getGitMetadata();
-    console.log("LaunchStack deployment");
+    const provider = PROVIDERS[config.provider];
+    console.log("LaunchStack deployment preparation");
     console.log(`App: ${config.appName}`);
     console.log(`Environment: ${config.environment}`);
-    console.log(`Provider: ${config.provider}`);
+    console.log(`Provider: ${provider.label}`);
     if (git) {
       console.log(`Branch: ${git.branch}`);
       console.log(`Commit: ${git.commitHash.slice(0, 7)}`);
@@ -346,29 +507,16 @@ var deployCommand = new Command3("deploy").description("Run the configured Launc
     }
     console.log("");
     if (!options.skipBuild) {
-      console.log(`Running build: ${config.buildCommand}`);
-      execSync2(config.buildCommand, {
+      console.log(`Running trusted project build command: ${config.buildCommand}`);
+      execSync(config.buildCommand, {
         stdio: "inherit",
         cwd: process.cwd()
       });
     }
-    const outputPath = resolve5(process.cwd(), config.outputDirectory);
-    if (!existsSync5(outputPath)) {
-      addDeploymentRecord({
-        id: `dep_${Date.now()}`,
-        appName: config.appName,
-        environment: config.environment,
-        provider: config.provider,
-        deployTarget: config.deployTarget,
-        outputDirectory: config.outputDirectory,
-        status: "failed",
-        createdAt,
-        git
-      });
-      console.log("");
-      console.log(`Output directory not found: ${config.outputDirectory}`);
-      process.exit(1);
-    }
+    resolveVerifiedOutputDirectory(
+      process.cwd(),
+      config.outputDirectory
+    );
     addDeploymentRecord({
       id: `dep_${Date.now()}`,
       appName: config.appName,
@@ -376,7 +524,7 @@ var deployCommand = new Command3("deploy").description("Run the configured Launc
       provider: config.provider,
       deployTarget: config.deployTarget,
       outputDirectory: config.outputDirectory,
-      status: "success",
+      status: "prepared",
       createdAt,
       git
     });
@@ -384,43 +532,53 @@ var deployCommand = new Command3("deploy").description("Run the configured Launc
     console.log("Build output verified");
     console.log(`Deploy target: ${config.deployTarget}`);
     console.log("");
-    console.log("Deployment workflow completed");
+    if (provider.remoteDeploymentSupported) {
+      console.log("Deployment provider confirmed the remote deployment.");
+    } else {
+      console.log(
+        "Artifacts are prepared. LaunchStack has not performed or confirmed a remote deployment for this provider."
+      );
+    }
   } catch (error) {
-    console.log("Deployment failed");
+    console.log("Deployment preparation failed");
     console.log(error instanceof Error ? error.message : error);
-    process.exit(1);
+    process.exitCode = 1;
   }
 });
 
 // src/commands/docker.ts
-import { existsSync as existsSync6, writeFileSync as writeFileSync3 } from "fs";
+import { existsSync as existsSync6, writeFileSync as writeFileSync2 } from "fs";
 import { Command as Command4 } from "commander";
 function writeFileIfAllowed(path, content, force) {
   if (existsSync6(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  writeFileSync3(path, content);
+  writeFileSync2(path, content);
   console.log(`Created ${path}`);
 }
 var dockerCommand = new Command4("docker").description("Generate Docker deployment files");
-dockerCommand.command("init").description("Create Dockerfile, .dockerignore, and docker-compose.yml").option("-f, --force", "Overwrite existing Docker files").action((options) => {
+dockerCommand.command("init").description("Create hardened Dockerfile, .dockerignore, and docker-compose.yml").option("-f, --force", "Overwrite existing Docker files").action((options) => {
   const config = readConfig();
   const force = Boolean(options.force);
-  const dockerfile = `FROM node:20-alpine
-
+  const dockerfile = `FROM node:20-alpine AS dependencies
 WORKDIR /app
-
 COPY package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-RUN npm install
-
+FROM dependencies AS build
 COPY . .
-
 RUN ${config.buildCommand}
 
+FROM node:20-alpine AS production
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi \\
+  && npm cache clean --force
+COPY --from=build /app/${config.outputDirectory} ./${config.outputDirectory}
+USER node
 EXPOSE 3000
-
 CMD ["npm", "start"]
 `;
   const dockerignore = `node_modules
@@ -470,49 +628,57 @@ var envCommand = new Command5("env").description("View or update the LaunchStack
 });
 
 // src/commands/github.ts
-import { existsSync as existsSync7, mkdirSync as mkdirSync2, writeFileSync as writeFileSync4 } from "fs";
-import { dirname } from "path";
+import { existsSync as existsSync7, mkdirSync as mkdirSync2 } from "fs";
+import { dirname as dirname2 } from "path";
 import { Command as Command6 } from "commander";
 function writeWorkflowFile(path, content, force) {
   if (existsSync7(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  mkdirSync2(dirname(path), { recursive: true });
-  writeFileSync4(path, content);
+  mkdirSync2(dirname2(path), { recursive: true });
+  atomicWriteText(path, content);
   console.log(`Created ${path}`);
 }
 var githubCommand = new Command6("github").description("Generate GitHub Actions workflows");
-githubCommand.command("init").description("Create a deployment workflow").option("-f, --force", "Overwrite existing workflow").action((options) => {
+githubCommand.command("init").description("Create a lockfile-first CI workflow").option("-f, --force", "Overwrite existing workflow").action((options) => {
   const config = readConfig();
-  const workflow = `name: Deploy
+  const workflow = `name: CI
 
 on:
   push:
     branches:
       - main
+  pull_request:
+
+permissions:
+  contents: read
 
 jobs:
-  build:
+  quality:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
-      - name: Install Dependencies
-        run: npm install
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build Project
+      - name: Run project checks when available
+        run: npm run check --if-present
+
+      - name: Build project
         run: ${config.buildCommand}
 `;
   writeWorkflowFile(
-    ".github/workflows/deploy.yml",
+    ".github/workflows/ci.yml",
     workflow,
     Boolean(options.force)
   );
@@ -558,27 +724,31 @@ var initCommand = new Command8("init").description("Create a LaunchStack config 
 
 // src/commands/provider.ts
 import { Command as Command9 } from "commander";
-var allowedProviders = ["vercel", "netlify", "render", "railway", "docker", "custom"];
-var providerCommand = new Command9("provider").description("View or update the LaunchStack deployment provider").argument("[provider]", "vercel, netlify, render, railway, docker, or custom").action((provider) => {
+var providerCommand = new Command9("provider").description("View or update the LaunchStack deployment provider").argument("[provider]", providerHelpText()).action((provider) => {
   try {
     const config = readConfig();
     if (!provider) {
-      console.log(`Current provider: ${config.provider}`);
+      const definition = PROVIDERS[config.provider];
+      console.log(`Current provider: ${definition.label} (${definition.id})`);
+      console.log(
+        definition.remoteDeploymentSupported ? "Remote deployment is supported by LaunchStack." : "LaunchStack currently prepares artifacts/presets for this provider; it does not perform the remote deployment."
+      );
       return;
     }
-    if (!allowedProviders.includes(provider)) {
-      console.log("Invalid provider. Use vercel, netlify, render, railway, docker, or custom.");
-      process.exit(1);
+    if (!isProviderId(provider)) {
+      console.log(`Invalid provider. Use ${providerHelpText()}.`);
+      process.exitCode = 1;
+      return;
     }
     config.provider = provider;
     writeConfig(config);
-    console.log(`Provider updated to ${config.provider}`);
+    console.log(`Provider updated to ${PROVIDERS[provider].label}`);
   } catch (error) {
     console.log("Could not update provider");
     if (error instanceof Error) {
       console.log(error.message);
     }
-    process.exit(1);
+    process.exitCode = 1;
   }
 });
 
@@ -601,60 +771,170 @@ var rollbackCommand = new Command10("rollback").description("Show the latest suc
 });
 
 // src/commands/secrets.ts
-import { existsSync as existsSync8, mkdirSync as mkdirSync3, readFileSync as readFileSync4, writeFileSync as writeFileSync5 } from "fs";
-import { resolve as resolve6 } from "path";
 import { Command as Command11 } from "commander";
+
+// src/secrets-store.ts
+import { existsSync as existsSync8, mkdirSync as mkdirSync3 } from "fs";
+import { resolve as resolve6 } from "path";
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
-function getStorePath2() {
-  return resolve6(process.cwd(), STORE_DIR2);
+var SECRET_MODE = 384;
+var RESERVED_KEYS = /* @__PURE__ */ new Set([
+  "__proto__",
+  "constructor",
+  "prototype"
+]);
+function getSecretsPath(projectDirectory = process.cwd()) {
+  return resolve6(
+    projectDirectory,
+    STORE_DIR2,
+    SECRETS_FILE
+  );
 }
-function getSecretsPath() {
-  return resolve6(getStorePath2(), SECRETS_FILE);
-}
-function ensureStore2() {
-  if (!existsSync8(getStorePath2())) {
-    mkdirSync3(getStorePath2(), { recursive: true });
+function validateSecretKey(key) {
+  const normalized = key.trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_.-]{0,127}$/.test(normalized) || RESERVED_KEYS.has(normalized)) {
+    throw new Error(
+      "Secret keys must start with a letter or underscore, contain only letters, numbers, underscores, dots, or hyphens, and must not use reserved object keys."
+    );
   }
+  return normalized;
 }
-function readSecrets() {
-  ensureStore2();
-  if (!existsSync8(getSecretsPath())) {
-    return {};
+function readSecrets(projectDirectory = process.cwd()) {
+  const path = getSecretsPath(projectDirectory);
+  const parsed = readJsonFile(path, {});
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("secrets.json must contain a JSON object.");
   }
-  return JSON.parse(readFileSync4(getSecretsPath(), "utf-8"));
+  const secrets = /* @__PURE__ */ Object.create(null);
+  for (const [key, value] of Object.entries(parsed)) {
+    validateSecretKey(key);
+    if (typeof value !== "string") {
+      throw new Error("secrets.json contains a non-string secret value.");
+    }
+    secrets[key] = value;
+  }
+  return secrets;
 }
-function writeSecrets(secrets) {
-  ensureStore2();
-  writeFileSync5(getSecretsPath(), JSON.stringify(secrets, null, 2));
+function writeSecrets(secrets, projectDirectory = process.cwd()) {
+  const storeDirectory = resolve6(projectDirectory, STORE_DIR2);
+  mkdirSync3(storeDirectory, { recursive: true });
+  atomicWriteText(
+    getSecretsPath(projectDirectory),
+    `${JSON.stringify(secrets, null, 2)}
+`,
+    SECRET_MODE
+  );
+}
+function setSecret(key, value, projectDirectory = process.cwd()) {
+  const normalizedKey = validateSecretKey(key);
+  if (value.length === 0) {
+    throw new Error("Secret value must not be empty.");
+  }
+  const secrets = readSecrets(projectDirectory);
+  secrets[normalizedKey] = value;
+  writeSecrets(secrets, projectDirectory);
+}
+function removeSecret(key, projectDirectory = process.cwd()) {
+  const normalizedKey = validateSecretKey(key);
+  const secrets = readSecrets(projectDirectory);
+  if (!(normalizedKey in secrets)) {
+    return false;
+  }
+  delete secrets[normalizedKey];
+  writeSecrets(secrets, projectDirectory);
+  return true;
+}
+
+// src/commands/secrets.ts
+async function readSecretFromStdin() {
+  let value = "";
+  for await (const chunk of process.stdin) {
+    value += String(chunk);
+  }
+  return value.replace(/\r?\n$/, "");
+}
+async function promptHiddenSecret() {
+  if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== "function") {
+    throw new Error(
+      "Interactive secret entry requires a TTY. Pipe the value and use --stdin instead."
+    );
+  }
+  return new Promise((resolve7, reject) => {
+    let value = "";
+    const input = process.stdin;
+    const cleanup = () => {
+      input.off("data", onData);
+      input.setRawMode(false);
+      input.pause();
+    };
+    const onData = (chunk) => {
+      const text = String(chunk);
+      for (const character of text) {
+        if (character === "\r" || character === "\n") {
+          cleanup();
+          process.stdout.write("\n");
+          resolve7(value);
+          return;
+        }
+        if (character === "") {
+          cleanup();
+          process.stdout.write("\n");
+          reject(new Error("Secret entry cancelled."));
+          return;
+        }
+        if (character === "\x7F" || character === "\b") {
+          value = value.slice(0, -1);
+          continue;
+        }
+        value += character;
+      }
+    };
+    process.stdout.write("Secret value: ");
+    input.setEncoding("utf8");
+    input.setRawMode(true);
+    input.resume();
+    input.on("data", onData);
+  });
 }
 var secretsCommand = new Command11("secrets").description("Manage local LaunchStack secrets");
-secretsCommand.command("add").description("Add or update a local secret").argument("<key>", "Secret key").argument("<value>", "Secret value").action((key, value) => {
-  const secrets = readSecrets();
-  secrets[key] = value;
-  writeSecrets(secrets);
-  console.log(`Secret saved: ${key}`);
+secretsCommand.command("add").description("Add or update a local secret without exposing it in process arguments").argument("<key>", "Secret key").option("--stdin", "Read the secret value from standard input").action(async (key, options) => {
+  try {
+    validateSecretKey(key);
+    const value = options.stdin ? await readSecretFromStdin() : await promptHiddenSecret();
+    setSecret(key, value);
+    console.log(`Secret saved: ${key}`);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "Could not save secret.");
+    process.exitCode = 1;
+  }
 });
 secretsCommand.command("list").description("List local secret keys").action(() => {
-  const secrets = readSecrets();
-  const keys = Object.keys(secrets);
-  if (keys.length === 0) {
-    console.log("No secrets found");
-    return;
+  try {
+    const keys = Object.keys(readSecrets());
+    if (keys.length === 0) {
+      console.log("No secrets found");
+      return;
+    }
+    keys.forEach((key) => {
+      console.log(`${key}=********`);
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "Could not read secrets.");
+    process.exitCode = 1;
   }
-  keys.forEach((key) => {
-    console.log(`${key}=********`);
-  });
 });
 secretsCommand.command("remove").description("Remove a local secret").argument("<key>", "Secret key").action((key) => {
-  const secrets = readSecrets();
-  if (!secrets[key]) {
-    console.log(`Secret not found: ${key}`);
-    return;
+  try {
+    if (!removeSecret(key)) {
+      console.log(`Secret not found: ${key}`);
+      return;
+    }
+    console.log(`Secret removed: ${key}`);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "Could not remove secret.");
+    process.exitCode = 1;
   }
-  delete secrets[key];
-  writeSecrets(secrets);
-  console.log(`Secret removed: ${key}`);
 });
 
 // src/commands/status.ts
@@ -699,8 +979,8 @@ var validateCommand = new Command13("validate").description("Validate the Launch
 // src/cli.ts
 var program = new Command14();
 program.name("launchstack").description(
-  "Backend API scaffolding, deployment automation, and developer workflow CLI"
-).version("2.0.0");
+  "Backend API scaffolding, deployment preparation, and developer workflow CLI"
+).version("2.1.0");
 program.addCommand(createCommand);
 program.addCommand(doctorCommand);
 program.addCommand(initCommand);
@@ -715,3 +995,4 @@ program.addCommand(rollbackCommand);
 program.addCommand(dockerCommand);
 program.addCommand(githubCommand);
 program.parse();
+//# sourceMappingURL=cli.mjs.map

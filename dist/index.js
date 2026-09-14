@@ -46,23 +46,52 @@ var LaunchStackError = class extends Error {
 };
 
 // src/client.ts
+function validateBaseUrl(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new LaunchStackError("LaunchStack base URL must be a valid absolute URL.");
+  }
+  if (url.username || url.password) {
+    throw new LaunchStackError("LaunchStack base URL must not contain embedded credentials.");
+  }
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  const loopback = host === "localhost" || host === "127.0.0.1" || host === "::1";
+  if (url.protocol !== "https:" && !(loopback && url.protocol === "http:")) {
+    throw new LaunchStackError("LaunchStack API endpoints must use HTTPS. Plain HTTP is allowed only for loopback development endpoints.");
+  }
+  url.hash = "";
+  url.search = "";
+  return url;
+}
 var LaunchStackClient = class {
   constructor(config) {
     if (!config.apiKey) {
       throw new LaunchStackError("LaunchStack API key is required.");
     }
     this.apiKey = config.apiKey;
-    this.baseUrl = config.baseUrl ?? "https://api.launchstack.dev/v1";
+    this.baseUrl = validateBaseUrl(config.baseUrl ?? "https://api.launchstack.dev/v1");
   }
   async request(path, options = {}) {
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const normalizedBase = this.baseUrl.toString().endsWith("/") ? this.baseUrl.toString() : `${this.baseUrl.toString()}/`;
+    const relativePath = path.replace(/^\/+/, "");
+    const target = new URL(relativePath, normalizedBase);
+    if (target.origin !== this.baseUrl.origin) {
+      throw new LaunchStackError("Refusing to send LaunchStack credentials to a different origin.");
+    }
+    const response = await fetch(target, {
       ...options,
+      redirect: "manual",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.apiKey}`,
         ...options.headers
       }
     });
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      throw new LaunchStackError("LaunchStack API redirects are refused to prevent credential forwarding across origins.", response.status);
+    }
     const data = await response.json().catch(() => null);
     if (!response.ok) {
       throw new LaunchStackError(
@@ -77,7 +106,7 @@ var LaunchStackClient = class {
     return this.request("/launches");
   }
   getLaunch(id) {
-    return this.request(`/launches/${id}`);
+    return this.request(`/launches/${encodeURIComponent(id)}`);
   }
   createLaunch(input) {
     return this.request("/launches", {
@@ -106,7 +135,9 @@ var LaunchStackClient = class {
 };
 
 // src/generator/generate.ts
+var import_node_fs4 = require("fs");
 var import_node_path4 = require("path");
+var import_node_crypto = require("crypto");
 
 // src/generator/files.ts
 var import_node_fs = require("fs");
@@ -142,7 +173,7 @@ function copyDirectory(sourceDirectory, destinationDirectory) {
 }
 function renameTemplateFiles(directory) {
   for (const entry of (0, import_node_fs.readdirSync)(directory)) {
-    const currentPath = (0, import_node_path.join)(directory, entry);
+    const currentPath = (0, import_node_path.resolve)(directory, entry);
     const stats = (0, import_node_fs.statSync)(currentPath);
     if (stats.isDirectory()) {
       renameTemplateFiles(currentPath);
@@ -161,6 +192,7 @@ function renameTemplateFiles(directory) {
           `Cannot rename template file because the destination exists: ${replacementPath}`
         );
       }
+      (0, import_node_fs.unlinkSync)(currentPath);
       continue;
     }
     (0, import_node_fs.renameSync)(currentPath, replacementPath);
@@ -232,11 +264,42 @@ function getTemplateDirectory(templateName) {
 // src/generator/template.ts
 var import_node_fs3 = require("fs");
 var import_node_path3 = require("path");
+var TEXT_EXTENSIONS = /* @__PURE__ */ new Set([
+  ".cjs",
+  ".css",
+  ".example",
+  ".html",
+  ".js",
+  ".json",
+  ".md",
+  ".mjs",
+  ".prisma",
+  ".sh",
+  ".toml",
+  ".ts",
+  ".tsx",
+  ".txt",
+  ".yaml",
+  ".yml"
+]);
+var TEXT_FILENAMES = /* @__PURE__ */ new Set([
+  ".dockerignore",
+  ".env",
+  ".env.example",
+  ".gitignore",
+  ".npmrc",
+  "Dockerfile",
+  "LICENSE"
+]);
 function renderTemplate(content, variables) {
-  return Object.entries(variables).reduce(
-    (rendered, [key, value]) => rendered.split(`{{${key}}}`).join(value),
-    content
+  return content.replace(
+    /{{([A-Z0-9_]+)}}/g,
+    (token, key) => Object.prototype.hasOwnProperty.call(variables, key) ? variables[key] ?? token : token
   );
+}
+function isTextTemplateFile(path) {
+  const name = (0, import_node_path3.basename)(path);
+  return TEXT_FILENAMES.has(name) || TEXT_EXTENSIONS.has((0, import_node_path3.extname)(name).toLowerCase());
 }
 function renderDirectory(directory, variables) {
   if (!(0, import_node_fs3.existsSync)(directory)) {
@@ -249,6 +312,9 @@ function renderDirectory(directory, variables) {
       renderDirectory(path, variables);
       continue;
     }
+    if (!isTextTemplateFile(path)) {
+      continue;
+    }
     const content = (0, import_node_fs3.readFileSync)(path, "utf8");
     const rendered = renderTemplate(content, variables);
     if (rendered !== content) {
@@ -258,19 +324,78 @@ function renderDirectory(directory, variables) {
 }
 
 // src/generator/generate.ts
+function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
+  if (!(0, import_node_fs4.existsSync)(destinationDirectory)) {
+    (0, import_node_fs4.renameSync)(stagedDirectory, destinationDirectory);
+    return;
+  }
+  if (!overwrite) {
+    throw new Error(`Destination already exists: ${destinationDirectory}`);
+  }
+  if ((0, import_node_path4.resolve)(destinationDirectory) === (0, import_node_path4.resolve)(process.cwd())) {
+    throw new Error(
+      "Refusing to replace the current working directory with --force. Choose a parent directory instead."
+    );
+  }
+  const backupDirectory = (0, import_node_path4.join)(
+    (0, import_node_path4.dirname)(destinationDirectory),
+    `.${(0, import_node_path4.basename)(destinationDirectory)}.launchstack-backup-${(0, import_node_crypto.randomUUID)()}`
+  );
+  (0, import_node_fs4.renameSync)(destinationDirectory, backupDirectory);
+  try {
+    (0, import_node_fs4.renameSync)(stagedDirectory, destinationDirectory);
+    (0, import_node_fs4.rmSync)(backupDirectory, {
+      recursive: true,
+      force: true
+    });
+  } catch (error) {
+    if ((0, import_node_fs4.existsSync)(destinationDirectory)) {
+      (0, import_node_fs4.rmSync)(destinationDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+    (0, import_node_fs4.renameSync)(backupDirectory, destinationDirectory);
+    throw error;
+  }
+}
 function generateProject(options) {
   validateProjectName(options.projectName);
   const destinationDirectory = (0, import_node_path4.resolve)(options.destinationDirectory);
-  ensureDestinationAvailable(
-    destinationDirectory,
-    options.overwrite ?? false
-  );
+  const overwrite = options.overwrite ?? false;
+  ensureDestinationAvailable(destinationDirectory, overwrite);
   const templateDirectory = getTemplateDirectory(options.template);
-  copyDirectory(templateDirectory, destinationDirectory);
-  renderDirectory(destinationDirectory, {
-    PROJECT_NAME: options.projectName,
-    PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
-  });
+  const parentDirectory = (0, import_node_path4.dirname)(destinationDirectory);
+  (0, import_node_fs4.mkdirSync)(parentDirectory, { recursive: true });
+  const stagedDirectory = (0, import_node_fs4.mkdtempSync)(
+    (0, import_node_path4.join)(parentDirectory, `.${(0, import_node_path4.basename)(destinationDirectory)}.launchstack-stage-`)
+  );
+  try {
+    if (overwrite && (0, import_node_fs4.existsSync)(destinationDirectory)) {
+      (0, import_node_fs4.cpSync)(destinationDirectory, stagedDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+    copyDirectory(templateDirectory, stagedDirectory);
+    renderDirectory(stagedDirectory, {
+      PROJECT_NAME: options.projectName,
+      PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
+    });
+    commitStagedProject(
+      stagedDirectory,
+      destinationDirectory,
+      overwrite
+    );
+  } catch (error) {
+    if ((0, import_node_fs4.existsSync)(stagedDirectory)) {
+      (0, import_node_fs4.rmSync)(stagedDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+    throw error;
+  }
   return destinationDirectory;
 }
 
@@ -298,3 +423,4 @@ function installDependencies(projectDirectory) {
   toDisplayName,
   validateProjectName
 });
+//# sourceMappingURL=index.js.map

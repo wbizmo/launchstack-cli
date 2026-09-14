@@ -5,12 +5,14 @@
 var import_commander14 = require("commander");
 
 // src/commands/create.ts
-var import_node_fs4 = require("fs");
+var import_node_fs5 = require("fs");
 var import_node_path5 = require("path");
 var import_commander = require("commander");
 
 // src/generator/generate.ts
+var import_node_fs4 = require("fs");
 var import_node_path4 = require("path");
+var import_node_crypto = require("crypto");
 
 // src/generator/files.ts
 var import_node_fs = require("fs");
@@ -46,7 +48,7 @@ function copyDirectory(sourceDirectory, destinationDirectory) {
 }
 function renameTemplateFiles(directory) {
   for (const entry of (0, import_node_fs.readdirSync)(directory)) {
-    const currentPath = (0, import_node_path.join)(directory, entry);
+    const currentPath = (0, import_node_path.resolve)(directory, entry);
     const stats = (0, import_node_fs.statSync)(currentPath);
     if (stats.isDirectory()) {
       renameTemplateFiles(currentPath);
@@ -65,6 +67,7 @@ function renameTemplateFiles(directory) {
           `Cannot rename template file because the destination exists: ${replacementPath}`
         );
       }
+      (0, import_node_fs.unlinkSync)(currentPath);
       continue;
     }
     (0, import_node_fs.renameSync)(currentPath, replacementPath);
@@ -136,11 +139,42 @@ function getTemplateDirectory(templateName) {
 // src/generator/template.ts
 var import_node_fs3 = require("fs");
 var import_node_path3 = require("path");
+var TEXT_EXTENSIONS = /* @__PURE__ */ new Set([
+  ".cjs",
+  ".css",
+  ".example",
+  ".html",
+  ".js",
+  ".json",
+  ".md",
+  ".mjs",
+  ".prisma",
+  ".sh",
+  ".toml",
+  ".ts",
+  ".tsx",
+  ".txt",
+  ".yaml",
+  ".yml"
+]);
+var TEXT_FILENAMES = /* @__PURE__ */ new Set([
+  ".dockerignore",
+  ".env",
+  ".env.example",
+  ".gitignore",
+  ".npmrc",
+  "Dockerfile",
+  "LICENSE"
+]);
 function renderTemplate(content, variables) {
-  return Object.entries(variables).reduce(
-    (rendered, [key, value]) => rendered.split(`{{${key}}}`).join(value),
-    content
+  return content.replace(
+    /{{([A-Z0-9_]+)}}/g,
+    (token, key) => Object.prototype.hasOwnProperty.call(variables, key) ? variables[key] ?? token : token
   );
+}
+function isTextTemplateFile(path) {
+  const name = (0, import_node_path3.basename)(path);
+  return TEXT_FILENAMES.has(name) || TEXT_EXTENSIONS.has((0, import_node_path3.extname)(name).toLowerCase());
 }
 function renderDirectory(directory, variables) {
   if (!(0, import_node_fs3.existsSync)(directory)) {
@@ -153,6 +187,9 @@ function renderDirectory(directory, variables) {
       renderDirectory(path, variables);
       continue;
     }
+    if (!isTextTemplateFile(path)) {
+      continue;
+    }
     const content = (0, import_node_fs3.readFileSync)(path, "utf8");
     const rendered = renderTemplate(content, variables);
     if (rendered !== content) {
@@ -162,19 +199,78 @@ function renderDirectory(directory, variables) {
 }
 
 // src/generator/generate.ts
+function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
+  if (!(0, import_node_fs4.existsSync)(destinationDirectory)) {
+    (0, import_node_fs4.renameSync)(stagedDirectory, destinationDirectory);
+    return;
+  }
+  if (!overwrite) {
+    throw new Error(`Destination already exists: ${destinationDirectory}`);
+  }
+  if ((0, import_node_path4.resolve)(destinationDirectory) === (0, import_node_path4.resolve)(process.cwd())) {
+    throw new Error(
+      "Refusing to replace the current working directory with --force. Choose a parent directory instead."
+    );
+  }
+  const backupDirectory = (0, import_node_path4.join)(
+    (0, import_node_path4.dirname)(destinationDirectory),
+    `.${(0, import_node_path4.basename)(destinationDirectory)}.launchstack-backup-${(0, import_node_crypto.randomUUID)()}`
+  );
+  (0, import_node_fs4.renameSync)(destinationDirectory, backupDirectory);
+  try {
+    (0, import_node_fs4.renameSync)(stagedDirectory, destinationDirectory);
+    (0, import_node_fs4.rmSync)(backupDirectory, {
+      recursive: true,
+      force: true
+    });
+  } catch (error) {
+    if ((0, import_node_fs4.existsSync)(destinationDirectory)) {
+      (0, import_node_fs4.rmSync)(destinationDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+    (0, import_node_fs4.renameSync)(backupDirectory, destinationDirectory);
+    throw error;
+  }
+}
 function generateProject(options) {
   validateProjectName(options.projectName);
   const destinationDirectory = (0, import_node_path4.resolve)(options.destinationDirectory);
-  ensureDestinationAvailable(
-    destinationDirectory,
-    options.overwrite ?? false
-  );
+  const overwrite = options.overwrite ?? false;
+  ensureDestinationAvailable(destinationDirectory, overwrite);
   const templateDirectory = getTemplateDirectory(options.template);
-  copyDirectory(templateDirectory, destinationDirectory);
-  renderDirectory(destinationDirectory, {
-    PROJECT_NAME: options.projectName,
-    PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
-  });
+  const parentDirectory = (0, import_node_path4.dirname)(destinationDirectory);
+  (0, import_node_fs4.mkdirSync)(parentDirectory, { recursive: true });
+  const stagedDirectory = (0, import_node_fs4.mkdtempSync)(
+    (0, import_node_path4.join)(parentDirectory, `.${(0, import_node_path4.basename)(destinationDirectory)}.launchstack-stage-`)
+  );
+  try {
+    if (overwrite && (0, import_node_fs4.existsSync)(destinationDirectory)) {
+      (0, import_node_fs4.cpSync)(destinationDirectory, stagedDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+    copyDirectory(templateDirectory, stagedDirectory);
+    renderDirectory(stagedDirectory, {
+      PROJECT_NAME: options.projectName,
+      PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
+    });
+    commitStagedProject(
+      stagedDirectory,
+      destinationDirectory,
+      overwrite
+    );
+  } catch (error) {
+    if ((0, import_node_fs4.existsSync)(stagedDirectory)) {
+      (0, import_node_fs4.rmSync)(stagedDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+    throw error;
+  }
   return destinationDirectory;
 }
 
@@ -192,10 +288,10 @@ function installDependencies(projectDirectory) {
 var createCommand = new import_commander.Command("create").description("Create a new backend API project").argument("<project-name>", "Name of the project to create").option(
   "-d, --directory <path>",
   "Directory where the project should be created"
-).option("-f, --force", "Allow writing into a non-empty directory").option("--no-install", "Skip dependency installation").action((projectName, options) => {
+).option("-f, --force", "Allow replacing a non-empty destination after staging succeeds").option("--no-install", "Skip dependency installation").action((projectName, options) => {
   try {
     const destinationDirectory = options.directory ? (0, import_node_path5.resolve)(options.directory) : (0, import_node_path5.resolve)(process.cwd(), projectName);
-    const destinationAlreadyExists = (0, import_node_fs4.existsSync)(destinationDirectory);
+    const destinationAlreadyExists = (0, import_node_fs5.existsSync)(destinationDirectory);
     console.log(`Creating ${projectName}...`);
     const generatedDirectory = generateProject({
       projectName,
@@ -214,7 +310,8 @@ var createCommand = new import_commander.Command("create").description("Create a
     console.log("");
     console.log("Next steps:");
     if (!destinationAlreadyExists || destinationDirectory !== process.cwd()) {
-      console.log(`  cd ${projectName}`);
+      const relativeDestination = (0, import_node_path5.relative)(process.cwd(), destinationDirectory) || ".";
+      console.log(`  cd ${relativeDestination}`);
     }
     if (!options.install) {
       console.log("  npm install");
@@ -233,11 +330,11 @@ var createCommand = new import_commander.Command("create").description("Create a
 var import_commander2 = require("commander");
 
 // src/release/doctor.ts
-var import_node_fs5 = require("fs");
+var import_node_fs6 = require("fs");
 var import_node_path6 = require("path");
 function checkFile(projectDirectory, file, label) {
   const path = (0, import_node_path6.resolve)(projectDirectory, file);
-  const passed = (0, import_node_fs5.existsSync)(path);
+  const passed = (0, import_node_fs6.existsSync)(path);
   return {
     name: label,
     passed,
@@ -249,7 +346,7 @@ function checkPackageScripts(projectDirectory) {
     projectDirectory,
     "package.json"
   );
-  if (!(0, import_node_fs5.existsSync)(packagePath)) {
+  if (!(0, import_node_fs6.existsSync)(packagePath)) {
     return {
       name: "Package scripts",
       passed: false,
@@ -257,7 +354,7 @@ function checkPackageScripts(projectDirectory) {
     };
   }
   const packageJson = JSON.parse(
-    (0, import_node_fs5.readFileSync)(packagePath, "utf8")
+    (0, import_node_fs6.readFileSync)(packagePath, "utf8")
   );
   const requiredScripts = [
     "dev",
@@ -283,14 +380,14 @@ function checkEnvironmentExample(projectDirectory) {
     projectDirectory,
     ".env.example"
   );
-  if (!(0, import_node_fs5.existsSync)(path)) {
+  if (!(0, import_node_fs6.existsSync)(path)) {
     return {
       name: "Environment example",
       passed: false,
       detail: ".env.example is missing"
     };
   }
-  const content = (0, import_node_fs5.readFileSync)(path, "utf8");
+  const content = (0, import_node_fs6.readFileSync)(path, "utf8");
   const requiredVariables = [
     "DATABASE_URL",
     "JWT_ACCESS_SECRET",
@@ -402,28 +499,130 @@ var doctorCommand = new import_commander2.Command("doctor").description(
 
 // src/commands/deploy.ts
 var import_node_child_process3 = require("child_process");
-var import_node_fs8 = require("fs");
-var import_node_path9 = require("path");
 var import_commander3 = require("commander");
 
 // src/config.ts
-var import_node_fs6 = require("fs");
-var import_node_path7 = require("path");
+var import_node_fs8 = require("fs");
+var import_node_path8 = require("path");
 var import_zod = require("zod");
+
+// src/providers.ts
+var PROVIDER_IDS = [
+  "vercel",
+  "netlify",
+  "render",
+  "railway",
+  "fly",
+  "docker",
+  "custom"
+];
+var PROVIDERS = {
+  vercel: {
+    id: "vercel",
+    label: "Vercel",
+    hasGeneratedPreset: false,
+    remoteDeploymentSupported: false
+  },
+  netlify: {
+    id: "netlify",
+    label: "Netlify",
+    hasGeneratedPreset: false,
+    remoteDeploymentSupported: false
+  },
+  render: {
+    id: "render",
+    label: "Render",
+    hasGeneratedPreset: true,
+    remoteDeploymentSupported: false
+  },
+  railway: {
+    id: "railway",
+    label: "Railway",
+    hasGeneratedPreset: true,
+    remoteDeploymentSupported: false
+  },
+  fly: {
+    id: "fly",
+    label: "Fly.io",
+    hasGeneratedPreset: true,
+    remoteDeploymentSupported: false
+  },
+  docker: {
+    id: "docker",
+    label: "Docker",
+    hasGeneratedPreset: true,
+    remoteDeploymentSupported: false
+  },
+  custom: {
+    id: "custom",
+    label: "Custom",
+    hasGeneratedPreset: false,
+    remoteDeploymentSupported: false
+  }
+};
+function isProviderId(value) {
+  return PROVIDER_IDS.includes(value);
+}
+function providerHelpText() {
+  return PROVIDER_IDS.join(", ");
+}
+
+// src/storage.ts
+var import_node_fs7 = require("fs");
+var import_node_path7 = require("path");
+var import_node_crypto2 = require("crypto");
+function atomicWriteText(path, content, mode) {
+  const directory = (0, import_node_path7.dirname)(path);
+  (0, import_node_fs7.mkdirSync)(directory, { recursive: true });
+  const temporaryPath = (0, import_node_path7.join)(
+    directory,
+    `.${(0, import_node_path7.basename)(path)}.${process.pid}.${(0, import_node_crypto2.randomUUID)()}.tmp`
+  );
+  try {
+    (0, import_node_fs7.writeFileSync)(temporaryPath, content, {
+      encoding: "utf8",
+      flag: "wx",
+      ...mode === void 0 ? {} : { mode }
+    });
+    if (mode !== void 0) {
+      (0, import_node_fs7.chmodSync)(temporaryPath, mode);
+    }
+    (0, import_node_fs7.renameSync)(temporaryPath, path);
+    if (mode !== void 0) {
+      (0, import_node_fs7.chmodSync)(path, mode);
+    }
+  } finally {
+    if ((0, import_node_fs7.existsSync)(temporaryPath)) {
+      (0, import_node_fs7.rmSync)(temporaryPath, { force: true });
+    }
+  }
+}
+function readJsonFile(path, fallback) {
+  if (!(0, import_node_fs7.existsSync)(path)) {
+    return fallback;
+  }
+  try {
+    return JSON.parse((0, import_node_fs7.readFileSync)(path, "utf8"));
+  } catch {
+    throw new Error(`Invalid JSON in ${(0, import_node_path7.basename)(path)}.`);
+  }
+}
+
+// src/config.ts
 var CONFIG_FILE_NAME = "launchstack.config.json";
 var launchStackConfigSchema = import_zod.z.object({
   appName: import_zod.z.string().min(1),
   environment: import_zod.z.enum(["development", "staging", "production"]),
-  provider: import_zod.z.enum(["vercel", "netlify", "render", "railway", "docker", "custom"]),
+  provider: import_zod.z.enum(PROVIDER_IDS),
   buildCommand: import_zod.z.string().min(1),
   outputDirectory: import_zod.z.string().min(1),
   deployTarget: import_zod.z.string().min(1)
 });
 function getConfigPath() {
-  return (0, import_node_path7.resolve)(process.cwd(), CONFIG_FILE_NAME);
+  return (0, import_node_path8.resolve)(process.cwd(), CONFIG_FILE_NAME);
 }
 function configExists() {
-  return (0, import_node_fs6.existsSync)(getConfigPath());
+  return (0, import_node_fs8.existsSync)(getConfigPath());
 }
 function createDefaultConfig(appName) {
   return {
@@ -436,33 +635,74 @@ function createDefaultConfig(appName) {
   };
 }
 function writeConfig(config) {
-  (0, import_node_fs6.writeFileSync)(getConfigPath(), JSON.stringify(config, null, 2));
+  const validated = launchStackConfigSchema.parse(config);
+  atomicWriteText(
+    getConfigPath(),
+    `${JSON.stringify(validated, null, 2)}
+`
+  );
 }
 function readConfig() {
-  const raw = (0, import_node_fs6.readFileSync)(getConfigPath(), "utf-8");
+  const raw = (0, import_node_fs8.readFileSync)(getConfigPath(), "utf-8");
   const parsed = JSON.parse(raw);
   return launchStackConfigSchema.parse(parsed);
 }
 
+// src/deployment.ts
+var import_node_fs9 = require("fs");
+var import_node_path9 = require("path");
+function resolveVerifiedOutputDirectory(projectDirectory, configuredOutputDirectory) {
+  const projectRoot = (0, import_node_path9.resolve)(projectDirectory);
+  const outputPath = (0, import_node_path9.resolve)(projectRoot, configuredOutputDirectory);
+  const relativePath = (0, import_node_path9.relative)(projectRoot, outputPath);
+  if (relativePath === ".." || relativePath.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || (0, import_node_path9.isAbsolute)(relativePath)) {
+    throw new Error(
+      "Configured output directory must stay inside the project directory."
+    );
+  }
+  if (!(0, import_node_fs9.existsSync)(outputPath)) {
+    throw new Error(
+      `Output directory not found: ${configuredOutputDirectory}`
+    );
+  }
+  if (!(0, import_node_fs9.statSync)(outputPath).isDirectory()) {
+    throw new Error(
+      `Configured output path is not a directory: ${configuredOutputDirectory}`
+    );
+  }
+  return outputPath;
+}
+
 // src/git.ts
 var import_node_child_process2 = require("child_process");
-function run(command) {
-  return (0, import_node_child_process2.execSync)(command, {
+function run(args, cwd) {
+  return (0, import_node_child_process2.execFileSync)("git", args, {
+    cwd,
     encoding: "utf-8",
-    stdio: ["pipe", "pipe", "ignore"]
+    stdio: ["ignore", "pipe", "ignore"]
   }).trim();
 }
-function getGitMetadata() {
+function getGitMetadata(cwd = process.cwd()) {
   try {
-    const branch = run("git rev-parse --abbrev-ref HEAD");
-    const commitHash = run("git rev-parse HEAD");
-    const commitMessage = run("git log -1 --pretty=%B");
-    const dirty = run("git status --porcelain").length > 0;
+    const status = run(
+      ["status", "--porcelain=v2", "--branch"],
+      cwd
+    );
+    const lines = status.split("\n").filter(Boolean);
+    const branch = lines.find((line) => line.startsWith("# branch.head "))?.slice("# branch.head ".length);
+    const commitHash = lines.find((line) => line.startsWith("# branch.oid "))?.slice("# branch.oid ".length);
+    if (!commitHash || commitHash === "(initial)") {
+      return null;
+    }
+    const commitMessage = run(
+      ["log", "-1", "--pretty=%B"],
+      cwd
+    );
     return {
-      branch,
+      branch: !branch || branch === "(detached)" ? "HEAD" : branch,
       commitHash,
       commitMessage,
-      dirty
+      dirty: lines.some((line) => !line.startsWith("# "))
     };
   } catch {
     return null;
@@ -470,48 +710,50 @@ function getGitMetadata() {
 }
 
 // src/history.ts
-var import_node_fs7 = require("fs");
-var import_node_path8 = require("path");
+var import_node_path10 = require("path");
 var STORE_DIR = ".launchstack";
 var HISTORY_FILE = "history.json";
-function getStorePath() {
-  return (0, import_node_path8.resolve)(process.cwd(), STORE_DIR);
+function getHistoryPath(projectDirectory = process.cwd()) {
+  return (0, import_node_path10.resolve)(
+    projectDirectory,
+    STORE_DIR,
+    HISTORY_FILE
+  );
 }
-function getHistoryPath() {
-  return (0, import_node_path8.resolve)(getStorePath(), HISTORY_FILE);
-}
-function ensureStore() {
-  if (!(0, import_node_fs7.existsSync)(getStorePath())) {
-    (0, import_node_fs7.mkdirSync)(getStorePath(), { recursive: true });
+function readHistory(projectDirectory = process.cwd()) {
+  const records = readJsonFile(
+    getHistoryPath(projectDirectory),
+    []
+  );
+  if (!Array.isArray(records)) {
+    throw new Error("history.json must contain a JSON array.");
   }
+  return records;
 }
-function readHistory() {
-  ensureStore();
-  if (!(0, import_node_fs7.existsSync)(getHistoryPath())) {
-    return [];
-  }
-  return JSON.parse((0, import_node_fs7.readFileSync)(getHistoryPath(), "utf-8"));
+function writeHistory(records, projectDirectory = process.cwd()) {
+  atomicWriteText(
+    getHistoryPath(projectDirectory),
+    `${JSON.stringify(records, null, 2)}
+`
+  );
 }
-function writeHistory(records) {
-  ensureStore();
-  (0, import_node_fs7.writeFileSync)(getHistoryPath(), JSON.stringify(records, null, 2));
-}
-function addDeploymentRecord(record) {
-  const records = readHistory();
+function addDeploymentRecord(record, projectDirectory = process.cwd()) {
+  const records = readHistory(projectDirectory);
   records.unshift(record);
-  writeHistory(records.slice(0, 50));
+  writeHistory(records.slice(0, 50), projectDirectory);
 }
 
 // src/commands/deploy.ts
-var deployCommand = new import_commander3.Command("deploy").description("Run the configured LaunchStack deployment workflow").option("--skip-build", "Skip the build command").action((options) => {
+var deployCommand = new import_commander3.Command("deploy").description("Build and prepare the configured deployment artifacts").option("--skip-build", "Skip the build command").action((options) => {
   const createdAt = (/* @__PURE__ */ new Date()).toISOString();
   try {
     const config = readConfig();
     const git = getGitMetadata();
-    console.log("LaunchStack deployment");
+    const provider = PROVIDERS[config.provider];
+    console.log("LaunchStack deployment preparation");
     console.log(`App: ${config.appName}`);
     console.log(`Environment: ${config.environment}`);
-    console.log(`Provider: ${config.provider}`);
+    console.log(`Provider: ${provider.label}`);
     if (git) {
       console.log(`Branch: ${git.branch}`);
       console.log(`Commit: ${git.commitHash.slice(0, 7)}`);
@@ -521,29 +763,16 @@ var deployCommand = new import_commander3.Command("deploy").description("Run the
     }
     console.log("");
     if (!options.skipBuild) {
-      console.log(`Running build: ${config.buildCommand}`);
+      console.log(`Running trusted project build command: ${config.buildCommand}`);
       (0, import_node_child_process3.execSync)(config.buildCommand, {
         stdio: "inherit",
         cwd: process.cwd()
       });
     }
-    const outputPath = (0, import_node_path9.resolve)(process.cwd(), config.outputDirectory);
-    if (!(0, import_node_fs8.existsSync)(outputPath)) {
-      addDeploymentRecord({
-        id: `dep_${Date.now()}`,
-        appName: config.appName,
-        environment: config.environment,
-        provider: config.provider,
-        deployTarget: config.deployTarget,
-        outputDirectory: config.outputDirectory,
-        status: "failed",
-        createdAt,
-        git
-      });
-      console.log("");
-      console.log(`Output directory not found: ${config.outputDirectory}`);
-      process.exit(1);
-    }
+    resolveVerifiedOutputDirectory(
+      process.cwd(),
+      config.outputDirectory
+    );
     addDeploymentRecord({
       id: `dep_${Date.now()}`,
       appName: config.appName,
@@ -551,7 +780,7 @@ var deployCommand = new import_commander3.Command("deploy").description("Run the
       provider: config.provider,
       deployTarget: config.deployTarget,
       outputDirectory: config.outputDirectory,
-      status: "success",
+      status: "prepared",
       createdAt,
       git
     });
@@ -559,43 +788,53 @@ var deployCommand = new import_commander3.Command("deploy").description("Run the
     console.log("Build output verified");
     console.log(`Deploy target: ${config.deployTarget}`);
     console.log("");
-    console.log("Deployment workflow completed");
+    if (provider.remoteDeploymentSupported) {
+      console.log("Deployment provider confirmed the remote deployment.");
+    } else {
+      console.log(
+        "Artifacts are prepared. LaunchStack has not performed or confirmed a remote deployment for this provider."
+      );
+    }
   } catch (error) {
-    console.log("Deployment failed");
+    console.log("Deployment preparation failed");
     console.log(error instanceof Error ? error.message : error);
-    process.exit(1);
+    process.exitCode = 1;
   }
 });
 
 // src/commands/docker.ts
-var import_node_fs9 = require("fs");
+var import_node_fs10 = require("fs");
 var import_commander4 = require("commander");
 function writeFileIfAllowed(path, content, force) {
-  if ((0, import_node_fs9.existsSync)(path) && !force) {
+  if ((0, import_node_fs10.existsSync)(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  (0, import_node_fs9.writeFileSync)(path, content);
+  (0, import_node_fs10.writeFileSync)(path, content);
   console.log(`Created ${path}`);
 }
 var dockerCommand = new import_commander4.Command("docker").description("Generate Docker deployment files");
-dockerCommand.command("init").description("Create Dockerfile, .dockerignore, and docker-compose.yml").option("-f, --force", "Overwrite existing Docker files").action((options) => {
+dockerCommand.command("init").description("Create hardened Dockerfile, .dockerignore, and docker-compose.yml").option("-f, --force", "Overwrite existing Docker files").action((options) => {
   const config = readConfig();
   const force = Boolean(options.force);
-  const dockerfile = `FROM node:20-alpine
-
+  const dockerfile = `FROM node:20-alpine AS dependencies
 WORKDIR /app
-
 COPY package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-RUN npm install
-
+FROM dependencies AS build
 COPY . .
-
 RUN ${config.buildCommand}
 
+FROM node:20-alpine AS production
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi \\
+  && npm cache clean --force
+COPY --from=build /app/${config.outputDirectory} ./${config.outputDirectory}
+USER node
 EXPOSE 3000
-
 CMD ["npm", "start"]
 `;
   const dockerignore = `node_modules
@@ -645,49 +884,57 @@ var envCommand = new import_commander5.Command("env").description("View or updat
 });
 
 // src/commands/github.ts
-var import_node_fs10 = require("fs");
-var import_node_path10 = require("path");
+var import_node_fs11 = require("fs");
+var import_node_path11 = require("path");
 var import_commander6 = require("commander");
 function writeWorkflowFile(path, content, force) {
-  if ((0, import_node_fs10.existsSync)(path) && !force) {
+  if ((0, import_node_fs11.existsSync)(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  (0, import_node_fs10.mkdirSync)((0, import_node_path10.dirname)(path), { recursive: true });
-  (0, import_node_fs10.writeFileSync)(path, content);
+  (0, import_node_fs11.mkdirSync)((0, import_node_path11.dirname)(path), { recursive: true });
+  atomicWriteText(path, content);
   console.log(`Created ${path}`);
 }
 var githubCommand = new import_commander6.Command("github").description("Generate GitHub Actions workflows");
-githubCommand.command("init").description("Create a deployment workflow").option("-f, --force", "Overwrite existing workflow").action((options) => {
+githubCommand.command("init").description("Create a lockfile-first CI workflow").option("-f, --force", "Overwrite existing workflow").action((options) => {
   const config = readConfig();
-  const workflow = `name: Deploy
+  const workflow = `name: CI
 
 on:
   push:
     branches:
       - main
+  pull_request:
+
+permissions:
+  contents: read
 
 jobs:
-  build:
+  quality:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
-      - name: Install Dependencies
-        run: npm install
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build Project
+      - name: Run project checks when available
+        run: npm run check --if-present
+
+      - name: Build project
         run: ${config.buildCommand}
 `;
   writeWorkflowFile(
-    ".github/workflows/deploy.yml",
+    ".github/workflows/ci.yml",
     workflow,
     Boolean(options.force)
   );
@@ -733,27 +980,31 @@ var initCommand = new import_commander8.Command("init").description("Create a La
 
 // src/commands/provider.ts
 var import_commander9 = require("commander");
-var allowedProviders = ["vercel", "netlify", "render", "railway", "docker", "custom"];
-var providerCommand = new import_commander9.Command("provider").description("View or update the LaunchStack deployment provider").argument("[provider]", "vercel, netlify, render, railway, docker, or custom").action((provider) => {
+var providerCommand = new import_commander9.Command("provider").description("View or update the LaunchStack deployment provider").argument("[provider]", providerHelpText()).action((provider) => {
   try {
     const config = readConfig();
     if (!provider) {
-      console.log(`Current provider: ${config.provider}`);
+      const definition = PROVIDERS[config.provider];
+      console.log(`Current provider: ${definition.label} (${definition.id})`);
+      console.log(
+        definition.remoteDeploymentSupported ? "Remote deployment is supported by LaunchStack." : "LaunchStack currently prepares artifacts/presets for this provider; it does not perform the remote deployment."
+      );
       return;
     }
-    if (!allowedProviders.includes(provider)) {
-      console.log("Invalid provider. Use vercel, netlify, render, railway, docker, or custom.");
-      process.exit(1);
+    if (!isProviderId(provider)) {
+      console.log(`Invalid provider. Use ${providerHelpText()}.`);
+      process.exitCode = 1;
+      return;
     }
     config.provider = provider;
     writeConfig(config);
-    console.log(`Provider updated to ${config.provider}`);
+    console.log(`Provider updated to ${PROVIDERS[provider].label}`);
   } catch (error) {
     console.log("Could not update provider");
     if (error instanceof Error) {
       console.log(error.message);
     }
-    process.exit(1);
+    process.exitCode = 1;
   }
 });
 
@@ -776,60 +1027,170 @@ var rollbackCommand = new import_commander10.Command("rollback").description("Sh
 });
 
 // src/commands/secrets.ts
-var import_node_fs11 = require("fs");
-var import_node_path11 = require("path");
 var import_commander11 = require("commander");
+
+// src/secrets-store.ts
+var import_node_fs12 = require("fs");
+var import_node_path12 = require("path");
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
-function getStorePath2() {
-  return (0, import_node_path11.resolve)(process.cwd(), STORE_DIR2);
+var SECRET_MODE = 384;
+var RESERVED_KEYS = /* @__PURE__ */ new Set([
+  "__proto__",
+  "constructor",
+  "prototype"
+]);
+function getSecretsPath(projectDirectory = process.cwd()) {
+  return (0, import_node_path12.resolve)(
+    projectDirectory,
+    STORE_DIR2,
+    SECRETS_FILE
+  );
 }
-function getSecretsPath() {
-  return (0, import_node_path11.resolve)(getStorePath2(), SECRETS_FILE);
-}
-function ensureStore2() {
-  if (!(0, import_node_fs11.existsSync)(getStorePath2())) {
-    (0, import_node_fs11.mkdirSync)(getStorePath2(), { recursive: true });
+function validateSecretKey(key) {
+  const normalized = key.trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_.-]{0,127}$/.test(normalized) || RESERVED_KEYS.has(normalized)) {
+    throw new Error(
+      "Secret keys must start with a letter or underscore, contain only letters, numbers, underscores, dots, or hyphens, and must not use reserved object keys."
+    );
   }
+  return normalized;
 }
-function readSecrets() {
-  ensureStore2();
-  if (!(0, import_node_fs11.existsSync)(getSecretsPath())) {
-    return {};
+function readSecrets(projectDirectory = process.cwd()) {
+  const path = getSecretsPath(projectDirectory);
+  const parsed = readJsonFile(path, {});
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("secrets.json must contain a JSON object.");
   }
-  return JSON.parse((0, import_node_fs11.readFileSync)(getSecretsPath(), "utf-8"));
+  const secrets = /* @__PURE__ */ Object.create(null);
+  for (const [key, value] of Object.entries(parsed)) {
+    validateSecretKey(key);
+    if (typeof value !== "string") {
+      throw new Error("secrets.json contains a non-string secret value.");
+    }
+    secrets[key] = value;
+  }
+  return secrets;
 }
-function writeSecrets(secrets) {
-  ensureStore2();
-  (0, import_node_fs11.writeFileSync)(getSecretsPath(), JSON.stringify(secrets, null, 2));
+function writeSecrets(secrets, projectDirectory = process.cwd()) {
+  const storeDirectory = (0, import_node_path12.resolve)(projectDirectory, STORE_DIR2);
+  (0, import_node_fs12.mkdirSync)(storeDirectory, { recursive: true });
+  atomicWriteText(
+    getSecretsPath(projectDirectory),
+    `${JSON.stringify(secrets, null, 2)}
+`,
+    SECRET_MODE
+  );
+}
+function setSecret(key, value, projectDirectory = process.cwd()) {
+  const normalizedKey = validateSecretKey(key);
+  if (value.length === 0) {
+    throw new Error("Secret value must not be empty.");
+  }
+  const secrets = readSecrets(projectDirectory);
+  secrets[normalizedKey] = value;
+  writeSecrets(secrets, projectDirectory);
+}
+function removeSecret(key, projectDirectory = process.cwd()) {
+  const normalizedKey = validateSecretKey(key);
+  const secrets = readSecrets(projectDirectory);
+  if (!(normalizedKey in secrets)) {
+    return false;
+  }
+  delete secrets[normalizedKey];
+  writeSecrets(secrets, projectDirectory);
+  return true;
+}
+
+// src/commands/secrets.ts
+async function readSecretFromStdin() {
+  let value = "";
+  for await (const chunk of process.stdin) {
+    value += String(chunk);
+  }
+  return value.replace(/\r?\n$/, "");
+}
+async function promptHiddenSecret() {
+  if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== "function") {
+    throw new Error(
+      "Interactive secret entry requires a TTY. Pipe the value and use --stdin instead."
+    );
+  }
+  return new Promise((resolve10, reject) => {
+    let value = "";
+    const input = process.stdin;
+    const cleanup = () => {
+      input.off("data", onData);
+      input.setRawMode(false);
+      input.pause();
+    };
+    const onData = (chunk) => {
+      const text = String(chunk);
+      for (const character of text) {
+        if (character === "\r" || character === "\n") {
+          cleanup();
+          process.stdout.write("\n");
+          resolve10(value);
+          return;
+        }
+        if (character === "") {
+          cleanup();
+          process.stdout.write("\n");
+          reject(new Error("Secret entry cancelled."));
+          return;
+        }
+        if (character === "\x7F" || character === "\b") {
+          value = value.slice(0, -1);
+          continue;
+        }
+        value += character;
+      }
+    };
+    process.stdout.write("Secret value: ");
+    input.setEncoding("utf8");
+    input.setRawMode(true);
+    input.resume();
+    input.on("data", onData);
+  });
 }
 var secretsCommand = new import_commander11.Command("secrets").description("Manage local LaunchStack secrets");
-secretsCommand.command("add").description("Add or update a local secret").argument("<key>", "Secret key").argument("<value>", "Secret value").action((key, value) => {
-  const secrets = readSecrets();
-  secrets[key] = value;
-  writeSecrets(secrets);
-  console.log(`Secret saved: ${key}`);
+secretsCommand.command("add").description("Add or update a local secret without exposing it in process arguments").argument("<key>", "Secret key").option("--stdin", "Read the secret value from standard input").action(async (key, options) => {
+  try {
+    validateSecretKey(key);
+    const value = options.stdin ? await readSecretFromStdin() : await promptHiddenSecret();
+    setSecret(key, value);
+    console.log(`Secret saved: ${key}`);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "Could not save secret.");
+    process.exitCode = 1;
+  }
 });
 secretsCommand.command("list").description("List local secret keys").action(() => {
-  const secrets = readSecrets();
-  const keys = Object.keys(secrets);
-  if (keys.length === 0) {
-    console.log("No secrets found");
-    return;
+  try {
+    const keys = Object.keys(readSecrets());
+    if (keys.length === 0) {
+      console.log("No secrets found");
+      return;
+    }
+    keys.forEach((key) => {
+      console.log(`${key}=********`);
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "Could not read secrets.");
+    process.exitCode = 1;
   }
-  keys.forEach((key) => {
-    console.log(`${key}=********`);
-  });
 });
 secretsCommand.command("remove").description("Remove a local secret").argument("<key>", "Secret key").action((key) => {
-  const secrets = readSecrets();
-  if (!secrets[key]) {
-    console.log(`Secret not found: ${key}`);
-    return;
+  try {
+    if (!removeSecret(key)) {
+      console.log(`Secret not found: ${key}`);
+      return;
+    }
+    console.log(`Secret removed: ${key}`);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "Could not remove secret.");
+    process.exitCode = 1;
   }
-  delete secrets[key];
-  writeSecrets(secrets);
-  console.log(`Secret removed: ${key}`);
 });
 
 // src/commands/status.ts
@@ -874,8 +1235,8 @@ var validateCommand = new import_commander13.Command("validate").description("Va
 // src/cli.ts
 var program = new import_commander14.Command();
 program.name("launchstack").description(
-  "Backend API scaffolding, deployment automation, and developer workflow CLI"
-).version("2.0.0");
+  "Backend API scaffolding, deployment preparation, and developer workflow CLI"
+).version("2.1.0");
 program.addCommand(createCommand);
 program.addCommand(doctorCommand);
 program.addCommand(initCommand);
@@ -890,3 +1251,4 @@ program.addCommand(rollbackCommand);
 program.addCommand(dockerCommand);
 program.addCommand(githubCommand);
 program.parse();
+//# sourceMappingURL=cli.js.map
