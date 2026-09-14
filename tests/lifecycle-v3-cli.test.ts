@@ -4,13 +4,14 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, test } from "vitest";
 
-const cli = resolve(process.cwd(), "dist/cli.js");
+const tsxCli = resolve(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
+const sourceCli = resolve(process.cwd(), "src", "cli.ts");
 
 function run(args: string[], cwd: string) {
-  return spawnSync(process.execPath, [cli, ...args], {
+  return spawnSync(process.execPath, [tsxCli, sourceCli, ...args], {
     cwd,
     encoding: "utf8",
-    env: { ...process.env, NO_COLOR: "1" }
+    env: { ...process.env, NO_COLOR: "1", LAUNCHSTACK_VERSION_OVERRIDE: "3.0.0" }
   });
 }
 
@@ -37,6 +38,7 @@ function tempProject(): string {
 describe("LaunchStack v3 CLI contract", () => {
   test("lists first-party capabilities", () => {
     const result = run(["add", "--list"], tempProject());
+    expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("redis");
     expect(result.stdout).toContain("queue");
@@ -45,6 +47,7 @@ describe("LaunchStack v3 CLI contract", () => {
 
   test("lists installed plugins as machine-readable JSON", () => {
     const result = run(["plugin", "list", "--json"], tempProject());
+    expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual([]);
   });
@@ -53,6 +56,7 @@ describe("LaunchStack v3 CLI contract", () => {
     const directory = tempProject();
     const before = readFileSync(join(directory, "launchstack.json"), "utf8");
     const result = run(["plan", "--json"], directory);
+    expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout)).toHaveProperty("actions");
     expect(readFileSync(join(directory, "launchstack.json"), "utf8")).toBe(before);
@@ -60,6 +64,7 @@ describe("LaunchStack v3 CLI contract", () => {
 
   test("emits a JSON production audit report", () => {
     const result = run(["audit", "--json"], tempProject());
+    expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     const report = JSON.parse(result.stdout);
     expect(report).toHaveProperty("findings");
@@ -70,26 +75,9 @@ describe("LaunchStack v3 CLI contract", () => {
     const directory = tempProject();
     const schemaPath = join(directory, "openapi.json");
     const outputPath = join(directory, "sdk.ts");
-    writeFileSync(
-      schemaPath,
-      JSON.stringify({
-        openapi: "3.1.0",
-        info: { title: "Fixture", version: "1" },
-        paths: {
-          "/health": {
-            get: {
-              operationId: "health",
-              responses: { "200": { description: "ok" } }
-            }
-          }
-        }
-      })
-    );
-
-    const result = run(
-      ["client", "generate", "--schema", schemaPath, "--output", outputPath],
-      directory
-    );
+    writeFileSync(schemaPath, JSON.stringify({ openapi: "3.1.0", info: { title: "Fixture", version: "1" }, paths: { "/health": { get: { operationId: "health", responses: { "200": { description: "ok" } } } } } }));
+    const result = run(["client", "generate", "--schema", schemaPath, "--output", outputPath], directory);
+    expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     expect(readFileSync(outputPath, "utf8")).toContain("class LaunchStackClient");
   });
@@ -97,6 +85,7 @@ describe("LaunchStack v3 CLI contract", () => {
   test("dry-runs module generation without writing files", () => {
     const directory = tempProject();
     const result = run(["generate", "module", "billing", "--dry-run", "--json"], directory);
+    expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     const plan = JSON.parse(result.stdout);
     expect(plan.files.some((path: string) => path.includes("billing"))).toBe(true);
@@ -104,6 +93,7 @@ describe("LaunchStack v3 CLI contract", () => {
 
   test("accepts stage-aware status", () => {
     const result = run(["status", "--stage", "pr-142", "--json"], tempProject());
+    expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     const status = JSON.parse(result.stdout);
     expect(status.stage).toBe("pr-142");

@@ -21,8 +21,43 @@ import { rollbackCommand } from "./commands/rollback";
 import { secretsCommand } from "./commands/secrets";
 import { statusCommand } from "./commands/status";
 import { validateCommand } from "./commands/validate";
-declare const __LAUNCHSTACK_VERSION__: string;
+import { currentLaunchStackVersion } from "./version";
+
 const program = new Command();
-program.name("launchstack").description("Backend API scaffolding and lifecycle platform for production TypeScript services").version(__LAUNCHSTACK_VERSION__);
-program.addCommand(createCommand); program.addCommand(addCommand); program.addCommand(pluginCommand); program.addCommand(planCommand); program.addCommand(applyCommand); program.addCommand(reconcileCommand); program.addCommand(diffCommand); program.addCommand(upgradeCommand); program.addCommand(devCommand); program.addCommand(clientCommand); program.addCommand(auditCommand); program.addCommand(generateCommand); program.addCommand(previewCommand); program.addCommand(stageCommand); program.addCommand(destroyCommand); program.addCommand(doctorCommand); program.addCommand(initCommand); program.addCommand(statusCommand); program.addCommand(deployCommand); program.addCommand(validateCommand); program.addCommand(envCommand); program.addCommand(providerCommand); program.addCommand(secretsCommand); program.addCommand(historyCommand); program.addCommand(rollbackCommand); program.addCommand(dockerCommand); program.addCommand(githubCommand);
-program.parseAsync().catch((error) => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });
+program
+  .name("launchstack")
+  .description("Backend API scaffolding and lifecycle platform for production TypeScript services")
+  .version(currentLaunchStackVersion());
+
+program.addCommand(createCommand);
+program.addCommand(addCommand);
+program.addCommand(pluginCommand);
+program.addCommand(planCommand);
+program.addCommand(applyCommand);
+program.addCommand(reconcileCommand);
+program.addCommand(diffCommand);
+program.addCommand(upgradeCommand);
+program.addCommand(devCommand);
+program.addCommand(clientCommand);
+program.addCommand(auditCommand);
+program.addCommand(generateCommand);
+program.addCommand(previewCommand);
+program.addCommand(stageCommand);
+program.addCommand(destroyCommand);
+program.addCommand(doctorCommand);
+program.addCommand(initCommand);
+program.addCommand(statusCommand);
+program.addCommand(deployCommand);
+program.addCommand(validateCommand);
+program.addCommand(envCommand);
+program.addCommand(providerCommand);
+program.addCommand(secretsCommand);
+program.addCommand(historyCommand);
+program.addCommand(rollbackCommand);
+program.addCommand(dockerCommand);
+program.addCommand(githubCommand);
+
+program.parseAsync().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});
