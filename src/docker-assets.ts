@@ -78,13 +78,16 @@ CMD ${dockerJsonCommand(startCommand)}
 export function renderDockerIgnore(): string {
   return `node_modules
 dist
+coverage
 .git
+.github
 .env
 .env.*
 !.env.example
 .launchstack
-coverage
-npm-debug.log
+*.log
+npm-debug.log*
+docker-compose*.yml
 `;
 }
 
