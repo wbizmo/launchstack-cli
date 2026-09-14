@@ -1,13 +1,19 @@
 export { LaunchStackClient } from "./client";
 export { LaunchStackError } from "./errors";
-
-export type {
-  ChangelogEntry,
-  CreateChangelogInput,
-  CreateDeploymentInput,
-  CreateLaunchInput,
-  Deployment,
-  Launch,
-  LaunchStackConfig,
-} from "./types";
+export type { ChangelogEntry, CreateChangelogInput, CreateDeploymentInput, CreateLaunchInput, Deployment, Launch, LaunchStackConfig } from "./types";
 export * from "./generator";
+export * from "./project/types";
+export * from "./project/manifest";
+export * from "./project/state";
+export * from "./project/reconcile";
+export * from "./project/upgrade";
+export * from "./extensions/types";
+export * from "./extensions/first-party";
+export * from "./extensions/engine";
+export * from "./client/openapi";
+export * from "./client/generate";
+export * from "./audit/types";
+export * from "./audit/run";
+export * from "./generator/module";
+export * from "./stages/types";
+export * from "./stages/manager";

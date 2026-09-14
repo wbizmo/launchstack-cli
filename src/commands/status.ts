@@ -1,24 +1,18 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { Command } from "commander";
 import { readConfig } from "../config";
+import { loadProjectManifest } from "../project/manifest";
+import { detectManagedDrift, loadProjectState } from "../project/state";
+import { inspectStage } from "../stages/manager";
+import { currentLaunchStackVersion } from "../version";
 
-export const statusCommand = new Command("status")
-  .description("Show LaunchStack project status")
-  .action(() => {
-    try {
-      const config = readConfig();
-
-      console.log("LaunchStack project status");
-      console.log("");
-      console.log(`App: ${config.appName}`);
-      console.log(`Environment: ${config.environment}`);
-      console.log(`Provider: ${config.provider}`);
-      console.log(`Build command: ${config.buildCommand}`);
-      console.log(`Output directory: ${config.outputDirectory}`);
-      console.log(`Deploy target: ${config.deployTarget}`);
-      console.log("");
-      console.log("Config: valid");
-    } catch {
-      console.log("Config: missing or invalid");
-      console.log("Run: launchstack init --name your-app");
-    }
-  });
+export const statusCommand = new Command("status").description("Show LaunchStack project or stage status").option("--stage <stage>", "Show one named stage").option("--json").option("-d, --directory <path>").action((options: { stage?: string; json?: boolean; directory?: string }) => {
+  const directory = options.directory ?? process.cwd();
+  try {
+    if (options.stage) { const status = inspectStage(directory, options.stage); const output = { stage: options.stage, status: status.state?.status ?? "absent", provider: status.state?.provider ?? null, resourceId: status.state?.resourceId ?? null, url: status.state?.url ?? null, sourceCommit: status.state?.sourceCommit ?? null, production: status.state?.production ?? false, providerExists: status.providerExists ?? false, providerStatus: status.providerStatus ?? null }; if (options.json) console.log(JSON.stringify(output, null, 2)); else console.log(`Stage ${options.stage}: ${output.status}${output.provider ? ` (${output.provider})` : ""}`); return; }
+    if (existsSync(join(directory, "launchstack.json"))) { const manifest = loadProjectManifest(directory); const state = loadProjectState(directory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() }); const drift = detectManagedDrift(directory, state); const output = { project: manifest.project.name, templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion(), provider: manifest.provider?.id ?? null, capabilities: Object.keys(manifest.capabilities).sort(), installedExtensions: Object.values(state.extensions).map((item) => ({ id: item.id, version: item.version, kind: item.kind })).sort((a, b) => a.id.localeCompare(b.id)), stages: Object.values(state.stages).map((item) => ({ name: item.name, status: item.status, provider: item.provider, url: item.url ?? null, production: item.production })).sort((a, b) => a.name.localeCompare(b.name)), drift: drift.filter((item) => item.kind !== "clean") }; if (options.json) console.log(JSON.stringify(output, null, 2)); else { console.log("LaunchStack project status"); console.log(`App: ${output.project}`); console.log(`Template: ${output.templateVersion}`); console.log(`Provider: ${output.provider ?? "none"}`); console.log(`Capabilities: ${output.capabilities.join(", ") || "none"}`); console.log(`Stages: ${output.stages.length}`); console.log(`Drift: ${output.drift.length}`); } return; }
+    if (options.directory && directory !== process.cwd()) throw new Error("Legacy config status does not support --directory; run from the project directory or upgrade the manifest.");
+    const config = readConfig(); const output = { app: config.appName, environment: config.environment, provider: config.provider, buildCommand: config.buildCommand, outputDirectory: config.outputDirectory, deployTarget: config.deployTarget, config: "valid" }; if (options.json) console.log(JSON.stringify(output, null, 2)); else { console.log("LaunchStack project status"); console.log(`App: ${config.appName}`); console.log(`Environment: ${config.environment}`); console.log(`Provider: ${config.provider}`); console.log(`Build command: ${config.buildCommand}`); console.log(`Output directory: ${config.outputDirectory}`); console.log(`Deploy target: ${config.deployTarget}`); console.log("Config: valid"); }
+  } catch (error) { if (options.json) console.log(JSON.stringify({ config: "missing-or-invalid", error: error instanceof Error ? error.message : String(error) }, null, 2)); else { console.log("Config: missing or invalid"); console.log("Run: launchstack init --name your-app"); } process.exitCode = 1; }
+});
