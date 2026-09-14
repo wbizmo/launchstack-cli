@@ -2,6 +2,9 @@ import {
   createHash,
   randomUUID
 } from "node:crypto";
+import {
+  Prisma
+} from "@prisma/client";
 import bcrypt from "bcryptjs";
 import type {
   FastifyInstance
@@ -34,45 +37,6 @@ function hashRefreshToken(
     .digest("hex");
 }
 
-function parseRefreshExpiry(
-  value: string
-): Date {
-  const match = /^(\d+)([smhd])$/.exec(value);
-
-  if (!match) {
-    throw new Error(
-      "JWT_REFRESH_EXPIRES_IN must use s, m, h, or d."
-    );
-  }
-
-  const amountValue = match[1];
-  const unitValue = match[2];
-
-  if (!amountValue || !unitValue) {
-    throw new Error(
-      "JWT_REFRESH_EXPIRES_IN could not be parsed."
-    );
-  }
-
-  const amount = Number(amountValue);
-  const unit =
-    unitValue as "s" | "m" | "h" | "d";
-
-  const multipliers: Record<
-    "s" | "m" | "h" | "d",
-    number
-  > = {
-    s: 1000,
-    m: 60 * 1000,
-    h: 60 * 60 * 1000,
-    d: 24 * 60 * 60 * 1000
-  };
-
-  return new Date(
-    Date.now() + amount * multipliers[unit]
-  );
-}
-
 function toAuthenticatedUser(user: {
   id: string;
   email: string;
@@ -85,6 +49,25 @@ function toAuthenticatedUser(user: {
     name: user.name,
     role: user.role
   };
+}
+
+function invalidRefreshToken(
+  message = "Refresh token is no longer valid."
+): ApplicationError {
+  return new ApplicationError({
+    statusCode: 401,
+    code: ErrorCode.AuthenticationRequired,
+    message
+  });
+}
+
+function duplicateEmailError(): ApplicationError {
+  return new ApplicationError({
+    statusCode: 409,
+    code: ErrorCode.ResourceConflict,
+    message:
+      "An account with this email already exists."
+  });
 }
 
 async function issueTokens(
@@ -128,8 +111,8 @@ async function issueTokens(
     tokenHash:
       hashRefreshToken(refreshToken),
     userId: user.id,
-    expiresAt: parseRefreshExpiry(
-      app.config.jwtRefreshExpiresIn
+    expiresAt: new Date(
+      Date.now() + app.config.jwtRefreshExpiresInMs
     )
   });
 
@@ -164,12 +147,7 @@ export class AuthService {
       );
 
     if (existingUser) {
-      throw new ApplicationError({
-        statusCode: 409,
-        code: ErrorCode.ResourceConflict,
-        message:
-          "An account with this email already exists."
-      });
+      throw duplicateEmailError();
     }
 
     const passwordHash =
@@ -178,13 +156,26 @@ export class AuthService {
         PASSWORD_ROUNDS
       );
 
-    const createdUser =
-      await this.repository.createUser({
-        email,
-        name:
-          input.name?.trim() || null,
-        passwordHash
-      });
+    let createdUser;
+
+    try {
+      createdUser =
+        await this.repository.createUser({
+          email,
+          name:
+            input.name?.trim() || null,
+          passwordHash
+        });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw duplicateEmailError();
+      }
+
+      throw error;
+    }
 
     const user =
       toAuthenticatedUser(createdUser);
@@ -271,59 +262,55 @@ export class AuthService {
           }
         );
     } catch {
-      throw new ApplicationError({
-        statusCode: 401,
-        code:
-          ErrorCode.AuthenticationRequired,
-        message:
-          "Invalid or expired refresh token."
-      });
+      throw invalidRefreshToken(
+        "Invalid or expired refresh token."
+      );
     }
 
     if (payload.type !== "refresh") {
-      throw new ApplicationError({
-        statusCode: 401,
-        code:
-          ErrorCode.AuthenticationRequired,
-        message:
-          "Invalid refresh token."
-      });
+      throw invalidRefreshToken(
+        "Invalid refresh token."
+      );
     }
 
     const tokenHash =
       hashRefreshToken(refreshToken);
 
-    const storedToken =
-      await this.repository
-        .findRefreshTokenWithUser(
-          tokenHash
+    return this.app.prisma.$transaction(
+      async (transaction) => {
+        const repository =
+          new AuthRepository(transaction);
+        const storedToken =
+          await repository.findRefreshTokenWithUser(
+            tokenHash
+          );
+
+        if (
+          !storedToken ||
+          storedToken.revokedAt ||
+          storedToken.expiresAt <= new Date()
+        ) {
+          throw invalidRefreshToken();
+        }
+
+        const consumed =
+          await repository.consumeRefreshToken(
+            tokenHash,
+            new Date()
+          );
+
+        if (consumed.count !== 1) {
+          throw invalidRefreshToken();
+        }
+
+        return issueTokens(
+          this.app,
+          repository,
+          toAuthenticatedUser(
+            storedToken.user
+          )
         );
-
-    if (
-      !storedToken ||
-      storedToken.revokedAt ||
-      storedToken.expiresAt <= new Date()
-    ) {
-      throw new ApplicationError({
-        statusCode: 401,
-        code:
-          ErrorCode.AuthenticationRequired,
-        message:
-          "Refresh token is no longer valid."
-      });
-    }
-
-    await this.repository
-      .revokeRefreshToken(
-        storedToken.id
-      );
-
-    return issueTokens(
-      this.app,
-      this.repository,
-      toAuthenticatedUser(
-        storedToken.user
-      )
+      }
     );
   }
 

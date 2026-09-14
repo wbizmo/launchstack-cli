@@ -5,19 +5,55 @@ import {
   statSync,
   writeFileSync
 } from "node:fs";
-import { join } from "node:path";
+import { basename, extname, join } from "node:path";
 
 export type TemplateVariables = Record<string, string>;
+
+const TEXT_EXTENSIONS = new Set([
+  ".cjs",
+  ".css",
+  ".example",
+  ".html",
+  ".js",
+  ".json",
+  ".md",
+  ".mjs",
+  ".prisma",
+  ".sh",
+  ".toml",
+  ".ts",
+  ".tsx",
+  ".txt",
+  ".yaml",
+  ".yml"
+]);
+
+const TEXT_FILENAMES = new Set([
+  ".dockerignore",
+  ".env",
+  ".env.example",
+  ".gitignore",
+  ".npmrc",
+  "Dockerfile",
+  "LICENSE"
+]);
 
 export function renderTemplate(
   content: string,
   variables: TemplateVariables
 ): string {
-  return Object.entries(variables).reduce(
-    (rendered, [key, value]) =>
-      rendered.split(`{{${key}}}`).join(value),
-    content
+  return content.replace(
+    /{{([A-Z0-9_]+)}}/g,
+    (token, key: string) =>
+      Object.prototype.hasOwnProperty.call(variables, key)
+        ? variables[key] ?? token
+        : token
   );
+}
+
+export function isTextTemplateFile(path: string): boolean {
+  const name = basename(path);
+  return TEXT_FILENAMES.has(name) || TEXT_EXTENSIONS.has(extname(name).toLowerCase());
 }
 
 export function renderDirectory(
@@ -34,6 +70,10 @@ export function renderDirectory(
 
     if (stats.isDirectory()) {
       renderDirectory(path, variables);
+      continue;
+    }
+
+    if (!isTextTemplateFile(path)) {
       continue;
     }
 

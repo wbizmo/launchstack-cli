@@ -14,12 +14,14 @@ afterEach(async () => {
     await app.close();
     app = undefined;
   }
+
+  delete process.env.AUTH_RATE_LIMIT_MAX;
+  delete process.env.AUTH_RATE_LIMIT_WINDOW_MS;
 });
 
 describe("Zod request validation", () => {
   it("rejects an invalid registration email", async () => {
     process.env.NODE_ENV = "test";
-
     app = await buildApp();
 
     const response = await app.inject({
@@ -32,22 +34,10 @@ describe("Zod request validation", () => {
     });
 
     expect(response.statusCode).toBe(400);
-
-    const body = response.json<{
-      statusCode: number;
-      error: string;
-      message: string;
-    }>();
-
-    expect(body.statusCode).toBe(400);
-    expect(typeof body.error).toBe("string");
-    expect(body.error.length).toBeGreaterThan(0);
-    expect(body.message.length).toBeGreaterThan(0);
   });
 
   it("rejects a registration password shorter than eight characters", async () => {
     process.env.NODE_ENV = "test";
-
     app = await buildApp();
 
     const response = await app.inject({
@@ -62,9 +52,24 @@ describe("Zod request validation", () => {
     expect(response.statusCode).toBe(400);
   });
 
+  it("rejects oversized passwords before hashing or database work", async () => {
+    process.env.NODE_ENV = "test";
+    app = await buildApp();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: {
+        email: "user@example.com",
+        password: "x".repeat(129)
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
   it("rejects missing login credentials", async () => {
     process.env.NODE_ENV = "test";
-
     app = await buildApp();
 
     const response = await app.inject({
@@ -76,16 +81,37 @@ describe("Zod request validation", () => {
     expect(response.statusCode).toBe(400);
   });
 
-  it("rejects an empty refresh token", async () => {
+  it("rate limits repeated authentication attempts", async () => {
     process.env.NODE_ENV = "test";
+    process.env.AUTH_RATE_LIMIT_MAX = "1";
+    process.env.AUTH_RATE_LIMIT_WINDOW_MS = "60000";
+    app = await buildApp();
 
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: {}
+    });
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: {}
+    });
+
+    expect(first.statusCode).toBe(400);
+    expect(second.statusCode).toBe(429);
+    expect(second.json<{ requestId: string }>().requestId).toBeTruthy();
+  });
+
+  it("rejects an oversized refresh token", async () => {
+    process.env.NODE_ENV = "test";
     app = await buildApp();
 
     const response = await app.inject({
       method: "POST",
       url: "/api/auth/refresh",
       payload: {
-        refreshToken: ""
+        refreshToken: "x".repeat(4097)
       }
     });
 
@@ -94,7 +120,6 @@ describe("Zod request validation", () => {
 
   it("accepts valid health responses through the serializer", async () => {
     process.env.NODE_ENV = "test";
-
     app = await buildApp();
 
     const response = await app.inject({

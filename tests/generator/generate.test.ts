@@ -2,7 +2,8 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
-  rmSync
+  rmSync,
+  writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -82,5 +83,31 @@ describe("generateProject", () => {
         template: "api"
       })
     ).toThrow("Destination is not empty");
+  });
+
+  it("preserves unrelated user files when force updates a project", () => {
+    const temporaryRoot = createTemporaryDirectory();
+    const destination = join(temporaryRoot, "example-api");
+
+    generateProject({
+      projectName: "example-api",
+      destinationDirectory: destination,
+      template: "api"
+    });
+    writeFileSync(
+      join(destination, "USER_OWNED.txt"),
+      "keep me\n"
+    );
+
+    generateProject({
+      projectName: "example-api",
+      destinationDirectory: destination,
+      template: "api",
+      overwrite: true
+    });
+
+    expect(
+      readFileSync(join(destination, "USER_OWNED.txt"), "utf8")
+    ).toBe("keep me\n");
   });
 });

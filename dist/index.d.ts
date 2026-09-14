@@ -78,7 +78,7 @@ type GenerateProjectOptions = {
 declare function generateProject(options: GenerateProjectOptions): string;
 
 declare function ensureDestinationAvailable(destinationDirectory: string, overwrite?: boolean): void;
-declare function copyDirectory(sourceDirectory: string, destinationDirectory: string): void;
+declare function copyDirectory(sourceDirectory: string, destinationDirectory: string, overwriteRenamedFiles?: boolean): void;
 
 declare function installDependencies(projectDirectory: string): void;
 

@@ -1,28 +1,142 @@
-import { resolve } from "node:path";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  renameSync,
+  rmSync
+} from "node:fs";
+import {
+  basename,
+  dirname,
+  join,
+  resolve
+} from "node:path";
+import { randomUUID } from "node:crypto";
+import { writeCanonicalDockerAssets } from "../docker-assets";
 import { copyDirectory, ensureDestinationAvailable } from "./files";
 import { toDisplayName, validateProjectName } from "./names";
 import { getTemplateDirectory } from "./paths";
 import { renderDirectory } from "./template";
 import type { GenerateProjectOptions } from "./types";
 
+function commitStagedProject(
+  stagedDirectory: string,
+  destinationDirectory: string,
+  overwrite: boolean
+): void {
+  if (!existsSync(destinationDirectory)) {
+    renameSync(stagedDirectory, destinationDirectory);
+    return;
+  }
+
+  if (!overwrite) {
+    if (readdirSync(destinationDirectory).length === 0) {
+      rmSync(destinationDirectory, {
+        recursive: true,
+        force: true
+      });
+      renameSync(stagedDirectory, destinationDirectory);
+      return;
+    }
+
+    throw new Error(`Destination already exists: ${destinationDirectory}`);
+  }
+
+  if (resolve(destinationDirectory) === resolve(process.cwd())) {
+    throw new Error(
+      "Refusing to replace the current working directory with --force. Choose a parent directory instead."
+    );
+  }
+
+  const backupDirectory = join(
+    dirname(destinationDirectory),
+    `.${basename(destinationDirectory)}.launchstack-backup-${randomUUID()}`
+  );
+
+  renameSync(destinationDirectory, backupDirectory);
+
+  try {
+    renameSync(stagedDirectory, destinationDirectory);
+    rmSync(backupDirectory, {
+      recursive: true,
+      force: true
+    });
+  } catch (error) {
+    if (existsSync(destinationDirectory)) {
+      rmSync(destinationDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+
+    renameSync(backupDirectory, destinationDirectory);
+    throw error;
+  }
+}
+
 export function generateProject(options: GenerateProjectOptions): string {
   validateProjectName(options.projectName);
 
   const destinationDirectory = resolve(options.destinationDirectory);
+  const overwrite = options.overwrite ?? false;
 
-  ensureDestinationAvailable(
-    destinationDirectory,
-    options.overwrite ?? false
-  );
+  ensureDestinationAvailable(destinationDirectory, overwrite);
 
   const templateDirectory = getTemplateDirectory(options.template);
+  const parentDirectory = dirname(destinationDirectory);
+  mkdirSync(parentDirectory, { recursive: true });
 
-  copyDirectory(templateDirectory, destinationDirectory);
+  const stagedDirectory = mkdtempSync(
+    join(parentDirectory, `.${basename(destinationDirectory)}.launchstack-stage-`)
+  );
 
-  renderDirectory(destinationDirectory, {
-    PROJECT_NAME: options.projectName,
-    PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
-  });
+  try {
+    if (overwrite && existsSync(destinationDirectory)) {
+      cpSync(destinationDirectory, stagedDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+
+    copyDirectory(
+      templateDirectory,
+      stagedDirectory,
+      overwrite
+    );
+
+    renderDirectory(stagedDirectory, {
+      PROJECT_NAME: options.projectName,
+      PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
+    });
+
+    if (options.template === "api") {
+      writeCanonicalDockerAssets(stagedDirectory, {
+        buildCommand: "npm run build",
+        outputDirectory: "dist",
+        hasLockfile: true,
+        prisma: true,
+        startCommand: ["node", "dist/server.js"],
+        port: 3000
+      });
+    }
+
+    commitStagedProject(
+      stagedDirectory,
+      destinationDirectory,
+      overwrite
+    );
+  } catch (error) {
+    if (existsSync(stagedDirectory)) {
+      rmSync(stagedDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+
+    throw error;
+  }
 
   return destinationDirectory;
 }

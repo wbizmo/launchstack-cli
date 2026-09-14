@@ -27,7 +27,7 @@ function setRequiredEnvironment(): void {
 }
 
 describe("environment configuration", () => {
-  it("loads valid environment values", () => {
+  it("loads and normalizes valid environment values", () => {
     setRequiredEnvironment();
 
     const environment = loadEnvironment();
@@ -37,6 +37,9 @@ describe("environment configuration", () => {
     expect(environment.databaseUrl).toContain(
       "postgresql://"
     );
+    expect(environment.jwtAccessExpiresInMs).toBe(15 * 60 * 1000);
+    expect(environment.jwtRefreshExpiresInMs).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(environment.authRateLimitMax).toBe(20);
   });
 
   it("rejects invalid ports", () => {
@@ -57,9 +60,40 @@ describe("environment configuration", () => {
     );
   });
 
+  it("rejects malformed JWT durations at startup", () => {
+    setRequiredEnvironment();
+    process.env.JWT_REFRESH_EXPIRES_IN = "7 days";
+
+    expect(() => loadEnvironment()).toThrow(
+      "JWT_REFRESH_EXPIRES_IN must be a positive duration"
+    );
+  });
+
+  it("rejects wildcard CORS in production by default", () => {
+    setRequiredEnvironment();
+    process.env.NODE_ENV = "production";
+    process.env.CORS_ORIGIN = "*";
+
+    expect(() => loadEnvironment()).toThrow(
+      "CORS_ORIGIN must contain an explicit production origin allowlist"
+    );
+  });
+
+  it("accepts an explicit production CORS allowlist", () => {
+    setRequiredEnvironment();
+    process.env.NODE_ENV = "production";
+    process.env.CORS_ORIGIN = "https://app.example.com,https://admin.example.com";
+
+    expect(loadEnvironment().corsOrigin).toEqual([
+      "https://app.example.com",
+      "https://admin.example.com"
+    ]);
+  });
+
   it("rejects placeholder secrets in production", () => {
     setRequiredEnvironment();
     process.env.NODE_ENV = "production";
+    process.env.CORS_ORIGIN = "https://app.example.com";
     process.env.JWT_ACCESS_SECRET =
       "replace-with-a-long-random-access-secret";
 

@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { atomicWriteText, readJsonFile } from "./storage";
 
 const STORE_DIR = ".launchstack";
 const HISTORY_FILE = "history.json";
@@ -11,7 +11,7 @@ export type DeploymentRecord = {
   provider: string;
   deployTarget: string;
   outputDirectory: string;
-  status: "success" | "failed";
+  status: "prepared" | "success" | "failed";
   createdAt: string;
   git?: {
     branch: string;
@@ -21,37 +21,46 @@ export type DeploymentRecord = {
   } | null;
 };
 
-function getStorePath() {
-  return resolve(process.cwd(), STORE_DIR);
+function getHistoryPath(
+  projectDirectory = process.cwd()
+): string {
+  return resolve(
+    projectDirectory,
+    STORE_DIR,
+    HISTORY_FILE
+  );
 }
 
-function getHistoryPath() {
-  return resolve(getStorePath(), HISTORY_FILE);
-}
+export function readHistory(
+  projectDirectory = process.cwd()
+): DeploymentRecord[] {
+  const records = readJsonFile<unknown>(
+    getHistoryPath(projectDirectory),
+    []
+  );
 
-function ensureStore() {
-  if (!existsSync(getStorePath())) {
-    mkdirSync(getStorePath(), { recursive: true });
+  if (!Array.isArray(records)) {
+    throw new Error("history.json must contain a JSON array.");
   }
+
+  return records as DeploymentRecord[];
 }
 
-export function readHistory(): DeploymentRecord[] {
-  ensureStore();
-
-  if (!existsSync(getHistoryPath())) {
-    return [];
-  }
-
-  return JSON.parse(readFileSync(getHistoryPath(), "utf-8")) as DeploymentRecord[];
+export function writeHistory(
+  records: DeploymentRecord[],
+  projectDirectory = process.cwd()
+): void {
+  atomicWriteText(
+    getHistoryPath(projectDirectory),
+    `${JSON.stringify(records, null, 2)}\n`
+  );
 }
 
-export function writeHistory(records: DeploymentRecord[]) {
-  ensureStore();
-  writeFileSync(getHistoryPath(), JSON.stringify(records, null, 2));
-}
-
-export function addDeploymentRecord(record: DeploymentRecord) {
-  const records = readHistory();
+export function addDeploymentRecord(
+  record: DeploymentRecord,
+  projectDirectory = process.cwd()
+): void {
+  const records = readHistory(projectDirectory);
   records.unshift(record);
-  writeHistory(records.slice(0, 50));
+  writeHistory(records.slice(0, 50), projectDirectory);
 }

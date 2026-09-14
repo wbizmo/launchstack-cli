@@ -1,23 +1,39 @@
 {
   "name": "launchstack-cli",
-  "version": "2.0.2",
-  "description": "A TypeScript CLI for production-ready backend API scaffolding, deployment automation, configuration management, and developer workflows.",
+  "version": "2.1.0",
+  "description": "A TypeScript CLI for production-ready backend API scaffolding, deployment preparation, configuration management, and developer workflows.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "bin": {
     "launchstack": "./dist/cli.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wbizmo/launchstack-cli.git"
+  },
+  "homepage": "https://github.com/wbizmo/launchstack-cli#readme",
+  "bugs": {
+    "url": "https://github.com/wbizmo/launchstack-cli/issues"
+  },
   "scripts": {
-    "dev": "tsup src/index.ts src/cli.ts --watch --format cjs,esm --dts",
-    "build": "tsup src/index.ts src/cli.ts --format cjs,esm --dts && npm run copy:templates",
+    "dev": "tsup --watch",
+    "build": "tsup && npm run copy:templates",
     "test": "vitest --config vitest.config.ts",
-    "lint": "eslint src tests",
+    "lint": "eslint src tests scripts bench",
+    "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "test:run": "vitest run --config vitest.config.ts",
-    "check": "npm run test:run && npm run build && npm pack --dry-run",
+    "bench:template": "vitest bench bench/template-render.bench.ts",
+    "audit:runtime": "npm audit --omit=dev --audit-level=high",
+    "verify:dist": "npm run build && git diff --exit-code -- dist",
+    "check": "npm run lint && npm run typecheck && npm run test:run && npm run verify:dist && npm pack --dry-run",
     "copy:templates": "node scripts/copy-templates.cjs",
-    "release:check": "npm run test:run && npm run build && npm pack --dry-run"
+    "pack:smoke": "node scripts/pack-smoke.cjs",
+    "template:smoke": "node scripts/template-smoke.cjs",
+    "locks:template": "node scripts/refresh-template-lock.cjs",
+    "release:verify-tag": "node scripts/verify-release-tag.cjs",
+    "release:check": "npm run check && npm run audit:runtime && npm run pack:smoke && npm run template:smoke"
   },
   "keywords": [
     "launchstack",
@@ -47,26 +63,31 @@
     "backend-scaffolding",
     "api-starter"
   ],
-  "author": "Williams",
+  "author": "Williams Ashibuogwu",
   "license": "MIT",
   "files": [
     "dist",
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "dependencies": {
     "chalk": "^5.6.2",
-    "commander": "^15.0.0",
+    "commander": "^14.0.2",
     "ora": "^9.4.0",
-    "zod": "latest"
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/node": "^25.9.5",
-    "eslint": "latest",
-    "prettier": "latest",
+    "eslint": "^10.10.0",
+    "prettier": "^3.9.6",
     "tsup": "^8.5.1",
-    "typescript": "latest",
-    "vitest": "latest"
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=20"

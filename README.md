@@ -1,156 +1,71 @@
 # LaunchStack CLI
 
-Production-ready backend scaffolding and deployment toolkit for TypeScript developers.
+Production-ready backend scaffolding and workflow tooling for TypeScript developers.
 
-LaunchStack CLI generates enterprise-grade Fastify APIs with authentication, Prisma, PostgreSQL, Swagger/OpenAPI, Docker, CI/CD, deployment presets, and opinionated project architecture in a single command.
+LaunchStack CLI generates Fastify APIs with TypeScript, Prisma/PostgreSQL, JWT authentication, Zod validation, Swagger/OpenAPI, Docker, CI, deployment presets, testing, and an opinionated layered architecture.
 
 ```bash
 npm install -g launchstack-cli
 ```
 
----
+## What LaunchStack generates
 
-## Features
-
-- Fastify + TypeScript API starter
+- Fastify + strict TypeScript API starter
 - Prisma ORM with PostgreSQL
-- JWT Access & Refresh Token authentication
-- Secure Refresh Token rotation and revocation
+- JWT access and refresh token authentication
+- Database-enforced single-use refresh-token rotation
 - bcrypt password hashing
-- Zod request and response validation
+- Bounded Zod request/response validation
+- Auth endpoint rate limiting
+- Production CORS safeguards
 - Swagger / OpenAPI documentation
-- Layered architecture (Controllers, Services, Repositories & DTOs)
-- Health and Readiness endpoints
-- Docker and Docker Compose support
+- Layered controllers, services, repositories, schemas, and DTOs
+- Health and readiness endpoints
+- Multi-stage non-root Docker image
+- Docker Compose support
 - GitHub Actions CI workflow
-- Render, Railway and Fly.io deployment presets
-- Vitest testing setup
-- Environment configuration
-- Production-ready project structure
-
----
+- Render, Railway, and Fly.io deployment presets
+- Vitest test setup, including concurrency fixtures
+- Environment validation that fails fast on unsafe production settings
 
 ## Requirements
 
 - Node.js 20 or newer
 - PostgreSQL (or Docker Desktop)
 
----
+## Quick start
 
-## Installation
-
-Install LaunchStack globally:
-
-```bash
-npm install -g launchstack-cli
-```
-
-Verify the installation:
-
-```bash
-launchstack --help
-```
-
----
-
-## Quick Start
-
-Create a new backend API:
+Create a new backend API. Dependencies are installed by default:
 
 ```bash
 launchstack create my-api
-```
-
-Move into the project and install dependencies:
-
-```bash
 cd my-api
-npm install
 ```
 
-Start the local database:
+Start PostgreSQL and initialize the schema:
 
 ```bash
 npm run db:up
-```
-
-Create the initial database schema:
-
-```bash
 npm run prisma:migrate -- --name init
 ```
 
-Start the development server:
+Start development:
 
 ```bash
 npm run dev
 ```
 
-Open the generated API:
+Generated endpoints include:
 
 | Endpoint | URL |
-|----------|-----|
+| --- | --- |
 | Swagger UI | http://localhost:3000/docs |
 | Health | http://localhost:3000/health |
 | Readiness | http://localhost:3000/ready |
 
----
+## Core CLI commands
 
-## Generated Project Structure
-
-```text
-my-api/
-├── prisma/
-├── src/
-│   ├── config/
-│   ├── core/
-│   ├── lib/
-│   ├── middleware/
-│   ├── modules/
-│   │   ├── auth/
-│   │   └── users/
-│   ├── plugins/
-│   ├── routes/
-│   ├── schemas/
-│   └── types/
-├── tests/
-├── Dockerfile
-├── docker-compose.yml
-├── README.md
-└── package.json
-```
-
----
-
-## Generated Technology Stack
-
-- Fastify
-- TypeScript
-- Prisma
-- PostgreSQL
-- JWT Authentication
-- bcrypt
-- Zod
-- Swagger / OpenAPI
-- Docker
-- Docker Compose
-- GitHub Actions
-- Render
-- Railway
-- Fly.io
-- Vitest
-
----
-
-## Core Commands
-
-### Create a new API
-
-```bash
-launchstack create my-api
-```
-
-Skip dependency installation:
+Create without installing dependencies:
 
 ```bash
 launchstack create my-api --no-install
@@ -160,97 +75,82 @@ Inspect a generated project:
 
 ```bash
 launchstack doctor --directory my-api
-```
-
-Generate a JSON health report:
-
-```bash
 launchstack doctor --directory my-api --json
 ```
 
-Initialize LaunchStack configuration:
+Initialize and validate LaunchStack project configuration:
 
 ```bash
 launchstack init --name my-app
-```
-
-Validate configuration:
-
-```bash
 launchstack validate
-```
-
-View project status:
-
-```bash
 launchstack status
 ```
 
-Switch deployment environment:
+Switch environment or deployment preset:
 
 ```bash
 launchstack env staging
-```
-
-Select a deployment provider:
-
-```bash
 launchstack provider render
+launchstack provider fly
 ```
 
-Deploy:
+### Deployment preparation
+
+`launchstack deploy` currently builds and validates local deployment artifacts and records them as `prepared`. It does **not** claim a remote provider deployment succeeded unless a provider adapter confirms that state.
 
 ```bash
 launchstack deploy
-```
-
-View deployment history:
-
-```bash
 launchstack history
 ```
 
-Find the latest rollback target:
+`launchstack rollback` only reports an actually successful remote deployment record. Prepared local artifacts are not presented as rollback targets.
+
+### Local secrets
+
+Secret values are no longer accepted as positional command arguments, so they do not need to appear in shell history or process arguments.
+
+Interactive hidden input:
 
 ```bash
-launchstack rollback
+launchstack secrets add API_KEY
 ```
 
-Manage secrets:
+Automation/stdin:
 
 ```bash
-launchstack secrets add API_KEY value
+printf '%s' "$API_KEY" | launchstack secrets add API_KEY --stdin
+```
+
+List or remove keys:
+
+```bash
 launchstack secrets list
 launchstack secrets remove API_KEY
 ```
 
-Generate Docker assets:
+Local secret state is stored under `.launchstack/`, written atomically with restrictive permissions where the platform supports them, and ignored by generated projects.
+
+### Docker and CI assets
 
 ```bash
 launchstack docker init
-```
-
-Generate GitHub Actions workflows:
-
-```bash
 launchstack github init
 ```
 
----
+Docker generation and generated API projects share the same hardened Docker renderer: multi-stage builds, lockfile-driven installs when available, production-only runtime dependencies, secret-safe build contexts, and a non-root runtime user.
 
-## Generated Project Commands
+## Generated project commands
 
-### Quality
+Quality checks:
 
 ```bash
 npm run typecheck
 npm test
 npm run build
 npm run check
-npm run validation:check
 ```
 
-### Production
+Production helpers:
 
 ```bash
 npm run docker:build
@@ -261,70 +161,60 @@ npm run docker:logs
 npm run prisma:deploy
 ```
 
----
+## Production configuration notes
 
-## Development
+Generated applications reject placeholder JWT secrets in production, validate JWT expiry durations during startup, and require an explicit `CORS_ORIGIN` allowlist. Wildcard production CORS is only permitted through the explicit `ALLOW_INSECURE_CORS=true` escape hatch.
 
-Install project dependencies:
+Authentication endpoints use configurable limits:
 
-```bash
-npm install
+```env
+AUTH_RATE_LIMIT_MAX=20
+AUTH_RATE_LIMIT_WINDOW_MS=60000
 ```
 
-Run the LaunchStack test suite:
+`CORS_ORIGIN` accepts a comma-separated allowlist:
 
-```bash
-npm run test:run
+```env
+CORS_ORIGIN=https://app.example.com,https://admin.example.com
 ```
 
-Build LaunchStack:
+## LaunchStack development
+
+Install exactly from the lockfile:
 
 ```bash
-npm run build
+npm ci
 ```
 
-Inspect the npm package:
+Run the normal quality gate:
 
 ```bash
-npm pack --dry-run
+npm run check
 ```
 
-Run the release quality gate:
+The normal gate includes linting, TypeScript typechecking, tests, a deterministic `dist/` rebuild check, and npm pack inspection.
+
+Run the full release gate. It installs the packed npm artifact in a clean temporary project, checks the packed security behavior/version, generates a fresh API, runs database-backed registration/refresh concurrency tests against PostgreSQL, typechecks/builds/tests the generated application, and audits runtime dependencies:
 
 ```bash
 npm run release:check
 ```
 
----
+## npm releases
+
+Release procedure is documented in [`docs/RELEASING.md`](docs/RELEASING.md). Each published release from v2.1.0 onward gets a root-level `RELEASE_NOTES_<version>.md` file in addition to `CHANGELOG.md`.
+
+When a new package version is merged to `main`, `.github/workflows/publish.yml` reruns the full release gate, verifies the matching release notes, creates the `v<version>` tag at that exact merged commit, publishes to npm with provenance, and creates the corresponding GitHub Release. If that exact npm version already exists, the workflow exits without republishing it.
+
+The npm credential is stored only as the GitHub repository secret `LAUNCHSTACK_NPM_TOKEN`. The workflow exposes it to npm as `NODE_AUTH_TOKEN` only for the guarded publish step; it is never committed to the repository or written to release notes.
 
 ## Roadmap
 
-Upcoming improvements planned for future releases include:
-
-- Additional backend templates
-- Background job scaffolding
-- Redis integration
-- Queue workers
-- WebSocket support
-- Microservice templates
-- OAuth providers
-- Kubernetes deployment presets
-- Additional cloud providers
-
----
+The active feature roadmap is tracked in GitHub issues. Current directions include composable capabilities, project upgrades/drift detection, local orchestration, typed API clients, production auditing, architecture-aware resource generation, preview environments, plugins/recipes, and a declarative LaunchStack project manifest.
 
 ## Contributing
 
-Issues, feature requests and pull requests are welcome.
-
-If you'd like to contribute:
-
-1. Fork the repository.
-2. Create a feature branch.
-3. Commit your changes.
-4. Submit a pull request.
-
----
+Issues and pull requests are welcome. Please run `npm run check` for ordinary changes and `npm run release:check` for release-affecting changes before requesting merge.
 
 ## Author
 

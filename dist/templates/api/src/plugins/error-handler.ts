@@ -9,6 +9,39 @@ import {
   ErrorCode
 } from "../core/errors/error-codes";
 
+function getClientErrorName(
+  error: FastifyError
+): string {
+  const publicError = (
+    error as FastifyError & {
+      error?: unknown;
+    }
+  ).error;
+
+  if (
+    typeof publicError === "string" &&
+    publicError.length > 0
+  ) {
+    return publicError;
+  }
+
+  if (
+    typeof error.code === "string" &&
+    error.code.length > 0
+  ) {
+    return error.code;
+  }
+
+  if (
+    typeof error.name === "string" &&
+    error.name.length > 0
+  ) {
+    return error.name;
+  }
+
+  return "Request Error";
+}
+
 export const errorHandlerPlugin = fp(
   async (app) => {
     app.setErrorHandler(
@@ -58,8 +91,7 @@ export const errorHandlerPlugin = fp(
             error:
               isServerError
                 ? ErrorCode.InternalError
-                : error.code ??
-                  error.name,
+                : getClientErrorName(error),
             message:
               isServerError
                 ? "Internal Server Error"

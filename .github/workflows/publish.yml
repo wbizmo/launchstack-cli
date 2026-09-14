@@ -1,0 +1,149 @@
+name: Publish npm package
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: launchstack_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d launchstack_smoke"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js for npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Resolve release version
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG="v${VERSION}"
+          NOTES="RELEASE_NOTES_${VERSION}.md"
+
+          if [ ! -f "$NOTES" ]; then
+            echo "::error::Missing $NOTES"
+            exit 1
+          fi
+
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "$TAG" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package version ${VERSION}"
+            exit 1
+          fi
+
+          if npm view "launchstack-cli@${VERSION}" version >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "launchstack-cli@${VERSION} is already published; no new release is required."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "notes=$NOTES" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        if: steps.release.outputs.publish == 'true'
+        run: npm ci
+
+      - name: Verify release tag matches package version
+        if: steps.release.outputs.publish == 'true'
+        run: npm run release:verify-tag
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+
+      - name: Run release quality gate
+        if: steps.release.outputs.publish == 'true'
+        run: npm run release:check
+        env:
+          LAUNCHSTACK_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/launchstack_smoke
+
+      - name: Verify npm publish token is configured
+        if: steps.release.outputs.publish == 'true'
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.LAUNCHSTACK_NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::LAUNCHSTACK_NPM_TOKEN is not configured"
+            exit 1
+          fi
+
+      - name: Create release tag
+        if: steps.release.outputs.publish == 'true'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            TAG_SHA="$(git rev-list -n 1 "$RELEASE_TAG")"
+            if [ "$TAG_SHA" != "$GITHUB_SHA" ]; then
+              echo "::error::${RELEASE_TAG} already points to ${TAG_SHA}, not ${GITHUB_SHA}"
+              exit 1
+            fi
+            echo "${RELEASE_TAG} already points to this release commit."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$RELEASE_TAG" -m "LaunchStack CLI ${RELEASE_TAG}"
+            git push origin "$RELEASE_TAG"
+          fi
+
+      - name: Publish package to npm
+        if: steps.release.outputs.publish == 'true'
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.LAUNCHSTACK_NPM_TOKEN }}
+
+      - name: Create GitHub release
+        if: steps.release.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_NOTES: ${{ steps.release.outputs.notes }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "LaunchStack CLI v${RELEASE_VERSION}" \
+              --notes-file "$RELEASE_NOTES"
+          else
+            gh release create "$RELEASE_TAG" \
+              --verify-tag \
+              --title "LaunchStack CLI v${RELEASE_VERSION}" \
+              --notes-file "$RELEASE_NOTES"
+          fi

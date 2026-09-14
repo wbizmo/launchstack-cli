@@ -1,13 +1,13 @@
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import { Command } from "commander";
 import { readConfig } from "../config";
+import { resolveVerifiedOutputDirectory } from "../deployment";
 import { getGitMetadata } from "../git";
 import { addDeploymentRecord } from "../history";
+import { PROVIDERS } from "../providers";
 
 export const deployCommand = new Command("deploy")
-  .description("Run the configured LaunchStack deployment workflow")
+  .description("Build and prepare the configured deployment artifacts")
   .option("--skip-build", "Skip the build command")
   .action((options) => {
     const createdAt = new Date().toISOString();
@@ -15,11 +15,12 @@ export const deployCommand = new Command("deploy")
     try {
       const config = readConfig();
       const git = getGitMetadata();
+      const provider = PROVIDERS[config.provider];
 
-      console.log("LaunchStack deployment");
+      console.log("LaunchStack deployment preparation");
       console.log(`App: ${config.appName}`);
       console.log(`Environment: ${config.environment}`);
-      console.log(`Provider: ${config.provider}`);
+      console.log(`Provider: ${provider.label}`);
 
       if (git) {
         console.log(`Branch: ${git.branch}`);
@@ -33,32 +34,17 @@ export const deployCommand = new Command("deploy")
       console.log("");
 
       if (!options.skipBuild) {
-        console.log(`Running build: ${config.buildCommand}`);
+        console.log(`Running trusted project build command: ${config.buildCommand}`);
         execSync(config.buildCommand, {
           stdio: "inherit",
           cwd: process.cwd()
         });
       }
 
-      const outputPath = resolve(process.cwd(), config.outputDirectory);
-
-      if (!existsSync(outputPath)) {
-        addDeploymentRecord({
-          id: `dep_${Date.now()}`,
-          appName: config.appName,
-          environment: config.environment,
-          provider: config.provider,
-          deployTarget: config.deployTarget,
-          outputDirectory: config.outputDirectory,
-          status: "failed",
-          createdAt,
-          git
-        });
-
-        console.log("");
-        console.log(`Output directory not found: ${config.outputDirectory}`);
-        process.exit(1);
-      }
+      resolveVerifiedOutputDirectory(
+        process.cwd(),
+        config.outputDirectory
+      );
 
       addDeploymentRecord({
         id: `dep_${Date.now()}`,
@@ -67,7 +53,7 @@ export const deployCommand = new Command("deploy")
         provider: config.provider,
         deployTarget: config.deployTarget,
         outputDirectory: config.outputDirectory,
-        status: "success",
+        status: "prepared",
         createdAt,
         git
       });
@@ -76,10 +62,17 @@ export const deployCommand = new Command("deploy")
       console.log("Build output verified");
       console.log(`Deploy target: ${config.deployTarget}`);
       console.log("");
-      console.log("Deployment workflow completed");
+
+      if (provider.remoteDeploymentSupported) {
+        console.log("Deployment provider confirmed the remote deployment.");
+      } else {
+        console.log(
+          "Artifacts are prepared. LaunchStack has not performed or confirmed a remote deployment for this provider."
+        );
+      }
     } catch (error) {
-      console.log("Deployment failed");
+      console.log("Deployment preparation failed");
       console.log(error instanceof Error ? error.message : error);
-      process.exit(1);
+      process.exitCode = 1;
     }
   });

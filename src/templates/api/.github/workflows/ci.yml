@@ -6,13 +6,16 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_USER: launchstack
           POSTGRES_PASSWORD: launchstack
@@ -20,12 +23,13 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U launchstack -d launchstack_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-cmd="pg_isready -U launchstack -d launchstack_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
 
     env:
+      RUN_DATABASE_TESTS: "1"
       NODE_ENV: test
       DATABASE_URL: postgresql://launchstack:launchstack@localhost:5432/launchstack_test?schema=public
       JWT_ACCESS_SECRET: test-access-secret-that-is-long-enough-123
@@ -49,14 +53,8 @@ jobs:
       - name: Generate Prisma Client
         run: npm run prisma:generate
 
-      - name: Apply database migrations
-        run: npm run prisma:deploy
+      - name: Apply test schema
+        run: npm exec -- prisma db push --skip-generate
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Test
-        run: npm test
-
-      - name: Build
-        run: npm run build
+      - name: Run generated project quality gate
+        run: npm run check
