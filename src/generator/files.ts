@@ -37,7 +37,8 @@ export function ensureDestinationAvailable(
 
 export function copyDirectory(
   sourceDirectory: string,
-  destinationDirectory: string
+  destinationDirectory: string,
+  overwriteRenamedFiles = false
 ): void {
   if (!existsSync(sourceDirectory)) {
     throw new Error(`Template directory not found: ${sourceDirectory}`);
@@ -50,16 +51,19 @@ export function copyDirectory(
     force: true
   });
 
-  renameTemplateFiles(destinationDirectory);
+  renameTemplateFiles(destinationDirectory, overwriteRenamedFiles);
 }
 
-function renameTemplateFiles(directory: string): void {
+function renameTemplateFiles(
+  directory: string,
+  overwriteRenamedFiles: boolean
+): void {
   for (const entry of readdirSync(directory)) {
     const currentPath = resolve(directory, entry);
     const stats = statSync(currentPath);
 
     if (stats.isDirectory()) {
-      renameTemplateFiles(currentPath);
+      renameTemplateFiles(currentPath, overwriteRenamedFiles);
       continue;
     }
 
@@ -72,6 +76,12 @@ function renameTemplateFiles(directory: string): void {
     const replacementPath = resolve(dirname(currentPath), replacementName);
 
     if (existsSync(replacementPath)) {
+      if (overwriteRenamedFiles) {
+        unlinkSync(replacementPath);
+        renameSync(currentPath, replacementPath);
+        continue;
+      }
+
       const existingContent = readFileSync(replacementPath);
       const sourceContent = readFileSync(currentPath);
 
