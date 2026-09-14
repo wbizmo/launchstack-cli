@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   renameSync,
   rmSync
 } from "node:fs";
@@ -31,6 +32,15 @@ function commitStagedProject(
   }
 
   if (!overwrite) {
+    if (readdirSync(destinationDirectory).length === 0) {
+      rmSync(destinationDirectory, {
+        recursive: true,
+        force: true
+      });
+      renameSync(stagedDirectory, destinationDirectory);
+      return;
+    }
+
     throw new Error(`Destination already exists: ${destinationDirectory}`);
   }
 
@@ -90,7 +100,11 @@ export function generateProject(options: GenerateProjectOptions): string {
       });
     }
 
-    copyDirectory(templateDirectory, stagedDirectory);
+    copyDirectory(
+      templateDirectory,
+      stagedDirectory,
+      overwrite
+    );
 
     renderDirectory(stagedDirectory, {
       PROJECT_NAME: options.projectName,
