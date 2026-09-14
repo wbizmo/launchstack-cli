@@ -5,10 +5,10 @@ const packageJson = JSON.parse(
   readFileSync(resolve(__dirname, "..", "package.json"), "utf8")
 );
 const expectedTag = `v${packageJson.version}`;
-const actualTag = process.env.GITHUB_REF_NAME;
+const actualTag = process.env.RELEASE_TAG || process.env.GITHUB_REF_NAME;
 
 if (!actualTag) {
-  console.error("GITHUB_REF_NAME is required to verify a release tag.");
+  console.error("RELEASE_TAG or GITHUB_REF_NAME is required to verify a release tag.");
   process.exit(1);
 }
 
