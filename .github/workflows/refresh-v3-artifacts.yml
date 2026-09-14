@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   refresh:
-    if: github.event.head_commit.message != 'chore: refresh v3 generated artifacts'
+    if: "${{ github.event.head_commit.message != 'chore: refresh v3 generated artifacts' }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
