@@ -25,12 +25,20 @@ import type {
 
 export const authRoutes:
 FastifyPluginAsync = async (app) => {
+  const rateLimit = {
+    max: app.config.authRateLimitMax,
+    timeWindow: app.config.authRateLimitWindowMs
+  };
+
   app.post<{
     Body: RegisterInput;
   }>(
     "/register",
     {
-      schema: registerSchema
+      schema: registerSchema,
+      config: {
+        rateLimit
+      }
     },
     registerController
   );
@@ -40,7 +48,10 @@ FastifyPluginAsync = async (app) => {
   }>(
     "/login",
     {
-      schema: loginSchema
+      schema: loginSchema,
+      config: {
+        rateLimit
+      }
     },
     loginController
   );
@@ -50,7 +61,10 @@ FastifyPluginAsync = async (app) => {
   }>(
     "/refresh",
     {
-      schema: refreshSchema
+      schema: refreshSchema,
+      config: {
+        rateLimit
+      }
     },
     refreshController
   );
@@ -60,7 +74,10 @@ FastifyPluginAsync = async (app) => {
   }>(
     "/logout",
     {
-      schema: logoutSchema
+      schema: logoutSchema,
+      config: {
+        rateLimit
+      }
     },
     logoutController
   );

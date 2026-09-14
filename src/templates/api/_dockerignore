@@ -5,6 +5,7 @@ coverage
 .github
 .env
 .env.*
+.launchstack
 *.log
 npm-debug.log*
 docker-compose*.yml

@@ -10,12 +10,16 @@ import {
   errorResponseSchema
 } from "../../schemas/common";
 
+const EMAIL_MAX_LENGTH = 254;
+const PASSWORD_MAX_LENGTH = 128;
+const REFRESH_TOKEN_MAX_LENGTH = 4096;
+
 export const registerBodySchema =
   z.object({
     email:
-      z.string().email(),
+      z.string().email().max(EMAIL_MAX_LENGTH),
     password:
-      z.string().min(8),
+      z.string().min(8).max(PASSWORD_MAX_LENGTH),
     name:
       z.string()
         .trim()
@@ -27,15 +31,15 @@ export const registerBodySchema =
 export const loginBodySchema =
   z.object({
     email:
-      z.string().email(),
+      z.string().email().max(EMAIL_MAX_LENGTH),
     password:
-      z.string().min(1)
+      z.string().min(1).max(PASSWORD_MAX_LENGTH)
   });
 
 export const refreshBodySchema =
   z.object({
     refreshToken:
-      z.string().min(1)
+      z.string().min(1).max(REFRESH_TOKEN_MAX_LENGTH)
   });
 
 export const registerSchema = {
@@ -52,6 +56,8 @@ export const registerSchema = {
     201:
       authResponseSchema,
     409:
+      errorResponseSchema,
+    429:
       errorResponseSchema
   }
 };
@@ -70,6 +76,8 @@ export const loginSchema = {
     200:
       authResponseSchema,
     401:
+      errorResponseSchema,
+    429:
       errorResponseSchema
   }
 };
@@ -88,6 +96,8 @@ export const refreshSchema = {
     200:
       tokenResponseSchema,
     401:
+      errorResponseSchema,
+    429:
       errorResponseSchema
   }
 };
@@ -104,7 +114,9 @@ export const logoutSchema = {
     refreshBodySchema,
   response: {
     204:
-      z.null()
+      z.null(),
+    429:
+      errorResponseSchema
   }
 };
 

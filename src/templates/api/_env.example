@@ -3,7 +3,10 @@ HOST=0.0.0.0
 PORT=3000
 LOG_LEVEL=info
 CORS_ORIGIN=*
-DATABASE_URL=postgresql://launchstack:launchstack@localhost:5432/{{PROJECT_NAME}}?schema=public
+ALLOW_INSECURE_CORS=false
+AUTH_RATE_LIMIT_MAX=20
+AUTH_RATE_LIMIT_WINDOW_MS=60000
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/{{PROJECT_NAME}}
 JWT_ACCESS_SECRET=replace-with-a-long-random-access-secret
 JWT_REFRESH_SECRET=replace-with-a-long-random-refresh-secret
 JWT_ACCESS_EXPIRES_IN=15m

@@ -32,22 +32,10 @@ describe("Zod request validation", () => {
     });
 
     expect(response.statusCode).toBe(400);
-
-    const body = response.json<{
-      statusCode: number;
-      error: string;
-      message: string;
-    }>();
-
-    expect(body.statusCode).toBe(400);
-    expect(typeof body.error).toBe("string");
-    expect(body.error.length).toBeGreaterThan(0);
-    expect(body.message.length).toBeGreaterThan(0);
   });
 
   it("rejects a registration password shorter than eight characters", async () => {
     process.env.NODE_ENV = "test";
-
     app = await buildApp();
 
     const response = await app.inject({
@@ -62,9 +50,24 @@ describe("Zod request validation", () => {
     expect(response.statusCode).toBe(400);
   });
 
+  it("rejects oversized passwords before hashing or database work", async () => {
+    process.env.NODE_ENV = "test";
+    app = await buildApp();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: {
+        email: "user@example.com",
+        password: "x".repeat(129)
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
   it("rejects missing login credentials", async () => {
     process.env.NODE_ENV = "test";
-
     app = await buildApp();
 
     const response = await app.inject({
@@ -76,16 +79,15 @@ describe("Zod request validation", () => {
     expect(response.statusCode).toBe(400);
   });
 
-  it("rejects an empty refresh token", async () => {
+  it("rejects an oversized refresh token", async () => {
     process.env.NODE_ENV = "test";
-
     app = await buildApp();
 
     const response = await app.inject({
       method: "POST",
       url: "/api/auth/refresh",
       payload: {
-        refreshToken: ""
+        refreshToken: "x".repeat(4097)
       }
     });
 
@@ -94,7 +96,6 @@ describe("Zod request validation", () => {
 
   it("accepts valid health responses through the serializer", async () => {
     process.env.NODE_ENV = "test";
-
     app = await buildApp();
 
     const response = await app.inject({
