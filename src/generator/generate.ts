@@ -13,6 +13,7 @@ import {
   resolve
 } from "node:path";
 import { randomUUID } from "node:crypto";
+import { writeCanonicalDockerAssets } from "../docker-assets";
 import { copyDirectory, ensureDestinationAvailable } from "./files";
 import { toDisplayName, validateProjectName } from "./names";
 import { getTemplateDirectory } from "./paths";
@@ -95,6 +96,17 @@ export function generateProject(options: GenerateProjectOptions): string {
       PROJECT_NAME: options.projectName,
       PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
     });
+
+    if (options.template === "api") {
+      writeCanonicalDockerAssets(stagedDirectory, {
+        buildCommand: "npm run build",
+        outputDirectory: "dist",
+        hasLockfile: true,
+        prisma: true,
+        startCommand: ["node", "dist/server.js"],
+        port: 3000
+      });
+    }
 
     commitStagedProject(
       stagedDirectory,
