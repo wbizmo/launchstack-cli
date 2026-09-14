@@ -1,35 +1,39 @@
 # Changelog
 
+## 3.0.0 - 2026-09-14
+
+### Lifecycle platform
+
+- Add a versioned `launchstack.json` desired-state manifest and `.launchstack/state.json` ownership/state record.
+- Add `launchstack add` for composable Redis, BullMQ queue, OAuth, storage, observability, WebSocket, email, cron and webhook capabilities.
+- Add shared declarative extension primitives for first-party capabilities and validated third-party plugin manifests.
+- Add `diff`, `plan`, `apply`, `reconcile`, `upgrade --plan`, `upgrade`, and deterministic `doctor --fix` flows.
+- Add `launchstack dev` capability-aware local orchestration with dependency ordering, port checks, bounded readiness and child cleanup.
+- Add deterministic typed OpenAPI client generation for TypeScript, React and React Native targets.
+- Add `launchstack audit` production-readiness findings with stable IDs/severities and reasoned suppressions.
+- Add architecture-aware module and authenticated owner-scoped CRUD resource generation.
+- Add preview/stage lifecycle commands with a complete Docker Compose adapter, deterministic resource identities and guarded production teardown.
+
+### Safety, correctness and performance
+
+- Path-confine all managed mutations and reject traversal/symlink mutation targets.
+- Serialize concurrent project mutations through an exclusive lock with stale-lock recovery.
+- Stage/journal mutations before commit and recover interrupted writes.
+- Detect local drift with SHA-256 hashes instead of overwriting changed managed files.
+- Resolve capability dependency graphs in O(V+E) with cycle/conflict detection and idempotent re-application.
+- Keep drift/reconciliation linear in managed state rather than repeatedly scanning the repository.
+- Keep OpenAPI generation linear in operation/schema traversal and use stable hashes for naming collisions.
+- Preserve v2 generated API auth race/concurrency protections and production security baseline.
+
+### Release engineering
+
+- Promote the generated API template and package to 3.0.0.
+- Expand v3 unit/CLI/security/edge-case coverage while retaining packed-artifact and PostgreSQL-backed generated-project release gates.
+- Publish through the existing provenance-enabled workflow using `LAUNCHSTACK_NPM_TOKEN` only as `NODE_AUTH_TOKEN`.
+
 ## 2.1.0 - 2026-09-14
 
-### Security
-
-- Ship the API credential-forwarding protections in the actual packed npm artifact and verify them from a clean tarball install.
-- Replace positional secret values with hidden interactive/`--stdin` input, restrictive file permissions, atomic writes, key validation, and generated `.launchstack/` ignores.
-- Make refresh-token rotation single-use under concurrency by consuming the parent token conditionally inside the same database transaction that creates its successor.
-- Upgrade generated Swagger UI dependencies away from vulnerable `@fastify/static` resolutions.
-- Add auth endpoint rate limiting and maximum input sizes before bcrypt/JWT/database work.
-- Require explicit production CORS origins unless unrestricted CORS is explicitly opted into.
-- Map concurrent duplicate registration races to HTTP 409 rather than generic 500 errors.
-
-### Reliability and release engineering
-
-- Validate JWT expiry durations during startup.
-- Derive the CLI version from `package.json` at build time instead of maintaining a second hard-coded version.
-- Add lint, TypeScript typechecking, tests, deterministic `dist/` verification, packed-artifact smoke tests, generated-project checks, runtime audits, and database-backed concurrency tests to the release gate.
-- Add reproducible lockfile handling, repository metadata, npm provenance, and guarded automatic npm/GitHub release creation from verified `main` versions.
-- Use the `LAUNCHSTACK_NPM_TOKEN` repository secret only as npm's `NODE_AUTH_TOKEN` during publishing.
-- Pin intentional dependency ranges, keep the CLI compatible with its documented Node.js 20 baseline, and upgrade Vitest to a patched release.
-
-### Correctness and developer experience
-
-- Make project generation transactional and clean up template alias collisions.
-- Render templates in one placeholder pass and avoid decoding binary/static assets as UTF-8.
-- Reduce Git metadata process spawning and remove shell interpolation from fixed Git commands.
-- Centralize hardened Docker generation so `launchstack docker init` and generated API projects share the same multi-stage, lockfile-aware, non-root baseline.
-- Align Fly.io/provider support through a shared provider registry.
-- Reframe `launchstack deploy` as deployment preparation until a remote provider confirms deployment success.
-- Validate deployment output paths before recording prepared artifacts.
+- Security/correctness/performance hardening release covering issues #2-#18: packed credential-forwarding protections, safer local secrets, atomic refresh rotation, auth/CORS/race hardening, reproducible release gates, transactional generation, Docker/provider/deployment corrections, and release provenance.
 
 ## 2.0.2
 
@@ -37,35 +41,4 @@
 
 ## 2.0.0
 
-LaunchStack CLI v2 expanded the project from deployment workflow tooling into a backend API scaffolding and production workflow CLI.
-
-### Added
-
-- `launchstack create <project-name>`
-- Fastify API starter
-- TypeScript strict-mode template
-- Prisma and PostgreSQL
-- Docker Compose database service
-- JWT access and refresh tokens
-- Password hashing
-- Registration, login, refresh, logout, and profile routes
-- Zod request and response validation
-- Swagger/OpenAPI documentation
-- Layered controllers, services, repositories, and DTOs
-- Structured application errors
-- Production Docker image
-- GitHub Actions workflows
-- Render, Railway, and Fly.io presets
-- Readiness and health endpoints
-- `launchstack doctor`
-
-### Existing capabilities retained
-
-- Project initialization
-- Environment switching
-- Provider management
-- Deployment history
-- Rollback visibility
-- Secrets management
-- Docker scaffolding
-- GitHub Actions generation
+- Expanded LaunchStack from deployment workflow tooling into a production Fastify/TypeScript/Prisma API scaffolder.

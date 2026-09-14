@@ -1,21 +1,14 @@
 {
   "name": "launchstack-cli",
-  "version": "2.1.0",
-  "description": "A TypeScript CLI for production-ready backend API scaffolding, deployment preparation, configuration management, and developer workflows.",
+  "version": "3.0.0",
+  "description": "A TypeScript CLI for production-ready backend API scaffolding, lifecycle management, deployment preparation, configuration management, and developer workflows.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
-  "bin": {
-    "launchstack": "./dist/cli.js"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/wbizmo/launchstack-cli.git"
-  },
+  "bin": { "launchstack": "./dist/cli.js" },
+  "repository": { "type": "git", "url": "git+https://github.com/wbizmo/launchstack-cli.git" },
   "homepage": "https://github.com/wbizmo/launchstack-cli#readme",
-  "bugs": {
-    "url": "https://github.com/wbizmo/launchstack-cli/issues"
-  },
+  "bugs": { "url": "https://github.com/wbizmo/launchstack-cli/issues" },
   "scripts": {
     "dev": "tsup --watch",
     "build": "tsup && npm run copy:templates",
@@ -35,61 +28,12 @@
     "release:verify-tag": "node scripts/verify-release-tag.cjs",
     "release:check": "npm run check && npm run audit:runtime && npm run pack:smoke && npm run template:smoke"
   },
-  "keywords": [
-    "launchstack",
-    "cli",
-    "deployment",
-    "release-management",
-    "automation",
-    "devops",
-    "typescript",
-    "changelog",
-    "environments",
-    "workflows",
-    "api-scaffolding",
-    "fastify",
-    "backend-generator",
-    "developer-tools",
-    "api-generator",
-    "project-scaffolding",
-    "backend-starter",
-    "create-api",
-    "fastify-cli",
-    "prisma-generator",
-    "postgresql-starter",
-    "jwt-authentication",
-    "openapi-generator",
-    "zod-validation",
-    "backend-scaffolding",
-    "api-starter"
-  ],
+  "keywords": ["launchstack", "cli", "backend", "typescript", "fastify", "prisma", "postgresql", "api-scaffolding", "lifecycle", "openapi", "deployment", "devops", "plugin-system", "code-generation"],
   "author": "Williams Ashibuogwu",
   "license": "MIT",
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  },
-  "dependencies": {
-    "chalk": "^5.6.2",
-    "commander": "^14.0.2",
-    "ora": "^9.4.0",
-    "zod": "^4.1.12"
-  },
-  "devDependencies": {
-    "@types/node": "^25.9.5",
-    "eslint": "^10.10.0",
-    "prettier": "^3.9.6",
-    "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.70.0",
-    "vitest": "^4.1.11"
-  },
-  "engines": {
-    "node": ">=20"
-  }
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": { "access": "public", "provenance": true },
+  "dependencies": { "chalk": "^5.6.2", "commander": "^14.0.2", "ora": "^9.4.0", "zod": "^4.1.12" },
+  "devDependencies": { "@types/node": "^25.9.5", "eslint": "^10.10.0", "prettier": "^3.9.6", "tsx": "^4.20.0", "tsup": "^8.5.1", "typescript": "^6.0.3", "typescript-eslint": "^8.70.0", "vitest": "^4.1.11" },
+  "engines": { "node": ">=20" }
 }

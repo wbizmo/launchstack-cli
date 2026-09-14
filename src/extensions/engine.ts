@@ -1,0 +1,65 @@
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { loadProjectManifest, serializeProjectManifest } from "../project/manifest";
+import { resolveProjectPath } from "../project/paths";
+import { hashFile, loadProjectState, serializeProjectState } from "../project/state";
+import { applyFileMutations, withTrackedMutations } from "../project/transaction";
+import type { FileMutation, ProjectManifest, ProjectState } from "../project/types";
+import { currentLaunchStackVersion } from "../version";
+import type { ExtensionManifest, ExtensionPlan } from "./types";
+
+export type PreparedExtensionPlan = ExtensionPlan & { projectDirectory: string; mutations: FileMutation[]; nextManifest: ProjectManifest; nextState: ProjectState };
+function compatible(version: string, range: string): boolean { const major = Number.parseInt(version.split(".")[0] ?? "", 10); if (!Number.isInteger(major)) return false; const lower = range.match(/>=\s*(\d+)/)?.[1]; const upper = range.match(/<\s*(\d+)/)?.[1]; return !(lower && major < Number(lower)) && !(upper && major >= Number(upper)); }
+export function resolveExtensionOrder(requested: string[], registry: Record<string, ExtensionManifest>): ExtensionManifest[] {
+  const order: ExtensionManifest[] = []; const visiting = new Set<string>(); const visited = new Set<string>();
+  const visit = (id: string, chain: string[]) => { if (visited.has(id)) return; if (visiting.has(id)) throw new Error(`Extension dependency cycle: ${[...chain, id].join(" -> ")}`); const item = registry[id]; if (!item) throw new Error(`Unknown extension: ${id}`); visiting.add(id); for (const dep of item.dependencies ?? []) visit(dep, [...chain, id]); visiting.delete(id); visited.add(id); order.push(item); };
+  for (const id of requested) visit(id, []); return order;
+}
+function packageMutation(projectDirectory: string, extensions: ExtensionManifest[]): FileMutation | null {
+  const deps: Record<string, string> = {}; const devDeps: Record<string, string> = {}; for (const item of extensions) { Object.assign(deps, item.packages?.dependencies ?? {}); Object.assign(devDeps, item.packages?.devDependencies ?? {}); }
+  if (!Object.keys(deps).length && !Object.keys(devDeps).length) return null; const path = resolveProjectPath(projectDirectory, "package.json"); if (!existsSync(path)) throw new Error("Cannot install package-backed capability without package.json"); const existingText = readFileSync(path, "utf8"); const parsed = JSON.parse(existingText) as Record<string, unknown>; const currentDeps = (parsed.dependencies ?? {}) as Record<string, string>; const currentDev = (parsed.devDependencies ?? {}) as Record<string, string>; const sort = (value: Record<string, string>) => Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))); const nextText = `${JSON.stringify({ ...parsed, dependencies: sort({ ...currentDeps, ...deps }), devDependencies: sort({ ...currentDev, ...devDeps }) }, null, 2)}\n`; if (nextText === existingText) return null;
+  return { type: "write", path: "package.json", content: nextText, owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: hashFile(path) };
+}
+function envMutation(projectDirectory: string, extensions: ExtensionManifest[]): FileMutation | null {
+  const vars = extensions.flatMap((item) => item.environment ?? []); if (!vars.length) return null; const path = ".env.example"; const absolute = resolveProjectPath(projectDirectory, path); const existing = existsSync(absolute) ? readFileSync(absolute, "utf8") : ""; const known = new Set(existing.split(/\r?\n/).map((line) => line.match(/^([A-Z][A-Z0-9_]*)=/)?.[1]).filter((value): value is string => Boolean(value))); const additions = vars.filter((item) => !known.has(item.name)).sort((a, b) => a.name.localeCompare(b.name)).map((item) => `${item.name}=${item.example ?? ""}`); if (!additions.length) return null; const prefix = existing && !existing.endsWith("\n") ? `${existing}\n` : existing;
+  return { type: "write", path, content: `${prefix}${additions.join("\n")}\n`, owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: existsSync(absolute) ? hashFile(absolute) : null };
+}
+function fileMutations(projectDirectory: string, state: ProjectState, extensions: ExtensionManifest[]): FileMutation[] {
+  const output: FileMutation[] = [];
+  for (const item of extensions) {
+    for (const file of item.files ?? []) { const absolute = resolveProjectPath(projectDirectory, file.path); const tracked = state.managedFiles[file.path]; if (tracked && tracked.owner !== item.id) throw new Error(`File ${file.path} is owned by ${tracked.owner}`); if (existsSync(absolute)) { const current = hashFile(absolute); if (!tracked) throw new Error(`Refusing to overwrite user-owned file: ${file.path}`); if (tracked.sha256 !== current) throw new Error(`Managed file has local modifications: ${file.path}`); if (readFileSync(absolute, "utf8") === file.content) continue; output.push({ type: "write", path: file.path, content: file.content, owner: item.id, version: item.version, expectedSha256: current, executable: file.executable }); } else output.push({ type: "write", path: file.path, content: file.content, owner: item.id, version: item.version, expectedSha256: null, executable: file.executable }); }
+    if (item.composeServices && Object.keys(item.composeServices).length) { const path = `.launchstack/generated/compose/${item.id}.json`; const absolute = resolveProjectPath(projectDirectory, path); const tracked = state.managedFiles[path]; if (existsSync(absolute) && (!tracked || tracked.owner !== item.id || tracked.sha256 !== hashFile(absolute))) throw new Error(`Compose fragment has local modifications: ${path}`); const content = `${JSON.stringify({ services: item.composeServices }, null, 2)}\n`; if (!existsSync(absolute) || readFileSync(absolute, "utf8") !== content) output.push({ type: "write", path, content, owner: item.id, version: item.version, expectedSha256: existsSync(absolute) ? hashFile(absolute) : null }); }
+  }
+  return output;
+}
+function metadataMutations(projectDirectory: string, manifest: ProjectManifest, state: ProjectState): FileMutation[] {
+  const output: FileMutation[] = [];
+  for (const item of [
+    { path: "launchstack.json", content: serializeProjectManifest(manifest) },
+    { path: ".launchstack/state.json", content: serializeProjectState(state) }
+  ]) {
+    const absolute = resolveProjectPath(projectDirectory, item.path);
+    const existing = existsSync(absolute) ? readFileSync(absolute, "utf8") : null;
+    if (existing === item.content) continue;
+    output.push({
+      type: "write",
+      path: item.path,
+      content: item.content,
+      owner: "launchstack:metadata",
+      version: currentLaunchStackVersion(),
+      expectedSha256: existsSync(absolute) ? hashFile(absolute) : null
+    });
+  }
+  return output;
+}
+export function planExtensionInstall(input: { projectDirectory: string; requested: string[]; registry: Record<string, ExtensionManifest> }): PreparedExtensionPlan {
+  const projectDirectory = resolve(input.projectDirectory); const manifest = loadProjectManifest(projectDirectory); const state = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() }); const ordered = resolveExtensionOrder(input.requested, input.registry); const selected = new Set(ordered.map((item) => item.id));
+  for (const item of ordered) { if (!compatible(manifest.project.templateVersion, item.supportedLaunchStack)) throw new Error(`${item.id}@${item.version} does not support project ${manifest.project.templateVersion}`); for (const conflict of item.conflicts ?? []) if (selected.has(conflict) || state.extensions[conflict]) throw new Error(`${item.id} conflicts with ${conflict}`); }
+  const mutations = fileMutations(projectDirectory, state, ordered); const packageWrite = packageMutation(projectDirectory, ordered); if (packageWrite) mutations.push(packageWrite); const envWrite = envMutation(projectDirectory, ordered); if (envWrite) mutations.push(envWrite);
+  const nextManifest = structuredClone(manifest); const nextState = withTrackedMutations(state, mutations); const installedAt = new Date().toISOString();
+  for (const item of ordered) { if (item.kind === "capability") nextManifest.capabilities[item.id] = { ...(nextManifest.capabilities[item.id] ?? {}), version: item.version }; const current = state.extensions[item.id]; nextState.extensions[item.id] = current?.version === item.version ? current : { id: item.id, version: item.version, kind: item.kind, installedAt, source: item.kind === "plugin" ? item.id : undefined }; }
+  nextState.templateVersion = manifest.project.templateVersion; nextState.cliVersion = currentLaunchStackVersion(); if (mutations.length || ordered.some((item) => state.extensions[item.id]?.version !== item.version)) nextState.updatedAt = installedAt;
+  const changed = ordered.filter((item) => state.extensions[item.id]?.version !== item.version); const actions = [...changed.map((item) => ({ kind: "metadata" as const, target: item.id, detail: state.extensions[item.id] ? `upgrade ${state.extensions[item.id]?.version} -> ${item.version}` : `install ${item.version}` })), ...mutations.map((mutation) => ({ kind: mutation.path === "package.json" ? "package" as const : mutation.path === ".env.example" ? "environment" as const : mutation.path.includes("/compose/") ? "compose" as const : "file" as const, target: mutation.path, detail: mutation.type }))];
+  return { projectDirectory, extensionIds: ordered.map((item) => item.id), actions, warnings: ordered.flatMap((item) => item.hooks?.length ? [`${item.id} declares executable hooks; declarative installation does not execute them.`] : []), noop: actions.length === 0, mutations, nextManifest, nextState };
+}
+export function applyExtensionInstall(plan: PreparedExtensionPlan): ProjectState { if (plan.noop) return plan.nextState; return applyFileMutations({ projectDirectory: plan.projectDirectory, mutations: [...plan.mutations, ...metadataMutations(plan.projectDirectory, plan.nextManifest, plan.nextState)], state: loadProjectState(plan.projectDirectory, { templateVersion: plan.nextManifest.project.templateVersion, cliVersion: currentLaunchStackVersion() }), nextState: plan.nextState }); }

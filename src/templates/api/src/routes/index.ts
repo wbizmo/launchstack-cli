@@ -1,15 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { authRoutes } from "../modules/auth/auth.routes";
+import { registerGeneratedRoutes } from "./launchstack.generated";
 import { healthRoutes } from "./health";
 import { readinessRoutes } from "./readiness";
 
-export async function registerRoutes(
-  app: FastifyInstance
-): Promise<void> {
+export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(healthRoutes);
   await app.register(readinessRoutes);
-
-  await app.register(authRoutes, {
-    prefix: "/api/auth"
-  });
+  await app.register(authRoutes, { prefix: "/api/auth" });
+  await registerGeneratedRoutes(app);
 }

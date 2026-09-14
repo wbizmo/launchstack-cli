@@ -1,32 +1,49 @@
 #!/usr/bin/env node
-
 import { Command } from "commander";
+import { addCommand } from "./commands/add";
+import { applyCommand, diffCommand, planCommand, reconcileCommand, upgradeCommand } from "./commands/project";
+import { auditCommand } from "./commands/audit";
+import { clientCommand } from "./commands/client-generate";
 import { createCommand } from "./commands/create";
-import { doctorCommand } from "./commands/doctor";
 import { deployCommand } from "./commands/deploy";
+import { destroyCommand, previewCommand, stageCommand } from "./commands/stages";
+import { devCommand } from "./commands/dev";
+import { doctorCommand } from "./commands/doctor";
 import { dockerCommand } from "./commands/docker";
 import { envCommand } from "./commands/env";
+import { generateCommand } from "./commands/generate";
 import { githubCommand } from "./commands/github";
 import { historyCommand } from "./commands/history";
 import { initCommand } from "./commands/init";
+import { pluginCommand } from "./commands/plugin";
 import { providerCommand } from "./commands/provider";
 import { rollbackCommand } from "./commands/rollback";
 import { secretsCommand } from "./commands/secrets";
 import { statusCommand } from "./commands/status";
 import { validateCommand } from "./commands/validate";
-
-declare const __LAUNCHSTACK_VERSION__: string;
+import { currentLaunchStackVersion } from "./version";
 
 const program = new Command();
-
 program
   .name("launchstack")
-  .description(
-    "Backend API scaffolding, deployment preparation, and developer workflow CLI"
-  )
-  .version(__LAUNCHSTACK_VERSION__);
+  .description("Backend API scaffolding and lifecycle platform for production TypeScript services")
+  .version(currentLaunchStackVersion());
 
 program.addCommand(createCommand);
+program.addCommand(addCommand);
+program.addCommand(pluginCommand);
+program.addCommand(planCommand);
+program.addCommand(applyCommand);
+program.addCommand(reconcileCommand);
+program.addCommand(diffCommand);
+program.addCommand(upgradeCommand);
+program.addCommand(devCommand);
+program.addCommand(clientCommand);
+program.addCommand(auditCommand);
+program.addCommand(generateCommand);
+program.addCommand(previewCommand);
+program.addCommand(stageCommand);
+program.addCommand(destroyCommand);
 program.addCommand(doctorCommand);
 program.addCommand(initCommand);
 program.addCommand(statusCommand);
@@ -40,4 +57,7 @@ program.addCommand(rollbackCommand);
 program.addCommand(dockerCommand);
 program.addCommand(githubCommand);
 
-program.parse();
+program.parseAsync().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});
