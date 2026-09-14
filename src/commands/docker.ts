@@ -1,6 +1,10 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { Command } from "commander";
 import { readConfig } from "../config";
+import {
+  renderDockerfile,
+  renderDockerIgnore
+} from "../docker-assets";
 
 function writeFileIfAllowed(path: string, content: string, force: boolean) {
   if (existsSync(path) && !force) {
@@ -22,35 +26,15 @@ dockerCommand
   .action((options) => {
     const config = readConfig();
     const force = Boolean(options.force);
+    const hasLockfile = existsSync("package-lock.json");
+    const prisma = existsSync("prisma/schema.prisma");
 
-    const dockerfile = `FROM node:20-alpine AS dependencies
-WORKDIR /app
-COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
-
-FROM dependencies AS build
-COPY . .
-RUN ${config.buildCommand}
-
-FROM node:20-alpine AS production
-WORKDIR /app
-ENV NODE_ENV=production
-COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi \\
-  && npm cache clean --force
-COPY --from=build /app/${config.outputDirectory} ./${config.outputDirectory}
-USER node
-EXPOSE 3000
-CMD ["npm", "start"]
-`;
-
-    const dockerignore = `node_modules
-dist
-.git
-.env
-.launchstack
-npm-debug.log
-`;
+    const dockerfile = renderDockerfile({
+      buildCommand: config.buildCommand,
+      outputDirectory: config.outputDirectory,
+      hasLockfile,
+      prisma
+    });
 
     const compose = `services:
   ${config.appName}:
@@ -62,6 +46,6 @@ npm-debug.log
 `;
 
     writeFileIfAllowed("Dockerfile", dockerfile, force);
-    writeFileIfAllowed(".dockerignore", dockerignore, force);
+    writeFileIfAllowed(".dockerignore", renderDockerIgnore(), force);
     writeFileIfAllowed("docker-compose.yml", compose, force);
   });
