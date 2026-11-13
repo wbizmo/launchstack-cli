@@ -4,7 +4,7 @@
     "version": "v3.0.0",
     "commit": "c27e7f6ff06ac33b2b8c877ab57966e5f19ceb9"
   },
-  "candidate_commit": "pending-issue-32-commit",
+  "candidate_commit": "d268dc84d2cf058b66a1653b8b7604dcb38c5d63",
   "node": "v24.22.3",
   "platform": "linux x64",
   "cpu": "AMD EPYC 9V74 80-Core Processor",
@@ -14,7 +14,11 @@
   "workload": {
     "mutation": "new small files with expectedSha256=null in an isolated temporary project",
     "bytes_per_file": 10,
-    "sizes": [100, 1000, 10000],
+    "sizes": [
+      100,
+      1000,
+      10000
+    ],
     "repetitions_per_size": 3,
     "warmup": 0,
     "network": "none",
@@ -24,18 +28,75 @@
   },
   "results": {
     "v3.0.0": [
-      { "files": 100, "bytes": 1090, "latency_ms": { "p50": 31.566, "p95": 40.671 }, "sampled_peak_rss_kb": 82448, "errors": 0 },
-      { "files": 1000, "bytes": 11890, "latency_ms": { "p50": 224.829, "p95": 232.895 }, "sampled_peak_rss_kb": 84256, "errors": 0 },
-      { "files": 10000, "bytes": 128890, "latency_ms": { "p50": 1978.325, "p95": 2210.651 }, "sampled_peak_rss_kb": 99136, "errors": 0 }
+      {
+        "files": 100,
+        "bytes": 1090,
+        "latency_ms": {
+          "p50": 31.566,
+          "p95": 40.671
+        },
+        "sampled_peak_rss_kb": 82448,
+        "errors": 0
+      },
+      {
+        "files": 1000,
+        "bytes": 11890,
+        "latency_ms": {
+          "p50": 224.829,
+          "p95": 232.895
+        },
+        "sampled_peak_rss_kb": 84256,
+        "errors": 0
+      },
+      {
+        "files": 10000,
+        "bytes": 128890,
+        "latency_ms": {
+          "p50": 1978.325,
+          "p95": 2210.651
+        },
+        "sampled_peak_rss_kb": 99136,
+        "errors": 0
+      }
     ],
     "candidate": [
-      { "files": 100, "bytes": 1090, "latency_ms": { "p50": 78.228, "p95": 94.731 }, "sampled_peak_rss_kb": 82724, "errors": 0 },
-      { "files": 1000, "bytes": 11890, "latency_ms": { "p50": 610.95, "p95": 764.03 }, "sampled_peak_rss_kb": 92680, "errors": 0 },
-      { "files": 10000, "bytes": 128890, "latency_ms": { "p50": 6269.865, "p95": 7024.931 }, "sampled_peak_rss_kb": 102312, "errors": 0 }
+      {
+        "files": 100,
+        "bytes": 1090,
+        "latency_ms": {
+          "p50": 78.228,
+          "p95": 94.731
+        },
+        "sampled_peak_rss_kb": 82724,
+        "errors": 0
+      },
+      {
+        "files": 1000,
+        "bytes": 11890,
+        "latency_ms": {
+          "p50": 610.95,
+          "p95": 764.03
+        },
+        "sampled_peak_rss_kb": 92680,
+        "errors": 0
+      },
+      {
+        "files": 10000,
+        "bytes": 128890,
+        "latency_ms": {
+          "p50": 6269.865,
+          "p95": 7024.931
+        },
+        "sampled_peak_rss_kb": 102312,
+        "errors": 0
+      }
     ]
   },
   "concurrency": {
-    "writers": [8, 32],
+    "writers": [
+      8,
+      32
+    ],
     "result": "all processes completed; unique files from every writer were present and intact",
     "test": "tests/project-lifecycle-v3.test.ts"
   }
