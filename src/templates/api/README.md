@@ -55,4 +55,4 @@ npm run docker:build
 npm run docker:prod
 ```
 
-Replace all placeholder secrets, configure explicit production CORS/database settings and review `launchstack audit --production` before deployment.
+Each generated project receives unique development JWT secrets in its ignored `.env`. The `.env.example` file contains placeholders only. Local PostgreSQL and API ports bind to loopback by default. Before deployment, set explicit CORS and JWT settings, review the production port binding for your reverse proxy, and run `launchstack audit --production`.

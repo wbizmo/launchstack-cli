@@ -97,6 +97,8 @@ launchstack audit --json
 launchstack audit --fail-on high
 ```
 
+Generated API projects bind local PostgreSQL and API ports to loopback by default. Each new project receives distinct 48-byte access and refresh secrets in its ignored `.env`; `.env.example` contains replaceable placeholders. Production Compose requires explicit CORS and JWT values and binds the API to loopback for use behind a host reverse proxy. Change the published port binding deliberately when remote access is required.
+
 Audit findings have stable rule IDs and severities. Local deterministic checks cover lockfiles, CORS, auth throttling, JWT placeholders, Git-tracked secret-like files, container users, migrations, health/readiness, generated drift, source maps and capability state. Suppressions live in `launchstack.json` and require a reason. Secret values are never emitted.
 
 ### Preview and stage lifecycle

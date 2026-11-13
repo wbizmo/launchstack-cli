@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -65,6 +66,17 @@ describe("generateProject", () => {
 
     expect(serverFile).toContain("Example Api");
     expect(serverFile).not.toContain("{{PROJECT_DISPLAY_NAME}}");
+
+    const env = readFileSync(join(destination, ".env"), "utf8");
+    const accessSecret = /^JWT_ACCESS_SECRET=(.+)$/m.exec(env)?.[1];
+    const refreshSecret = /^JWT_REFRESH_SECRET=(.+)$/m.exec(env)?.[1];
+    expect(accessSecret).toMatch(/^[A-Za-z0-9_-]{64}$/);
+    expect(refreshSecret).toMatch(/^[A-Za-z0-9_-]{64}$/);
+    expect(env).toContain("HOST=127.0.0.1");
+    expect(env).toContain("CORS_ORIGIN=http://localhost:3000");
+    if (process.platform !== "win32") {
+      expect(statSync(join(destination, ".env")).mode & 0o777).toBe(0o600);
+    }
   });
 
   it("refuses to overwrite a non-empty directory without force", () => {
@@ -83,6 +95,20 @@ describe("generateProject", () => {
         template: "api"
       })
     ).toThrow("Destination is not empty");
+  });
+
+  it("generates unique development JWT secrets per project", () => {
+    const temporaryRoot = createTemporaryDirectory();
+    const first = join(temporaryRoot, "first-api");
+    const second = join(temporaryRoot, "second-api");
+    generateProject({ projectName: "first-api", destinationDirectory: first, template: "api" });
+    generateProject({ projectName: "second-api", destinationDirectory: second, template: "api" });
+    const firstEnv = readFileSync(join(first, ".env"), "utf8");
+    const secondEnv = readFileSync(join(second, ".env"), "utf8");
+
+    expect(firstEnv).not.toBe(secondEnv);
+    expect(/^JWT_ACCESS_SECRET=(.+)$/m.exec(firstEnv)?.[1]).not.toBe(/^JWT_ACCESS_SECRET=(.+)$/m.exec(secondEnv)?.[1]);
+    expect(/^JWT_REFRESH_SECRET=(.+)$/m.exec(firstEnv)?.[1]).not.toBe(/^JWT_REFRESH_SECRET=(.+)$/m.exec(secondEnv)?.[1]);
   });
 
   it("preserves unrelated user files when force updates a project", () => {

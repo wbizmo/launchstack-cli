@@ -1,11 +1,11 @@
-import { mkdtempSync, mkdirSync, readdirSync, symlinkSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, symlinkSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { createProjectManifest, parseProjectManifest, serializeProjectManifest } from "../src/project/manifest";
 import { resolveProjectPath } from "../src/project/paths";
 import { emptyProjectState } from "../src/project/types";
-import { applyFileMutations } from "../src/project/transaction";
+import { applyFileMutations, recoverInterruptedMutation } from "../src/project/transaction";
 
 function fixture(): string {
   const root = mkdtempSync(join(tmpdir(), "launchstack-v3-project-"));
@@ -51,5 +51,40 @@ describe("v3 project lifecycle primitives", () => {
     })).toThrow(/unmanaged file/i);
     const metadata = join(root, ".launchstack");
     expect(readdirSync(metadata).filter((name) => name.startsWith(".stage-") || name.startsWith(".backup-"))).toEqual([]);
+  });
+
+  test("rejects an untrusted recovery journal without touching external paths", () => {
+    const root = fixture();
+    const outside = mkdtempSync(join(tmpdir(), "launchstack-outside-"));
+    const victim = join(outside, "keep.txt");
+    writeFileSync(victim, "must survive\n");
+    mkdirSync(join(root, ".launchstack"), { recursive: true });
+    writeFileSync(join(root, ".launchstack", "mutation-journal.json"), JSON.stringify({
+      version: 1,
+      id: "2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31",
+      stageDirectory: outside,
+      backupDirectory: outside,
+      mutations: [{ type: "delete", path: "../../outside/keep.txt", hadOriginal: true }]
+    }));
+
+    expect(() => recoverInterruptedMutation(root)).toThrow(/invalid mutation|unknown/i);
+    expect(existsSync(victim)).toBe(true);
+    expect(readFileSync(victim, "utf8")).toBe("must survive\n");
+  });
+
+  test("rejects a traversal path in a versioned recovery journal", () => {
+    const root = fixture();
+    const outside = mkdtempSync(join(tmpdir(), "launchstack-outside-"));
+    const victim = join(outside, "keep.txt");
+    writeFileSync(victim, "must survive\n");
+    mkdirSync(join(root, ".launchstack"), { recursive: true });
+    writeFileSync(join(root, ".launchstack", "mutation-journal.json"), JSON.stringify({
+      version: 1,
+      id: "2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31",
+      mutations: [{ type: "delete", path: "../../outside/keep.txt", hadOriginal: true }]
+    }));
+
+    expect(() => recoverInterruptedMutation(root)).toThrow(/unsafe|escape/i);
+    expect(readFileSync(victim, "utf8")).toBe("must survive\n");
   });
 });

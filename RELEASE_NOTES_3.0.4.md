@@ -11,6 +11,8 @@
 - Upgrades Zod to 4.6.7 to address the high severity advisory affecting versions below 4.6.6.
 - Pins production Node images by digest and carries the generated healthcheck script into the nonroot runtime image.
 - Keeps Prisma at 6.19.3, the latest Prisma 6 release. Prisma 7's new client and datasource configuration need a separately tested migration to preserve current generated-project compatibility.
+- Rejects malformed recovery journals before touching project or external paths, protects the secret store from symlinks and permissive POSIX modes, and gives new projects unique development JWT secrets.
+- Binds generated local services to loopback and expands audit checks for runtime policies, lockfiles and production Compose settings.
 
 ## Verification
 

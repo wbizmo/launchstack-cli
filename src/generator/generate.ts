@@ -1,19 +1,22 @@
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   renameSync,
-  rmSync
+  rmSync,
+  writeFileSync
 } from "node:fs";
+import { randomBytes, randomUUID } from "node:crypto";
 import {
   basename,
   dirname,
   join,
   resolve
 } from "node:path";
-import { randomUUID } from "node:crypto";
 import { writeCanonicalDockerAssets } from "../docker-assets";
 import { copyDirectory, ensureDestinationAvailable } from "./files";
 import { toDisplayName, validateProjectName } from "./names";
@@ -110,6 +113,16 @@ export function generateProject(options: GenerateProjectOptions): string {
       PROJECT_NAME: options.projectName,
       PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
     });
+
+    if (options.template === "api") {
+      const environmentPath = join(stagedDirectory, ".env");
+      const environment = readFileSync(environmentPath, "utf8");
+      const securedEnvironment = environment
+        .replace(/^JWT_ACCESS_SECRET=.*$/m, `JWT_ACCESS_SECRET=${randomBytes(48).toString("base64url")}`)
+        .replace(/^JWT_REFRESH_SECRET=.*$/m, `JWT_REFRESH_SECRET=${randomBytes(48).toString("base64url")}`);
+      writeFileSync(environmentPath, securedEnvironment, { mode: 0o600 });
+      if (process.platform !== "win32") chmodSync(environmentPath, 0o600);
+    }
 
     if (options.template === "api") {
       writeCanonicalDockerAssets(stagedDirectory, {

@@ -180,6 +180,7 @@ import {
   chmodSync,
   closeSync,
   existsSync as existsSync3,
+  lstatSync as lstatSync2,
   mkdirSync,
   openSync,
   readFileSync as readFileSync3,
@@ -189,9 +190,66 @@ import {
   writeFileSync
 } from "fs";
 import { randomUUID } from "crypto";
-import { dirname as dirname2, join as join3, resolve as resolve4 } from "path";
+import { dirname as dirname2, join as join3, resolve as resolve4, relative as relative2, sep as sep2, isAbsolute as isAbsolute2 } from "path";
 var metadataDirectory = (projectDirectory) => join3(resolve4(projectDirectory), ".launchstack");
 var journalPath = (projectDirectory) => join3(metadataDirectory(projectDirectory), "mutation-journal.json");
+var MAX_JOURNAL_BYTES = 2 * 1024 * 1024;
+var MAX_JOURNAL_MUTATIONS = 1e4;
+function ensureMetadataDirectory(projectDirectory) {
+  const root = resolve4(projectDirectory);
+  const directory = metadataDirectory(root);
+  mkdirSync(directory, { recursive: true, mode: 448 });
+  const stat = lstatSync2(directory);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error("LaunchStack metadata directory must be a real directory.");
+  }
+  const relativePath = relative2(root, resolve4(directory));
+  if (relativePath !== ".launchstack" || isAbsolute2(relativePath) || relativePath.startsWith(`..${sep2}`)) {
+    throw new Error("LaunchStack metadata directory escapes the project.");
+  }
+  return directory;
+}
+function assertOwnedDirectory(directory, metadata) {
+  const stat = lstatSync2(directory);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error("Mutation recovery directory is not a LaunchStack-owned directory.");
+  }
+  const rel = relative2(resolve4(metadata), resolve4(directory));
+  if (!rel.startsWith(".stage-") && !rel.startsWith(".backup-")) {
+    throw new Error("Mutation recovery directory escapes LaunchStack metadata.");
+  }
+  if (rel.includes(sep2) || rel === ".." || isAbsolute2(rel)) {
+    throw new Error("Mutation recovery directory escapes LaunchStack metadata.");
+  }
+}
+function parseJournal(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid mutation recovery journal.");
+  const candidate = value;
+  const allowed = /* @__PURE__ */ new Set(["version", "id", "mutations"]);
+  if (Object.keys(candidate).some((key) => !allowed.has(key)) || candidate.version !== 1 || typeof candidate.id !== "string" || !/^[0-9a-f-]{36}$/i.test(candidate.id) || !Array.isArray(candidate.mutations) || candidate.mutations.length > MAX_JOURNAL_MUTATIONS) {
+    throw new Error("Invalid mutation recovery journal.");
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const mutations = candidate.mutations.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error("Invalid mutation recovery journal entry.");
+    const item = entry;
+    if (Object.keys(item).some((key) => !["type", "path", "hadOriginal"].includes(key)) || item.type !== "write" && item.type !== "delete" || typeof item.path !== "string" || typeof item.hadOriginal !== "boolean") {
+      throw new Error("Invalid mutation recovery journal entry.");
+    }
+    const normalized = item.path.split(/[\\/]+/).filter(Boolean).join("/");
+    if (!normalized || normalized !== item.path || seen.has(normalized)) throw new Error("Invalid mutation recovery journal path.");
+    seen.add(normalized);
+    return { type: item.type, path: normalized, hadOriginal: item.hadOriginal };
+  });
+  return { version: 1, id: candidate.id, mutations };
+}
+function readJournal(projectDirectory) {
+  const metadata = ensureMetadataDirectory(projectDirectory);
+  const path = journalPath(projectDirectory);
+  const stat = lstatSync2(path);
+  if (stat.isSymbolicLink() || !stat.isFile() || stat.size > MAX_JOURNAL_BYTES) throw new Error("Mutation recovery journal is not a bounded regular file.");
+  return parseJournal(JSON.parse(readFileSync3(path, "utf8")));
+}
 function processIsAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -202,17 +260,18 @@ function processIsAlive(pid) {
   }
 }
 function acquireLock(projectDirectory) {
-  const directory = metadataDirectory(projectDirectory);
-  mkdirSync(directory, { recursive: true });
+  const directory = ensureMetadataDirectory(projectDirectory);
   const lockPath = join3(directory, "mutation.lock");
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const descriptor = openSync(lockPath, "wx", 384);
-      writeFileSync(descriptor, JSON.stringify({ pid: process.pid, createdAt: Date.now() }));
+      const lockId = randomUUID();
+      writeFileSync(descriptor, JSON.stringify({ version: 1, id: lockId, pid: process.pid, createdAt: Date.now() }));
       closeSync(descriptor);
       return () => {
         try {
-          unlinkSync(lockPath);
+          const current = JSON.parse(readFileSync3(lockPath, "utf8"));
+          if (current.id === lockId) unlinkSync(lockPath);
         } catch {
         }
       };
@@ -220,37 +279,56 @@ function acquireLock(projectDirectory) {
       if (!existsSync3(lockPath)) throw error;
       let stale = false;
       try {
-        const lock = JSON.parse(readFileSync3(lockPath, "utf8"));
+        const stat = lstatSync2(lockPath);
+        if (stat.isSymbolicLink() || !stat.isFile() || stat.size > 4096) throw new Error("unsafe lock");
+        const contents = readFileSync3(lockPath, "utf8");
+        const lock = JSON.parse(contents);
+        if (lock.version !== 1 || typeof lock.id !== "string" || !Number.isInteger(lock.pid) || !Number.isFinite(lock.createdAt)) throw new Error("malformed lock");
         stale = !processIsAlive(lock.pid ?? -1);
+        if (stale && readFileSync3(lockPath, "utf8") === contents) unlinkSync(lockPath);
       } catch {
-        stale = true;
+        stale = false;
       }
       if (!stale || attempt > 0) {
         throw new Error("Another LaunchStack mutation is already running for this project.");
       }
-      unlinkSync(lockPath);
     }
   }
   throw new Error("Unable to acquire LaunchStack project mutation lock.");
 }
 function restoreJournal(projectDirectory, journal) {
-  for (const mutation of [...journal.mutations].reverse()) {
+  const metadata = ensureMetadataDirectory(projectDirectory);
+  const stageDirectory = join3(metadata, `.stage-${journal.id}`);
+  const backupDirectory = join3(metadata, `.backup-${journal.id}`);
+  if (existsSync3(stageDirectory)) assertOwnedDirectory(stageDirectory, metadata);
+  if (existsSync3(backupDirectory)) assertOwnedDirectory(backupDirectory, metadata);
+  for (const mutation of journal.mutations) {
     const target = resolveProjectPath(projectDirectory, mutation.path);
-    const backup = join3(journal.backupDirectory, mutation.path);
-    if (existsSync3(target)) rmSync(target, { recursive: true, force: true });
-    if (mutation.hadOriginal && existsSync3(backup)) {
-      mkdirSync(dirname2(target), { recursive: true });
-      renameSync(backup, target);
+    const backup = join3(backupDirectory, mutation.path);
+    if (existsSync3(backup)) resolveProjectPath(backupDirectory, mutation.path);
+    if (mutation.hadOriginal && !existsSync3(backup) && !existsSync3(target)) {
+      throw new Error(`Cannot safely recover original file: ${mutation.path}`);
     }
   }
-  rmSync(journal.stageDirectory, { recursive: true, force: true });
-  rmSync(journal.backupDirectory, { recursive: true, force: true });
+  for (const mutation of [...journal.mutations].reverse()) {
+    const target = resolveProjectPath(projectDirectory, mutation.path);
+    const backup = join3(backupDirectory, mutation.path);
+    if (existsSync3(backup)) {
+      if (existsSync3(target)) rmSync(target, { recursive: true, force: true });
+      mkdirSync(dirname2(target), { recursive: true });
+      renameSync(backup, target);
+    } else if (!mutation.hadOriginal && existsSync3(target)) {
+      rmSync(target, { recursive: true, force: true });
+    }
+  }
+  if (existsSync3(stageDirectory)) rmSync(stageDirectory, { recursive: true, force: true });
+  if (existsSync3(backupDirectory)) rmSync(backupDirectory, { recursive: true, force: true });
   rmSync(journalPath(projectDirectory), { force: true });
 }
 function recoverInterruptedMutation(projectDirectory) {
   const path = journalPath(projectDirectory);
   if (!existsSync3(path)) return false;
-  restoreJournal(projectDirectory, JSON.parse(readFileSync3(path, "utf8")));
+  restoreJournal(projectDirectory, readJournal(projectDirectory));
   return true;
 }
 function withTrackedMutations(state, mutations) {
@@ -276,7 +354,7 @@ function applyFileMutations(input) {
   try {
     recoverInterruptedMutation(projectDirectory);
     const id = randomUUID();
-    const metadata = metadataDirectory(projectDirectory);
+    const metadata = ensureMetadataDirectory(projectDirectory);
     const stageDirectory = join3(metadata, `.stage-${id}`);
     const backupDirectory = join3(metadata, `.backup-${id}`);
     mkdirSync(stageDirectory, { recursive: true, mode: 448 });
@@ -311,16 +389,15 @@ function applyFileMutations(input) {
       throw error;
     }
     const journal = {
+      version: 1,
       id,
-      backupDirectory,
-      stageDirectory,
       mutations: input.mutations.map((mutation) => ({
         type: mutation.type,
         path: mutation.path,
         hadOriginal: existsSync3(resolveProjectPath(projectDirectory, mutation.path))
       }))
     };
-    writeFileSync(journalPath(projectDirectory), JSON.stringify(journal, null, 2), { mode: 384 });
+    writeFileSync(journalPath(projectDirectory), JSON.stringify(journal, null, 2), { mode: 384, flag: "wx" });
     try {
       for (const mutation of input.mutations) {
         const target = resolveProjectPath(projectDirectory, mutation.path);
@@ -732,6 +809,25 @@ function runProductionAudit(projectDirectoryInput) {
   if (tracked.length) findings.push(finding("LS005", "critical", "Potential secret material is tracked by Git", `Sensitive-looking tracked paths: ${tracked.join(", ")}. Secret contents were not inspected or printed.`, true));
   const dockerfile = readIfPresent(root, "Dockerfile");
   if (dockerfile && !/^USER\s+[^\s]+/m.test(dockerfile)) findings.push(finding("LS006", "high", "Container may run as root", "Dockerfile does not declare a non-root USER in the runtime image.", true, "Dockerfile"));
+  if (dockerfile && /FROM\s+node:(?:1[0-9]|20)(?:[-@\s]|$)/im.test(dockerfile)) findings.push(finding("LS016", "high", "Container runtime may be end-of-life", "The Dockerfile references Node 20 or earlier; verify the selected image against the Node.js support schedule.", false, "Dockerfile"));
+  if (pkg) {
+    const engines = pkg.engines && typeof pkg.engines === "object" ? pkg.engines : {};
+    if (typeof engines.node !== "string") findings.push(finding("LS017", "medium", "Node.js support range is not declared", "package.json does not declare engines.node; supported runtime compatibility cannot be checked from this manifest.", true, "package.json"));
+    else if (/(?:^|[^0-9])(?:1[0-9]|20)(?:\.x|\b)/i.test(engines.node)) findings.push(finding("LS018", "high", "Node.js support range may include an end-of-life runtime", "The declared Node.js range appears to include Node 20 or earlier; review against the current Node.js release schedule.", false, "package.json"));
+  }
+  const lockContent = readIfPresent(root, "package-lock.json");
+  if (lockContent !== void 0) {
+    try {
+      const lock = JSON.parse(lockContent);
+      if (!Number.isInteger(lock.lockfileVersion) || !lock.packages || typeof lock.packages !== "object") throw new Error("invalid npm lock structure");
+      const rootPackage = lock.packages[""];
+      if (!rootPackage || pkg?.name && rootPackage.name !== pkg.name || pkg?.version && rootPackage.version !== pkg.version) findings.push(finding("LS019", "high", "Dependency lock does not match package metadata", "The package-lock root name or version differs from package.json.", true, "package-lock.json"));
+    } catch {
+      findings.push(finding("LS020", "high", "Dependency lock is invalid", "package-lock.json is not valid JSON with an npm lock structure.", true, "package-lock.json"));
+    }
+  }
+  const productionCompose = readIfPresent(root, "docker-compose.production.yml") ?? "";
+  if (productionCompose && (!/CORS_ORIGIN:\s*\$\{CORS_ORIGIN:\?/.test(productionCompose) || !/JWT_(?:ACCESS|REFRESH)_SECRET:\s*\$\{JWT_/.test(productionCompose))) findings.push(finding("LS021", "high", "Production Compose does not require deployment settings", "Production Compose should require an explicit CORS origin and JWT secrets.", true, "docker-compose.production.yml"));
   if (pkg) {
     const scripts = pkg.scripts && typeof pkg.scripts === "object" ? pkg.scripts : {};
     if (!scripts["prisma:deploy"]) findings.push(finding("LS007", "high", "Production migration command is missing", "package.json does not expose prisma:deploy.", true, "package.json"));
@@ -1121,21 +1217,24 @@ function renderDirectory(directory, variables) {
 
 // src/generator/generate.ts
 import {
+  chmodSync as chmodSync2,
   cpSync as cpSync2,
   existsSync as existsSync13,
   mkdirSync as mkdirSync3,
   mkdtempSync,
+  readFileSync as readFileSync10,
   readdirSync as readdirSync3,
   renameSync as renameSync3,
-  rmSync as rmSync2
+  rmSync as rmSync2,
+  writeFileSync as writeFileSync4
 } from "fs";
+import { randomBytes, randomUUID as randomUUID2 } from "crypto";
 import {
   basename as basename3,
   dirname as dirname4,
   join as join7,
   resolve as resolve12
 } from "path";
-import { randomUUID as randomUUID2 } from "crypto";
 
 // src/docker-assets.ts
 import { existsSync as existsSync12, writeFileSync as writeFileSync3 } from "fs";
@@ -1305,6 +1404,13 @@ function generateProject(options) {
       PROJECT_NAME: options.projectName,
       PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
     });
+    if (options.template === "api") {
+      const environmentPath = join7(stagedDirectory, ".env");
+      const environment = readFileSync10(environmentPath, "utf8");
+      const securedEnvironment = environment.replace(/^JWT_ACCESS_SECRET=.*$/m, `JWT_ACCESS_SECRET=${randomBytes(48).toString("base64url")}`).replace(/^JWT_REFRESH_SECRET=.*$/m, `JWT_REFRESH_SECRET=${randomBytes(48).toString("base64url")}`);
+      writeFileSync4(environmentPath, securedEnvironment, { mode: 384 });
+      if (process.platform !== "win32") chmodSync2(environmentPath, 384);
+    }
     if (options.template === "api") {
       writeCanonicalDockerAssets(stagedDirectory, {
         buildCommand: "npm run build",
@@ -1509,7 +1615,7 @@ function destroyStage(input) {
 }
 
 // src/generator/module.ts
-import { existsSync as existsSync15, readFileSync as readFileSync10 } from "fs";
+import { existsSync as existsSync15, readFileSync as readFileSync11 } from "fs";
 import { resolve as resolve14 } from "path";
 var RESERVED_FIELDS = /* @__PURE__ */ new Set(["id", "ownerId", "createdAt", "updatedAt"]);
 var FIELD_TYPES = /* @__PURE__ */ new Set(["string", "number", "boolean", "date"]);
@@ -1642,7 +1748,7 @@ function planModuleGeneration(input) {
   }
   const registryPath = "src/routes/launchstack.generated.ts";
   const registryAbsolute = resolveProjectPath(projectDirectory, registryPath);
-  const registryCurrent = existsSync15(registryAbsolute) ? readFileSync10(registryAbsolute, "utf8") : `import type { FastifyInstance } from "fastify";
+  const registryCurrent = existsSync15(registryAbsolute) ? readFileSync11(registryAbsolute, "utf8") : `import type { FastifyInstance } from "fastify";
 
 /* launchstack-routes: [] */
 export async function registerGeneratedRoutes(app: FastifyInstance): Promise<void> { void app; }
@@ -1656,7 +1762,7 @@ export async function registerGeneratedRoutes(app: FastifyInstance): Promise<voi
     const schemaPath = "prisma/schema.prisma";
     const schemaAbsolute = resolveProjectPath(projectDirectory, schemaPath);
     if (!existsSync15(schemaAbsolute)) throw new Error("Cannot generate a CRUD resource without prisma/schema.prisma.");
-    const schema = readFileSync10(schemaAbsolute, "utf8");
+    const schema = readFileSync11(schemaAbsolute, "utf8");
     const model = files[`.__launchstack_model_${name}`] ?? "";
     if (new RegExp(`\\bmodel\\s+${pascal(name)}\\b`).test(schema)) throw new Error(`Prisma model ${pascal(name)} already exists.`);
     mutations.push({ type: "write", path: schemaPath, content: `${schema.trimEnd()}
@@ -1741,4 +1847,4 @@ export {
   planModuleGeneration,
   applyModuleGeneration
 };
-//# sourceMappingURL=chunk-IOO3FVOX.mjs.map
+//# sourceMappingURL=chunk-32MWTPYZ.mjs.map

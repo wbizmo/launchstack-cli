@@ -17,6 +17,13 @@
 - A generated production Docker image passed its non-root healthcheck and `/health` request. The image was built with a BuildKit CA secret because this environment's npm proxy certificate is not in the base image store.
 - Runtime measurements are in `docs/benchmarks/issue-30-runtime.md`; they show no consistent startup speedup.
 
+### Security and generated defaults (issue #31)
+- Validate and size-limit recovery journals, reject unrecognized fields and reconstruct all staging/backup paths inside `.launchstack` before recovery.
+- Keep malformed locks active, verify a lock token before release, and reject symlinked secret files/directories or permissive POSIX secret modes.
+- Give generated projects distinct JWT development secrets, loopback host/origin defaults, and loopback Compose port bindings. Production Compose requires explicit origin and JWT settings.
+- Extend production audit findings to cover runtime policy, npm lock consistency and production Compose requirements; unsupported-runtime findings are marked heuristic.
+- Security regression checks passed: lint, strict typecheck and 4 focused files / 17 tests.
+
 ## 3.0.0 - 2026-09-14
 
 ### Lifecycle platform

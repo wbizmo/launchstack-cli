@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { atomicWriteText, readJsonFile } from "./storage";
+import { atomicWriteText } from "./storage";
 
 const STORE_DIR = ".launchstack";
 const SECRETS_FILE = "secrets.json";
@@ -42,7 +42,28 @@ export function readSecrets(
   projectDirectory = process.cwd()
 ): SecretStore {
   const path = getSecretsPath(projectDirectory);
-  const parsed = readJsonFile<unknown>(path, {});
+  const directory = resolve(projectDirectory, STORE_DIR);
+  if (existsSync(directory)) {
+    const directoryStat = lstatSync(directory);
+    if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
+      throw new Error("LaunchStack secrets directory must be a real directory.");
+    }
+  }
+  let parsed: unknown = {};
+  if (existsSync(path)) {
+    const secretStat = lstatSync(path);
+    if (secretStat.isSymbolicLink() || !secretStat.isFile()) {
+      throw new Error("secrets.json must be a regular file, not a link or special file.");
+    }
+    if (process.platform !== "win32" && (secretStat.mode & 0o077) !== 0) {
+      throw new Error("secrets.json permissions are too broad; expected owner-only access.");
+    }
+    try {
+      parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    } catch {
+      throw new Error("Invalid JSON in secrets.json.");
+    }
+  }
 
   if (
     typeof parsed !== "object" ||
@@ -72,7 +93,12 @@ export function writeSecrets(
   projectDirectory = process.cwd()
 ): void {
   const storeDirectory = resolve(projectDirectory, STORE_DIR);
-  mkdirSync(storeDirectory, { recursive: true });
+  mkdirSync(storeDirectory, { recursive: true, mode: 0o700 });
+  const directoryStat = lstatSync(storeDirectory);
+  if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
+    throw new Error("LaunchStack secrets directory must be a real directory.");
+  }
+  if (process.platform !== "win32") chmodSync(storeDirectory, 0o700);
 
   atomicWriteText(
     getSecretsPath(projectDirectory),

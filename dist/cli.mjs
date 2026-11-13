@@ -30,7 +30,7 @@ import {
   renderDockerfile,
   runProductionAudit,
   severityRank
-} from "./chunk-IOO3FVOX.mjs";
+} from "./chunk-32MWTPYZ.mjs";
 
 // src/cli.ts
 import { Command as Command22 } from "commander";
@@ -1235,7 +1235,7 @@ var rollbackCommand = new Command18("rollback").description("Show the latest suc
 import { Command as Command19 } from "commander";
 
 // src/secrets-store.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync4 } from "fs";
+import { chmodSync as chmodSync2, existsSync as existsSync10, lstatSync, mkdirSync as mkdirSync4, readFileSync as readFileSync6 } from "fs";
 import { resolve as resolve9 } from "path";
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
@@ -1263,7 +1263,28 @@ function validateSecretKey(key) {
 }
 function readSecrets(projectDirectory = process.cwd()) {
   const path = getSecretsPath(projectDirectory);
-  const parsed = readJsonFile(path, {});
+  const directory2 = resolve9(projectDirectory, STORE_DIR2);
+  if (existsSync10(directory2)) {
+    const directoryStat = lstatSync(directory2);
+    if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
+      throw new Error("LaunchStack secrets directory must be a real directory.");
+    }
+  }
+  let parsed = {};
+  if (existsSync10(path)) {
+    const secretStat = lstatSync(path);
+    if (secretStat.isSymbolicLink() || !secretStat.isFile()) {
+      throw new Error("secrets.json must be a regular file, not a link or special file.");
+    }
+    if (process.platform !== "win32" && (secretStat.mode & 63) !== 0) {
+      throw new Error("secrets.json permissions are too broad; expected owner-only access.");
+    }
+    try {
+      parsed = JSON.parse(readFileSync6(path, "utf8"));
+    } catch {
+      throw new Error("Invalid JSON in secrets.json.");
+    }
+  }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("secrets.json must contain a JSON object.");
   }
@@ -1279,7 +1300,12 @@ function readSecrets(projectDirectory = process.cwd()) {
 }
 function writeSecrets(secrets, projectDirectory = process.cwd()) {
   const storeDirectory = resolve9(projectDirectory, STORE_DIR2);
-  mkdirSync4(storeDirectory, { recursive: true });
+  mkdirSync4(storeDirectory, { recursive: true, mode: 448 });
+  const directoryStat = lstatSync(storeDirectory);
+  if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
+    throw new Error("LaunchStack secrets directory must be a real directory.");
+  }
+  if (process.platform !== "win32") chmodSync2(storeDirectory, 448);
   atomicWriteText(
     getSecretsPath(projectDirectory),
     `${JSON.stringify(secrets, null, 2)}

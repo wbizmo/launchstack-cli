@@ -5,6 +5,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -58,5 +59,17 @@ describe("secret store", () => {
 
     expect(() => readSecrets(directory)).toThrow("Invalid JSON");
     expect(readFileSync(join(storeDirectory, "secrets.json"), "utf8")).toBe("{not-json");
+  });
+
+  it("refuses a secrets file symlink", () => {
+    if (process.platform === "win32") return;
+    const directory = temporaryDirectory();
+    const storeDirectory = join(directory, ".launchstack");
+    const outside = join(directory, "outside.json");
+    mkdirSync(storeDirectory, { recursive: true, mode: 0o700 });
+    writeFileSync(outside, '{"API_KEY":"must not be followed"}\n', { mode: 0o600 });
+    symlinkSync(outside, join(storeDirectory, "secrets.json"));
+
+    expect(() => readSecrets(directory)).toThrow(/regular file/i);
   });
 });

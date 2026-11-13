@@ -17,6 +17,25 @@ export function runProductionAudit(projectDirectoryInput: string): AuditReport {
   for (const entry of [".env", ".env.example"].map((path) => ({ path, content: readIfPresent(root, path) })).filter((item) => item.content !== undefined)) if ((entry.content ?? "").split(/\r?\n/).some((line) => /^(JWT_(?:ACCESS|REFRESH)_SECRET)=\s*(?:secret|changeme|development|test|your[-_ ]?secret)\s*$/i.test(line))) findings.push(finding("LS004", entry.path === ".env" ? "critical" : "high", "JWT secret uses a known placeholder", `A JWT secret placeholder was detected in ${entry.path}; values are intentionally not displayed.`, true, entry.path));
   const tracked = gitTrackedFiles(root).filter((path) => SECRET_FILE_PATTERNS.some((pattern) => pattern.test(path)) && !/(^|\/)\.env\.example$/.test(path)); if (tracked.length) findings.push(finding("LS005", "critical", "Potential secret material is tracked by Git", `Sensitive-looking tracked paths: ${tracked.join(", ")}. Secret contents were not inspected or printed.`, true));
   const dockerfile = readIfPresent(root, "Dockerfile"); if (dockerfile && !/^USER\s+[^\s]+/m.test(dockerfile)) findings.push(finding("LS006", "high", "Container may run as root", "Dockerfile does not declare a non-root USER in the runtime image.", true, "Dockerfile"));
+  if (dockerfile && /FROM\s+node:(?:1[0-9]|20)(?:[-@\s]|$)/im.test(dockerfile)) findings.push(finding("LS016", "high", "Container runtime may be end-of-life", "The Dockerfile references Node 20 or earlier; verify the selected image against the Node.js support schedule.", false, "Dockerfile"));
+  if (pkg) {
+    const engines = pkg.engines && typeof pkg.engines === "object" ? pkg.engines as Record<string, unknown> : {};
+    if (typeof engines.node !== "string") findings.push(finding("LS017", "medium", "Node.js support range is not declared", "package.json does not declare engines.node; supported runtime compatibility cannot be checked from this manifest.", true, "package.json"));
+    else if (/(?:^|[^0-9])(?:1[0-9]|20)(?:\.x|\b)/i.test(engines.node)) findings.push(finding("LS018", "high", "Node.js support range may include an end-of-life runtime", "The declared Node.js range appears to include Node 20 or earlier; review against the current Node.js release schedule.", false, "package.json"));
+  }
+  const lockContent = readIfPresent(root, "package-lock.json");
+  if (lockContent !== undefined) {
+    try {
+      const lock = JSON.parse(lockContent) as { lockfileVersion?: unknown; packages?: Record<string, { name?: unknown; version?: unknown }> };
+      if (!Number.isInteger(lock.lockfileVersion) || !lock.packages || typeof lock.packages !== "object") throw new Error("invalid npm lock structure");
+      const rootPackage = lock.packages[""];
+      if (!rootPackage || (pkg?.name && rootPackage.name !== pkg.name) || (pkg?.version && rootPackage.version !== pkg.version)) findings.push(finding("LS019", "high", "Dependency lock does not match package metadata", "The package-lock root name or version differs from package.json.", true, "package-lock.json"));
+    } catch {
+      findings.push(finding("LS020", "high", "Dependency lock is invalid", "package-lock.json is not valid JSON with an npm lock structure.", true, "package-lock.json"));
+    }
+  }
+  const productionCompose = readIfPresent(root, "docker-compose.production.yml") ?? "";
+  if (productionCompose && (!/CORS_ORIGIN:\s*\$\{CORS_ORIGIN:\?/.test(productionCompose) || !/JWT_(?:ACCESS|REFRESH)_SECRET:\s*\$\{JWT_/.test(productionCompose))) findings.push(finding("LS021", "high", "Production Compose does not require deployment settings", "Production Compose should require an explicit CORS origin and JWT secrets.", true, "docker-compose.production.yml"));
   if (pkg) { const scripts = pkg.scripts && typeof pkg.scripts === "object" ? pkg.scripts as Record<string, unknown> : {}; if (!scripts["prisma:deploy"]) findings.push(finding("LS007", "high", "Production migration command is missing", "package.json does not expose prisma:deploy.", true, "package.json")); }
   if (!existsSync(join(root, "src/routes/health.ts")) || !existsSync(join(root, "src/routes/readiness.ts"))) findings.push(finding("LS008", "medium", "Health/readiness coverage is incomplete", "Production services should expose both liveness and readiness endpoints.", true));
   const swagger = readIfPresent(root, "src/plugins/swagger.ts") ?? ""; if (swagger && !/NODE_ENV|SWAGGER|DOCS|enabled/i.test(swagger)) findings.push(finding("LS009", "medium", "Swagger exposure has no visible production policy", "Gate public production API documentation explicitly or document the choice.", false, "src/plugins/swagger.ts"));

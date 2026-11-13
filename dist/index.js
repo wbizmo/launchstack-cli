@@ -184,8 +184,8 @@ var LaunchStackClient = class {
 
 // src/generator/generate.ts
 var import_node_fs5 = require("fs");
-var import_node_path5 = require("path");
 var import_node_crypto = require("crypto");
+var import_node_path5 = require("path");
 
 // src/docker-assets.ts
 var import_node_fs = require("fs");
@@ -545,6 +545,13 @@ function generateProject(options) {
       PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
     });
     if (options.template === "api") {
+      const environmentPath = (0, import_node_path5.join)(stagedDirectory, ".env");
+      const environment = (0, import_node_fs5.readFileSync)(environmentPath, "utf8");
+      const securedEnvironment = environment.replace(/^JWT_ACCESS_SECRET=.*$/m, `JWT_ACCESS_SECRET=${(0, import_node_crypto.randomBytes)(48).toString("base64url")}`).replace(/^JWT_REFRESH_SECRET=.*$/m, `JWT_REFRESH_SECRET=${(0, import_node_crypto.randomBytes)(48).toString("base64url")}`);
+      (0, import_node_fs5.writeFileSync)(environmentPath, securedEnvironment, { mode: 384 });
+      if (process.platform !== "win32") (0, import_node_fs5.chmodSync)(environmentPath, 384);
+    }
+    if (options.template === "api") {
       writeCanonicalDockerAssets(stagedDirectory, {
         buildCommand: "npm run build",
         outputDirectory: "dist",
@@ -727,6 +734,63 @@ var import_node_crypto3 = require("crypto");
 var import_node_path9 = require("path");
 var metadataDirectory = (projectDirectory) => (0, import_node_path9.join)((0, import_node_path9.resolve)(projectDirectory), ".launchstack");
 var journalPath = (projectDirectory) => (0, import_node_path9.join)(metadataDirectory(projectDirectory), "mutation-journal.json");
+var MAX_JOURNAL_BYTES = 2 * 1024 * 1024;
+var MAX_JOURNAL_MUTATIONS = 1e4;
+function ensureMetadataDirectory(projectDirectory) {
+  const root = (0, import_node_path9.resolve)(projectDirectory);
+  const directory = metadataDirectory(root);
+  (0, import_node_fs9.mkdirSync)(directory, { recursive: true, mode: 448 });
+  const stat = (0, import_node_fs9.lstatSync)(directory);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error("LaunchStack metadata directory must be a real directory.");
+  }
+  const relativePath = (0, import_node_path9.relative)(root, (0, import_node_path9.resolve)(directory));
+  if (relativePath !== ".launchstack" || (0, import_node_path9.isAbsolute)(relativePath) || relativePath.startsWith(`..${import_node_path9.sep}`)) {
+    throw new Error("LaunchStack metadata directory escapes the project.");
+  }
+  return directory;
+}
+function assertOwnedDirectory(directory, metadata) {
+  const stat = (0, import_node_fs9.lstatSync)(directory);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error("Mutation recovery directory is not a LaunchStack-owned directory.");
+  }
+  const rel = (0, import_node_path9.relative)((0, import_node_path9.resolve)(metadata), (0, import_node_path9.resolve)(directory));
+  if (!rel.startsWith(".stage-") && !rel.startsWith(".backup-")) {
+    throw new Error("Mutation recovery directory escapes LaunchStack metadata.");
+  }
+  if (rel.includes(import_node_path9.sep) || rel === ".." || (0, import_node_path9.isAbsolute)(rel)) {
+    throw new Error("Mutation recovery directory escapes LaunchStack metadata.");
+  }
+}
+function parseJournal(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid mutation recovery journal.");
+  const candidate = value;
+  const allowed = /* @__PURE__ */ new Set(["version", "id", "mutations"]);
+  if (Object.keys(candidate).some((key) => !allowed.has(key)) || candidate.version !== 1 || typeof candidate.id !== "string" || !/^[0-9a-f-]{36}$/i.test(candidate.id) || !Array.isArray(candidate.mutations) || candidate.mutations.length > MAX_JOURNAL_MUTATIONS) {
+    throw new Error("Invalid mutation recovery journal.");
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const mutations = candidate.mutations.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error("Invalid mutation recovery journal entry.");
+    const item = entry;
+    if (Object.keys(item).some((key) => !["type", "path", "hadOriginal"].includes(key)) || item.type !== "write" && item.type !== "delete" || typeof item.path !== "string" || typeof item.hadOriginal !== "boolean") {
+      throw new Error("Invalid mutation recovery journal entry.");
+    }
+    const normalized = item.path.split(/[\\/]+/).filter(Boolean).join("/");
+    if (!normalized || normalized !== item.path || seen.has(normalized)) throw new Error("Invalid mutation recovery journal path.");
+    seen.add(normalized);
+    return { type: item.type, path: normalized, hadOriginal: item.hadOriginal };
+  });
+  return { version: 1, id: candidate.id, mutations };
+}
+function readJournal(projectDirectory) {
+  const metadata = ensureMetadataDirectory(projectDirectory);
+  const path = journalPath(projectDirectory);
+  const stat = (0, import_node_fs9.lstatSync)(path);
+  if (stat.isSymbolicLink() || !stat.isFile() || stat.size > MAX_JOURNAL_BYTES) throw new Error("Mutation recovery journal is not a bounded regular file.");
+  return parseJournal(JSON.parse((0, import_node_fs9.readFileSync)(path, "utf8")));
+}
 function processIsAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -737,17 +801,18 @@ function processIsAlive(pid) {
   }
 }
 function acquireLock(projectDirectory) {
-  const directory = metadataDirectory(projectDirectory);
-  (0, import_node_fs9.mkdirSync)(directory, { recursive: true });
+  const directory = ensureMetadataDirectory(projectDirectory);
   const lockPath = (0, import_node_path9.join)(directory, "mutation.lock");
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const descriptor = (0, import_node_fs9.openSync)(lockPath, "wx", 384);
-      (0, import_node_fs9.writeFileSync)(descriptor, JSON.stringify({ pid: process.pid, createdAt: Date.now() }));
+      const lockId = (0, import_node_crypto3.randomUUID)();
+      (0, import_node_fs9.writeFileSync)(descriptor, JSON.stringify({ version: 1, id: lockId, pid: process.pid, createdAt: Date.now() }));
       (0, import_node_fs9.closeSync)(descriptor);
       return () => {
         try {
-          (0, import_node_fs9.unlinkSync)(lockPath);
+          const current = JSON.parse((0, import_node_fs9.readFileSync)(lockPath, "utf8"));
+          if (current.id === lockId) (0, import_node_fs9.unlinkSync)(lockPath);
         } catch {
         }
       };
@@ -755,37 +820,56 @@ function acquireLock(projectDirectory) {
       if (!(0, import_node_fs9.existsSync)(lockPath)) throw error;
       let stale = false;
       try {
-        const lock = JSON.parse((0, import_node_fs9.readFileSync)(lockPath, "utf8"));
+        const stat = (0, import_node_fs9.lstatSync)(lockPath);
+        if (stat.isSymbolicLink() || !stat.isFile() || stat.size > 4096) throw new Error("unsafe lock");
+        const contents = (0, import_node_fs9.readFileSync)(lockPath, "utf8");
+        const lock = JSON.parse(contents);
+        if (lock.version !== 1 || typeof lock.id !== "string" || !Number.isInteger(lock.pid) || !Number.isFinite(lock.createdAt)) throw new Error("malformed lock");
         stale = !processIsAlive(lock.pid ?? -1);
+        if (stale && (0, import_node_fs9.readFileSync)(lockPath, "utf8") === contents) (0, import_node_fs9.unlinkSync)(lockPath);
       } catch {
-        stale = true;
+        stale = false;
       }
       if (!stale || attempt > 0) {
         throw new Error("Another LaunchStack mutation is already running for this project.");
       }
-      (0, import_node_fs9.unlinkSync)(lockPath);
     }
   }
   throw new Error("Unable to acquire LaunchStack project mutation lock.");
 }
 function restoreJournal(projectDirectory, journal) {
-  for (const mutation of [...journal.mutations].reverse()) {
+  const metadata = ensureMetadataDirectory(projectDirectory);
+  const stageDirectory = (0, import_node_path9.join)(metadata, `.stage-${journal.id}`);
+  const backupDirectory = (0, import_node_path9.join)(metadata, `.backup-${journal.id}`);
+  if ((0, import_node_fs9.existsSync)(stageDirectory)) assertOwnedDirectory(stageDirectory, metadata);
+  if ((0, import_node_fs9.existsSync)(backupDirectory)) assertOwnedDirectory(backupDirectory, metadata);
+  for (const mutation of journal.mutations) {
     const target = resolveProjectPath(projectDirectory, mutation.path);
-    const backup = (0, import_node_path9.join)(journal.backupDirectory, mutation.path);
-    if ((0, import_node_fs9.existsSync)(target)) (0, import_node_fs9.rmSync)(target, { recursive: true, force: true });
-    if (mutation.hadOriginal && (0, import_node_fs9.existsSync)(backup)) {
-      (0, import_node_fs9.mkdirSync)((0, import_node_path9.dirname)(target), { recursive: true });
-      (0, import_node_fs9.renameSync)(backup, target);
+    const backup = (0, import_node_path9.join)(backupDirectory, mutation.path);
+    if ((0, import_node_fs9.existsSync)(backup)) resolveProjectPath(backupDirectory, mutation.path);
+    if (mutation.hadOriginal && !(0, import_node_fs9.existsSync)(backup) && !(0, import_node_fs9.existsSync)(target)) {
+      throw new Error(`Cannot safely recover original file: ${mutation.path}`);
     }
   }
-  (0, import_node_fs9.rmSync)(journal.stageDirectory, { recursive: true, force: true });
-  (0, import_node_fs9.rmSync)(journal.backupDirectory, { recursive: true, force: true });
+  for (const mutation of [...journal.mutations].reverse()) {
+    const target = resolveProjectPath(projectDirectory, mutation.path);
+    const backup = (0, import_node_path9.join)(backupDirectory, mutation.path);
+    if ((0, import_node_fs9.existsSync)(backup)) {
+      if ((0, import_node_fs9.existsSync)(target)) (0, import_node_fs9.rmSync)(target, { recursive: true, force: true });
+      (0, import_node_fs9.mkdirSync)((0, import_node_path9.dirname)(target), { recursive: true });
+      (0, import_node_fs9.renameSync)(backup, target);
+    } else if (!mutation.hadOriginal && (0, import_node_fs9.existsSync)(target)) {
+      (0, import_node_fs9.rmSync)(target, { recursive: true, force: true });
+    }
+  }
+  if ((0, import_node_fs9.existsSync)(stageDirectory)) (0, import_node_fs9.rmSync)(stageDirectory, { recursive: true, force: true });
+  if ((0, import_node_fs9.existsSync)(backupDirectory)) (0, import_node_fs9.rmSync)(backupDirectory, { recursive: true, force: true });
   (0, import_node_fs9.rmSync)(journalPath(projectDirectory), { force: true });
 }
 function recoverInterruptedMutation(projectDirectory) {
   const path = journalPath(projectDirectory);
   if (!(0, import_node_fs9.existsSync)(path)) return false;
-  restoreJournal(projectDirectory, JSON.parse((0, import_node_fs9.readFileSync)(path, "utf8")));
+  restoreJournal(projectDirectory, readJournal(projectDirectory));
   return true;
 }
 function withTrackedMutations(state, mutations) {
@@ -811,7 +895,7 @@ function applyFileMutations(input) {
   try {
     recoverInterruptedMutation(projectDirectory);
     const id = (0, import_node_crypto3.randomUUID)();
-    const metadata = metadataDirectory(projectDirectory);
+    const metadata = ensureMetadataDirectory(projectDirectory);
     const stageDirectory = (0, import_node_path9.join)(metadata, `.stage-${id}`);
     const backupDirectory = (0, import_node_path9.join)(metadata, `.backup-${id}`);
     (0, import_node_fs9.mkdirSync)(stageDirectory, { recursive: true, mode: 448 });
@@ -846,16 +930,15 @@ function applyFileMutations(input) {
       throw error;
     }
     const journal = {
+      version: 1,
       id,
-      backupDirectory,
-      stageDirectory,
       mutations: input.mutations.map((mutation) => ({
         type: mutation.type,
         path: mutation.path,
         hadOriginal: (0, import_node_fs9.existsSync)(resolveProjectPath(projectDirectory, mutation.path))
       }))
     };
-    (0, import_node_fs9.writeFileSync)(journalPath(projectDirectory), JSON.stringify(journal, null, 2), { mode: 384 });
+    (0, import_node_fs9.writeFileSync)(journalPath(projectDirectory), JSON.stringify(journal, null, 2), { mode: 384, flag: "wx" });
     try {
       for (const mutation of input.mutations) {
         const target = resolveProjectPath(projectDirectory, mutation.path);
@@ -1455,6 +1538,25 @@ function runProductionAudit(projectDirectoryInput) {
   if (tracked.length) findings.push(finding("LS005", "critical", "Potential secret material is tracked by Git", `Sensitive-looking tracked paths: ${tracked.join(", ")}. Secret contents were not inspected or printed.`, true));
   const dockerfile = readIfPresent(root, "Dockerfile");
   if (dockerfile && !/^USER\s+[^\s]+/m.test(dockerfile)) findings.push(finding("LS006", "high", "Container may run as root", "Dockerfile does not declare a non-root USER in the runtime image.", true, "Dockerfile"));
+  if (dockerfile && /FROM\s+node:(?:1[0-9]|20)(?:[-@\s]|$)/im.test(dockerfile)) findings.push(finding("LS016", "high", "Container runtime may be end-of-life", "The Dockerfile references Node 20 or earlier; verify the selected image against the Node.js support schedule.", false, "Dockerfile"));
+  if (pkg) {
+    const engines = pkg.engines && typeof pkg.engines === "object" ? pkg.engines : {};
+    if (typeof engines.node !== "string") findings.push(finding("LS017", "medium", "Node.js support range is not declared", "package.json does not declare engines.node; supported runtime compatibility cannot be checked from this manifest.", true, "package.json"));
+    else if (/(?:^|[^0-9])(?:1[0-9]|20)(?:\.x|\b)/i.test(engines.node)) findings.push(finding("LS018", "high", "Node.js support range may include an end-of-life runtime", "The declared Node.js range appears to include Node 20 or earlier; review against the current Node.js release schedule.", false, "package.json"));
+  }
+  const lockContent = readIfPresent(root, "package-lock.json");
+  if (lockContent !== void 0) {
+    try {
+      const lock = JSON.parse(lockContent);
+      if (!Number.isInteger(lock.lockfileVersion) || !lock.packages || typeof lock.packages !== "object") throw new Error("invalid npm lock structure");
+      const rootPackage = lock.packages[""];
+      if (!rootPackage || pkg?.name && rootPackage.name !== pkg.name || pkg?.version && rootPackage.version !== pkg.version) findings.push(finding("LS019", "high", "Dependency lock does not match package metadata", "The package-lock root name or version differs from package.json.", true, "package-lock.json"));
+    } catch {
+      findings.push(finding("LS020", "high", "Dependency lock is invalid", "package-lock.json is not valid JSON with an npm lock structure.", true, "package-lock.json"));
+    }
+  }
+  const productionCompose = readIfPresent(root, "docker-compose.production.yml") ?? "";
+  if (productionCompose && (!/CORS_ORIGIN:\s*\$\{CORS_ORIGIN:\?/.test(productionCompose) || !/JWT_(?:ACCESS|REFRESH)_SECRET:\s*\$\{JWT_/.test(productionCompose))) findings.push(finding("LS021", "high", "Production Compose does not require deployment settings", "Production Compose should require an explicit CORS origin and JWT secrets.", true, "docker-compose.production.yml"));
   if (pkg) {
     const scripts = pkg.scripts && typeof pkg.scripts === "object" ? pkg.scripts : {};
     if (!scripts["prisma:deploy"]) findings.push(finding("LS007", "high", "Production migration command is missing", "package.json does not expose prisma:deploy.", true, "package.json"));
