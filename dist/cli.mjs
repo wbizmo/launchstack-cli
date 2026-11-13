@@ -30,7 +30,7 @@ import {
   renderDockerfile,
   runProductionAudit,
   severityRank
-} from "./chunk-CUM2XEES.mjs";
+} from "./chunk-CDAR7BIY.mjs";
 
 // src/cli.ts
 import { Command as Command22 } from "commander";
@@ -114,10 +114,11 @@ var upgradeCommand = new Command2("upgrade").description("Safely adopt or upgrad
   try {
     const plan = planUpgrade(options.directory ?? process.cwd());
     if (!options.plan && !plan.conflicts.length) applyUpgrade(plan);
-    const output = { dryRun: Boolean(options.plan), fromVersion: plan.fromVersion, toVersion: plan.toVersion, actions: plan.actions, conflicts: plan.conflicts };
+    const output = { dryRun: Boolean(options.plan), fromVersion: plan.fromVersion, toVersion: plan.toVersion, actions: plan.actions, diffs: plan.diffs, conflicts: plan.conflicts };
     if (options.json) console.log(JSON.stringify(output, null, 2));
     else {
       for (const action of plan.actions) console.log(`${options.plan ? "PLAN" : "APPLY"} ${action.kind} ${action.target}: ${action.detail}`);
+      if (options.plan) for (const diff of plan.diffs) console.log(`DIFF ${diff.path}: ${diff.before === null ? "create" : "update"}`);
       for (const conflict of plan.conflicts) console.error(`CONFLICT ${conflict}`);
     }
     if (plan.conflicts.length) process.exitCode = 1;

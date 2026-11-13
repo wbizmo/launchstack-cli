@@ -29,7 +29,7 @@ export type ProjectManifest = {
   audit?: { suppressions: AuditSuppression[] };
 };
 
-export type ManagedFileState = { owner: string; sha256: string; version: string };
+export type ManagedFileState = { owner: string; sha256: string; version: string; ownership?: "launchstack" | "shared" | "extension"; migrationBaseSha256?: string };
 export type InstalledExtensionState = {
   id: string;
   version: string;
@@ -73,6 +73,7 @@ export type PlannedWrite = {
   version: string;
   expectedSha256?: string | null;
   executable?: boolean;
+  baseSha256?: string;
 };
 export type PlannedDelete = {
   type: "delete";

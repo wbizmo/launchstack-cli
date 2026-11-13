@@ -88,7 +88,7 @@ import { createHash } from "crypto";
 import { existsSync, readFileSync as readFileSync2 } from "fs";
 import { join as join2, resolve as resolve2 } from "path";
 import { z as z2 } from "zod";
-var managedFileSchema = z2.object({ owner: z2.string().min(1), sha256: z2.string().regex(/^[a-f0-9]{64}$/), version: z2.string().min(1) }).strict();
+var managedFileSchema = z2.object({ owner: z2.string().min(1), sha256: z2.string().regex(/^[a-f0-9]{64}$/), version: z2.string().min(1), ownership: z2.enum(["launchstack", "shared", "extension"]).optional(), migrationBaseSha256: z2.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
 var extensionSchema = z2.object({ id: z2.string().min(1), version: z2.string().min(1), kind: z2.enum(["capability", "plugin"]), source: z2.string().optional(), installedAt: z2.string().min(1) }).strict();
 var stageSchema2 = z2.object({ name: z2.string().min(1), provider: z2.string().min(1), resourceId: z2.string().min(1), status: z2.enum(["creating", "ready", "failed", "destroyed"]), sourceCommit: z2.string().optional(), url: z2.string().optional(), createdAt: z2.string().min(1), updatedAt: z2.string().min(1), production: z2.boolean() }).strict();
 var projectStateSchema = z2.object({ stateVersion: z2.literal(STATE_SCHEMA_VERSION), templateVersion: z2.string().min(1), cliVersion: z2.string().min(1), managedFiles: z2.record(z2.string(), managedFileSchema), extensions: z2.record(z2.string(), extensionSchema), stages: z2.record(z2.string(), stageSchema2), updatedAt: z2.string().min(1) }).strict();
@@ -429,7 +429,9 @@ function withTrackedMutations(state, mutations) {
       next.managedFiles[mutation.path] = {
         owner: mutation.owner,
         version: mutation.version,
-        sha256: sha256(mutation.content)
+        sha256: sha256(mutation.content),
+        ownership: mutation.owner.startsWith("launchstack:integration:") ? "shared" : mutation.owner.startsWith("launchstack:") ? "launchstack" : "extension",
+        ...mutation.baseSha256 ? { migrationBaseSha256: mutation.baseSha256 } : {}
       };
     } else {
       delete next.managedFiles[mutation.path];
@@ -558,18 +560,18 @@ function resolveExtensionOrder(requested, registry) {
   const order = [];
   const visiting = /* @__PURE__ */ new Set();
   const visited = /* @__PURE__ */ new Set();
-  const visit = (id, chain) => {
+  const visit2 = (id, chain) => {
     if (visited.has(id)) return;
     if (visiting.has(id)) throw new Error(`Extension dependency cycle: ${[...chain, id].join(" -> ")}`);
     const item = registry[id];
     if (!item) throw new Error(`Unknown extension: ${id}`);
     visiting.add(id);
-    for (const dep of item.dependencies ?? []) visit(dep, [...chain, id]);
+    for (const dep of item.dependencies ?? []) visit2(dep, [...chain, id]);
     visiting.delete(id);
     visited.add(id);
     order.push(item);
   };
-  for (const id of requested) visit(id, []);
+  for (const id of requested) visit2(id, []);
   return order;
 }
 function packageMutation(projectDirectory, extensions) {
@@ -786,7 +788,12 @@ function projectHasManifest(projectDirectory) {
 // src/project/upgrade.ts
 import { existsSync as existsSync7, readFileSync as readFileSync5 } from "fs";
 import { resolve as resolve8 } from "path";
+import { parse as parseTypeScript } from "@babel/parser";
 var V3_TEMPLATE_VERSION = "3.0.0";
+var LEGACY_V2_TEMPLATE_VERSION = "2.0.0";
+var MIGRATIONS = [
+  { from: LEGACY_V2_TEMPLATE_VERSION, to: V3_TEMPLATE_VERSION, id: "v2-to-v3" }
+];
 function readText(projectDirectory, path) {
   const absolute = resolveProjectPath(projectDirectory, path);
   if (!existsSync7(absolute)) throw new Error(`Expected project file is missing: ${path}`);
@@ -795,98 +802,230 @@ function readText(projectDirectory, path) {
 function inferLegacyProject(projectDirectory) {
   const packagePath = resolveProjectPath(projectDirectory, "package.json");
   if (!existsSync7(packagePath)) throw new Error("No launchstack.json or package.json was found; this does not look like a LaunchStack project.");
-  const parsed = JSON.parse(readFileSync5(packagePath, "utf8"));
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync5(packagePath, "utf8"));
+  } catch {
+    throw new Error("Legacy package.json is not valid JSON.");
+  }
   if (typeof parsed.name !== "string" || typeof parsed.version !== "string") throw new Error("Legacy package.json does not contain a valid name/version.");
   if (!existsSync7(resolveProjectPath(projectDirectory, "src/app.ts")) || !existsSync7(resolveProjectPath(projectDirectory, "src/routes/index.ts"))) throw new Error("Legacy project is missing LaunchStack architecture files.");
-  if (!/^2\./.test(parsed.version) && !/^3\./.test(parsed.version)) throw new Error(`Unsupported legacy template version: ${parsed.version}`);
-  return { name: parsed.name, version: parsed.version };
+  if (!/^2\./.test(parsed.version) && !/^3\./.test(parsed.version)) throw new Error(`Unsupported legacy package version: ${parsed.version}`);
+  return { name: parsed.name, packageVersion: parsed.version, templateVersion: parsed.version.startsWith("2.") ? LEGACY_V2_TEMPLATE_VERSION : V3_TEMPLATE_VERSION };
 }
-function patchRoutes(content) {
-  if (content.includes("registerGeneratedRoutes")) return content;
-  const anchor = /import \{ readinessRoutes \} from ["']\.\/readiness["'];/;
-  if (!anchor.test(content)) throw new Error("Cannot safely upgrade src/routes/index.ts: readiness import anchor not found.");
-  let next = content.replace(anchor, (match) => `${match}
-import { registerGeneratedRoutes } from "./launchstack.generated";`);
-  const closing = next.lastIndexOf("}\n");
-  if (closing < 0) throw new Error("Cannot safely upgrade src/routes/index.ts: function boundary not found.");
-  return `${next.slice(0, closing)}
-  await registerGeneratedRoutes(app);
-${next.slice(closing)}`;
+function parseSource(content, path) {
+  try {
+    return parseTypeScript(content, { sourceType: "unambiguous", plugins: ["typescript"], errorRecovery: false });
+  } catch (error) {
+    throw new Error(`Cannot parse ${path} as TypeScript: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
-function patchApp(content) {
-  if (content.includes("registerLaunchStackCapabilities")) return content;
-  const anchor = /import \{ registerPlugins \} from ["']\.\/plugins["'];/;
-  if (!anchor.test(content)) throw new Error("Cannot safely upgrade src/app.ts: plugin import anchor not found.");
-  let next = content.replace(anchor, (match) => `${match}
-import { registerLaunchStackCapabilities } from "./launchstack/capabilities";`);
-  const call = "  await registerPlugins(app);";
-  if (!next.includes(call)) throw new Error("Cannot safely upgrade src/app.ts: plugin registration anchor not found.");
-  return next.replace(call, `${call}
-  await registerLaunchStackCapabilities(app);`);
+function moduleName(node) {
+  return node?.value;
+}
+function localName(node) {
+  return node?.name;
+}
+function findNamedImport(source, name) {
+  for (const statement of source.program.body) {
+    if (statement.type !== "ImportDeclaration") continue;
+    for (const binding of statement.specifiers ?? []) {
+      if (binding.type !== "ImportSpecifier") continue;
+      if (localName(binding.local) === name || localName(binding.imported) === name || moduleName(binding.imported) === name) {
+        const module = moduleName(statement.source);
+        if (module) return { module, binding };
+      }
+    }
+  }
+  return void 0;
+}
+function addNamedImport(content, path, name, module) {
+  const source = parseSource(content, path);
+  const current = findNamedImport(source, name);
+  if (current) {
+    if (current.module !== module) throw new Error(`Cannot safely upgrade ${path}: ${name} is already imported from ${current.module}.`);
+    return content;
+  }
+  const imports = source.program.body.filter((item) => item.type === "ImportDeclaration");
+  const insertion = imports[imports.length - 1]?.end ?? 0;
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  const quote = imports.some((item) => content.slice(item.start ?? 0, item.end ?? 0).includes("'")) ? "'" : '"';
+  return `${content.slice(0, insertion)}${newline}import { ${name} } from ${quote}${module}${quote};${content.slice(insertion)}`;
+}
+function findFunction(source, name) {
+  for (const statement of source.program.body) {
+    const declaration = statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+    if (declaration?.type === "FunctionDeclaration" && localName(declaration.id) === name) return declaration;
+  }
+  return void 0;
+}
+function visit(node, callback) {
+  callback(node);
+  for (const value of Object.values(node)) {
+    if (Array.isArray(value)) {
+      for (const child of value) {
+        if (child && typeof child === "object" && "type" in child) visit(child, callback);
+      }
+    } else if (value && typeof value === "object" && "type" in value) {
+      visit(value, callback);
+    }
+  }
+}
+function functionCalls(functionNode, name) {
+  const calls = [];
+  if (functionNode.body && !Array.isArray(functionNode.body)) visit(functionNode.body, (node) => {
+    if (node.type === "CallExpression" && node.callee?.type === "Identifier" && localName(node.callee) === name) calls.push(node);
+  });
+  return calls;
+}
+function exportsFunction(content, path, name) {
+  const source = parseSource(content, path);
+  return source.program.body.some((statement) => {
+    if (statement.type !== "ExportNamedDeclaration" || !statement.declaration) return false;
+    const declaration = statement.declaration;
+    if (declaration.type === "FunctionDeclaration") return localName(declaration.id) === name;
+    if (declaration.type !== "VariableDeclaration") return false;
+    return (declaration.declarations ?? []).some((item) => localName(item.id) === name);
+  });
+}
+function addAwaitCall(content, path, functionName, callName, afterCallName) {
+  const source = parseSource(content, path);
+  const functionNode = findFunction(source, functionName);
+  const body = functionNode?.body;
+  if (!body || Array.isArray(body) || body.type !== "BlockStatement" || !Array.isArray(body.body)) throw new Error(`Cannot safely upgrade ${path}: ${functionName} function was not found.`);
+  if (functionCalls(functionNode, callName).length) return content;
+  const anchor = afterCallName ? body.body.find((statement) => statement.type === "ExpressionStatement" && statement.expression?.type === "AwaitExpression" && statement.expression.argument?.type === "CallExpression" && statement.expression.argument.callee?.type === "Identifier" && localName(statement.expression.argument.callee) === afterCallName) : void 0;
+  const insertion = anchor?.end ?? (body.end ?? content.length) - 1;
+  const lineStart = content.lastIndexOf("\n", insertion - 1) + 1;
+  const currentLine = content.slice(lineStart, insertion);
+  const indent = /^\s*/.exec(currentLine)?.[0] ?? "  ";
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  return `${content.slice(0, insertion)}${newline}${indent}await ${callName}(app);${content.slice(insertion)}`;
+}
+function addIntegration(content, path, options) {
+  const source = parseSource(content, path);
+  const imported = findNamedImport(source, options.importName);
+  const functionNode = findFunction(source, options.functionName);
+  if (!functionNode?.body) throw new Error(`Cannot safely upgrade ${path}: ${options.functionName} function was not found.`);
+  const alreadyCalled = functionCalls(functionNode, options.importName).length > 0;
+  if (alreadyCalled && !imported) throw new Error(`Cannot safely upgrade ${path}: ${options.importName} is called without a matching import.`);
+  if (!alreadyCalled && imported && imported.module !== options.module) throw new Error(`Cannot safely upgrade ${path}: ${options.importName} is imported from ${imported.module}.`);
+  if (alreadyCalled) return content;
+  const withImport = addNamedImport(content, path, options.importName, options.module);
+  return addAwaitCall(withImport, path, options.functionName, options.importName, options.afterCallName);
+}
+function migrationChain(from, to) {
+  const chain = [];
+  const visited = /* @__PURE__ */ new Set();
+  let version = from;
+  while (version !== to) {
+    if (visited.has(version)) throw new Error(`Migration cycle detected at template ${version}.`);
+    visited.add(version);
+    const migration = MIGRATIONS.find((item) => item.from === version);
+    if (!migration) throw new Error(`No ordered migration is registered from template ${version} to ${to}.`);
+    chain.push(migration);
+    version = migration.to;
+  }
+  return chain;
 }
 function metadataMutation(projectDirectory, path, content) {
   const absolute = resolveProjectPath(projectDirectory, path);
+  const existing = existsSync7(absolute) ? readFileSync5(absolute, "utf8") : null;
+  if (existing === content) return null;
   return { type: "write", path, content, owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: existsSync7(absolute) ? hashFile(absolute) : null };
+}
+function migrationFiles(projectDirectory, migration, mutations, actions, conflicts) {
+  const routeRegistry = "src/routes/launchstack.generated.ts";
+  const capabilityRegistry = "src/launchstack/capabilities/index.ts";
+  const generated = [
+    { path: routeRegistry, content: `import type { FastifyInstance } from "fastify";
+
+/* launchstack-routes: [] */
+export async function registerGeneratedRoutes(app: FastifyInstance): Promise<void> { void app; }
+`, owner: "launchstack:core" },
+    { path: capabilityRegistry, content: `import type { FastifyInstance } from "fastify";
+export async function registerLaunchStackCapabilities(app: FastifyInstance): Promise<void> { void app; }
+`, owner: "launchstack:core" }
+  ];
+  for (const file of generated) {
+    const absolute = resolveProjectPath(projectDirectory, file.path);
+    if (!existsSync7(absolute)) {
+      mutations.push({ type: "write", path: file.path, content: file.content, owner: file.owner, version: migration.to, expectedSha256: null });
+      actions.push({ id: `${migration.id}:${file.path}`, kind: "write", target: file.path, detail: `create ${file.owner} registry` });
+    } else {
+      const exportedName = file.path === routeRegistry ? "registerGeneratedRoutes" : "registerLaunchStackCapabilities";
+      try {
+        if (!exportsFunction(readFileSync5(absolute, "utf8"), file.path, exportedName)) conflicts.push(`Cannot safely upgrade ${file.path}: existing file does not export ${exportedName}.`);
+      } catch (error) {
+        conflicts.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+  }
+  if (conflicts.length) return;
+  const integrationFiles = [
+    { path: "src/routes/index.ts", module: "./launchstack.generated", importName: "registerGeneratedRoutes", functionName: "registerRoutes", afterCallName: "readinessRoutes" },
+    { path: "src/app.ts", module: "./launchstack/capabilities", importName: "registerLaunchStackCapabilities", functionName: "buildApp", afterCallName: "registerPlugins" }
+  ];
+  for (const item of integrationFiles) {
+    try {
+      const current = readText(projectDirectory, item.path);
+      const next = addIntegration(current.content, item.path, item);
+      if (next !== current.content) {
+        mutations.push({ type: "write", path: item.path, content: next, owner: `launchstack:integration:${item.functionName}`, version: migration.to, expectedSha256: current.hash, baseSha256: current.hash });
+        actions.push({ id: `${migration.id}:${item.functionName}`, kind: "write", target: item.path, detail: `add the ${item.importName} integration while preserving surrounding source` });
+      }
+    } catch (error) {
+      conflicts.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+}
+function makeDiff(projectDirectory, mutations) {
+  return mutations.map((mutation) => ({
+    path: mutation.path,
+    before: existsSync7(resolveProjectPath(projectDirectory, mutation.path)) ? readFileSync5(resolveProjectPath(projectDirectory, mutation.path), "utf8") : null,
+    after: mutation.type === "write" ? mutation.content : null
+  }));
 }
 function planUpgrade(projectDirectoryInput) {
   const projectDirectory = resolve8(projectDirectoryInput);
   const hasManifest = existsSync7(resolveProjectPath(projectDirectory, "launchstack.json"));
   const legacy = hasManifest ? null : inferLegacyProject(projectDirectory);
-  const manifest = hasManifest ? loadProjectManifest(projectDirectory) : createProjectManifest({ name: legacy?.name ?? "legacy-project", templateVersion: legacy?.version ?? "2.0.0" });
+  const manifest = hasManifest ? loadProjectManifest(projectDirectory) : createProjectManifest({ name: legacy?.name ?? "legacy-project", templateVersion: legacy?.templateVersion ?? LEGACY_V2_TEMPLATE_VERSION });
   const fromVersion = manifest.project.templateVersion;
   const state = hasManifest ? loadProjectState(projectDirectory, { templateVersion: fromVersion, cliVersion: currentLaunchStackVersion() }) : emptyProjectState(fromVersion, currentLaunchStackVersion());
   const actions = [];
   const conflicts = [];
   const mutations = [];
-  if (!/^2\./.test(fromVersion) && fromVersion !== V3_TEMPLATE_VERSION) conflicts.push(`No ordered migration is registered from template ${fromVersion}.`);
-  const generatedRoutesPath = "src/routes/launchstack.generated.ts";
-  if (!existsSync7(resolveProjectPath(projectDirectory, generatedRoutesPath))) {
-    mutations.push({ type: "write", path: generatedRoutesPath, content: `import type { FastifyInstance } from "fastify";
-
-/* launchstack-routes: [] */
-export async function registerGeneratedRoutes(app: FastifyInstance): Promise<void> { void app; }
-`, owner: "launchstack:core", version: V3_TEMPLATE_VERSION, expectedSha256: null });
-    actions.push({ id: "v3:route-registry", kind: "write", target: generatedRoutesPath, detail: "create generated route ownership boundary" });
-  }
-  const capabilitiesPath = "src/launchstack/capabilities/index.ts";
-  if (!existsSync7(resolveProjectPath(projectDirectory, capabilitiesPath))) {
-    mutations.push({ type: "write", path: capabilitiesPath, content: `import type { FastifyInstance } from "fastify";
-export async function registerLaunchStackCapabilities(app: FastifyInstance): Promise<void> { void app; }
-`, owner: "launchstack:core", version: V3_TEMPLATE_VERSION, expectedSha256: null });
-    actions.push({ id: "v3:capability-registry", kind: "write", target: capabilitiesPath, detail: "create capability ownership boundary" });
-  }
+  let chain = [];
   try {
-    const routes = readText(projectDirectory, "src/routes/index.ts");
-    const next = patchRoutes(routes.content);
-    if (next !== routes.content) {
-      mutations.push({ type: "write", path: "src/routes/index.ts", content: next, owner: "launchstack:metadata", version: V3_TEMPLATE_VERSION, expectedSha256: routes.hash });
-      actions.push({ id: "v3:routes-wire", kind: "write", target: "src/routes/index.ts", detail: "wire generated route registry" });
-    }
+    chain = migrationChain(fromVersion, V3_TEMPLATE_VERSION);
   } catch (error) {
     conflicts.push(error instanceof Error ? error.message : String(error));
   }
-  try {
-    const app = readText(projectDirectory, "src/app.ts");
-    const next = patchApp(app.content);
-    if (next !== app.content) {
-      mutations.push({ type: "write", path: "src/app.ts", content: next, owner: "launchstack:metadata", version: V3_TEMPLATE_VERSION, expectedSha256: app.hash });
-      actions.push({ id: "v3:capabilities-wire", kind: "write", target: "src/app.ts", detail: "wire capability registry" });
-    }
-  } catch (error) {
-    conflicts.push(error instanceof Error ? error.message : String(error));
-  }
+  const migration = chain[chain.length - 1] ?? { from: fromVersion, to: V3_TEMPLATE_VERSION, id: "v3-ensure" };
+  if (chain.length || fromVersion === V3_TEMPLATE_VERSION) migrationFiles(projectDirectory, migration, mutations, actions, conflicts);
   const nextManifest = structuredClone(manifest);
-  nextManifest.project.templateVersion = V3_TEMPLATE_VERSION;
-  const nextState = withTrackedMutations(state, mutations);
-  nextState.templateVersion = V3_TEMPLATE_VERSION;
-  nextState.cliVersion = currentLaunchStackVersion();
-  nextState.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  if (!hasManifest || fromVersion !== V3_TEMPLATE_VERSION) actions.push({ id: "v3:metadata", kind: "upgrade", target: "launchstack.json", detail: `${fromVersion} -> ${V3_TEMPLATE_VERSION}` });
-  return { projectDirectory, fromVersion, toVersion: V3_TEMPLATE_VERSION, actions, conflicts, mutations, nextManifest, nextState };
+  if (chain.length) {
+    nextManifest.project.templateVersion = V3_TEMPLATE_VERSION;
+    actions.push({ id: "template-migration", kind: "upgrade", target: "launchstack.json", detail: `${fromVersion} -> ${V3_TEMPLATE_VERSION}` });
+  }
+  const nextState = mutations.length ? withTrackedMutations(state, mutations) : structuredClone(state);
+  nextState.templateVersion = nextManifest.project.templateVersion;
+  const stateChanged = conflicts.length === 0 && (state.cliVersion !== currentLaunchStackVersion() || state.templateVersion !== nextState.templateVersion || mutations.length > 0 || !hasManifest);
+  if (stateChanged) {
+    nextState.cliVersion = currentLaunchStackVersion();
+    nextState.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  }
+  const nextManifestMutation = metadataMutation(projectDirectory, "launchstack.json", serializeProjectManifest(nextManifest));
+  const nextStateMutation = metadataMutation(projectDirectory, ".launchstack/state.json", serializeProjectState(nextState));
+  for (const item of [nextManifestMutation, nextStateMutation]) if (item) mutations.push(item);
+  if (nextManifestMutation || nextStateMutation) actions.push({ id: "cli-metadata", kind: "write", target: ".launchstack/state.json", detail: `record CLI ${currentLaunchStackVersion()} without changing template schema version` });
+  return { projectDirectory, fromVersion, toVersion: nextManifest.project.templateVersion, actions, conflicts, mutations, diffs: makeDiff(projectDirectory, mutations), nextManifest, nextState };
 }
 function applyUpgrade(plan) {
   if (plan.conflicts.length) throw new Error(`Upgrade conflicts: ${plan.conflicts.join("; ")}`);
-  return applyFileMutations({ projectDirectory: plan.projectDirectory, mutations: [...plan.mutations, metadataMutation(plan.projectDirectory, "launchstack.json", serializeProjectManifest(plan.nextManifest)), metadataMutation(plan.projectDirectory, ".launchstack/state.json", serializeProjectState(plan.nextState))], state: existsSync7(resolveProjectPath(plan.projectDirectory, ".launchstack/state.json")) ? loadProjectState(plan.projectDirectory) : emptyProjectState(plan.fromVersion, currentLaunchStackVersion()), nextState: plan.nextState });
+  const currentState = existsSync7(resolveProjectPath(plan.projectDirectory, ".launchstack/state.json")) ? loadProjectState(plan.projectDirectory) : emptyProjectState(plan.fromVersion, currentLaunchStackVersion());
+  return applyFileMutations({ projectDirectory: plan.projectDirectory, mutations: plan.mutations, state: currentState, nextState: plan.nextState });
 }
 
 // src/audit/run.ts
@@ -1969,4 +2108,4 @@ export {
   planModuleGeneration,
   applyModuleGeneration
 };
-//# sourceMappingURL=chunk-CUM2XEES.mjs.map
+//# sourceMappingURL=chunk-CDAR7BIY.mjs.map

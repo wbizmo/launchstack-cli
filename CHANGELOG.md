@@ -32,6 +32,14 @@
 - Transaction checks passed on Node 24.22.3: lint, strict typecheck and 2 focused files / 14 tests.
 - The full `release:check` also passed on Node 24.22.3 with PostgreSQL 16: 36 files / 119 tests, production audit, packed artifact smoke and generated API PostgreSQL checks (8 files / 26 tests), build and audit.
 
+### Versioned project upgrades (issue #33)
+- Register the explicit template edge 2.0.0 → 3.0.0 and reject unsupported intermediate versions rather than skipping them.
+- Use TypeScript syntax trees to place missing integration imports and calls while retaining user statements and comments.
+- Record LaunchStack-owned and shared integration ownership in state, including the migration base hash for shared files.
+- Make `upgrade --plan --json` read-only and include exact before/after text for every planned mutation.
+- Added upgrade fixtures for read-only planning, preservation, idempotency, legacy CLI/template version separation, and unsupported edges.
+- Measured clean v2-to-v3 plans with 100 / 1,000 / 10,000 tracked files against v3.0.0; timing and memory increases are recorded in `docs/benchmarks/issue-33-upgrades.md`.
+
 ## 3.0.0 - 2026-09-14
 
 ### Lifecycle platform

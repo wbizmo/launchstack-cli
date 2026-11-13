@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import { STATE_SCHEMA_VERSION, emptyProjectState, type DriftEntry, type ProjectState } from "./types";
 
-const managedFileSchema = z.object({ owner: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/), version: z.string().min(1) }).strict();
+const managedFileSchema = z.object({ owner: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/), version: z.string().min(1), ownership: z.enum(["launchstack", "shared", "extension"]).optional(), migrationBaseSha256: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
 const extensionSchema = z.object({ id: z.string().min(1), version: z.string().min(1), kind: z.enum(["capability", "plugin"]), source: z.string().optional(), installedAt: z.string().min(1) }).strict();
 const stageSchema = z.object({ name: z.string().min(1), provider: z.string().min(1), resourceId: z.string().min(1), status: z.enum(["creating", "ready", "failed", "destroyed"]), sourceCommit: z.string().optional(), url: z.string().optional(), createdAt: z.string().min(1), updatedAt: z.string().min(1), production: z.boolean() }).strict();
 export const projectStateSchema = z.object({ stateVersion: z.literal(STATE_SCHEMA_VERSION), templateVersion: z.string().min(1), cliVersion: z.string().min(1), managedFiles: z.record(z.string(), managedFileSchema), extensions: z.record(z.string(), extensionSchema), stages: z.record(z.string(), stageSchema), updatedAt: z.string().min(1) }).strict();

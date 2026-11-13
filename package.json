@@ -26,6 +26,7 @@
     "test:run": "vitest run --config vitest.config.ts",
     "bench:template": "vitest bench bench/template-render.bench.ts",
     "bench:transactions": "tsx bench/mutations.ts",
+    "bench:upgrades": "tsx bench/upgrades.ts",
     "audit:runtime": "npm audit --omit=dev --audit-level=high",
     "verify:dist": "npm run build && git diff --exit-code -- dist",
     "check": "npm run lint && npm run typecheck && npm run test:run && npm run verify:dist && npm pack --dry-run",
@@ -64,6 +65,7 @@
     "provenance": true
   },
   "dependencies": {
+    "@babel/parser": "^8.1.2",
     "chalk": "^5.6.2",
     "commander": "^14.0.2",
     "ora": "^9.4.0",

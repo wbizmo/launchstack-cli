@@ -272,7 +272,9 @@ export function withTrackedMutations(state: ProjectState, mutations: FileMutatio
       next.managedFiles[mutation.path] = {
         owner: mutation.owner,
         version: mutation.version,
-        sha256: sha256(mutation.content)
+        sha256: sha256(mutation.content),
+        ownership: mutation.owner.startsWith("launchstack:integration:") ? "shared" : mutation.owner.startsWith("launchstack:") ? "launchstack" : "extension",
+        ...(mutation.baseSha256 ? { migrationBaseSha256: mutation.baseSha256 } : {})
       };
     } else {
       delete next.managedFiles[mutation.path];

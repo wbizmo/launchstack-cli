@@ -15,6 +15,8 @@
 - Binds generated local services to loopback and expands audit checks for runtime policies, lockfiles and production Compose settings.
 - Uses a versioned crash-recovery journal, durable file and directory flushes, lock identity checks, compare-and-swap preconditions and one transaction for multi-capability installs.
 - Measures 100 / 1,000 / 10,000 file mutations against v3.0.0 and verifies 8 / 32 concurrent writer processes. The measured durability latency cost is documented in `docs/benchmarks/issue-32-transactions.md`.
+- Registers the explicit v2.0.0-to-v3.0.0 template upgrade, preserves unrelated TypeScript edits through AST-based integration, tracks shared-file migration bases and reports exact read-only plan diffs.
+- Records the measured v2 upgrade-plan latency and memory comparison at 100 / 1,000 / 10,000 managed files in `docs/benchmarks/issue-33-upgrades.md`.
 
 ## Verification
 
