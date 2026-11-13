@@ -30,7 +30,7 @@ import {
   renderDockerfile,
   runProductionAudit,
   severityRank
-} from "./chunk-32MWTPYZ.mjs";
+} from "./chunk-CUM2XEES.mjs";
 
 // src/cli.ts
 import { Command as Command22 } from "commander";

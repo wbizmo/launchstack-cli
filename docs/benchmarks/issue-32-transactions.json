@@ -1,0 +1,42 @@
+{
+  "issue": 32,
+  "baseline": {
+    "version": "v3.0.0",
+    "commit": "c27e7f6ff06ac33b2b8c877ab57966e5f19ceb9"
+  },
+  "candidate_commit": "pending-issue-32-commit",
+  "node": "v24.22.3",
+  "platform": "linux x64",
+  "cpu": "AMD EPYC 9V74 80-Core Processor",
+  "visible_cpus": 5,
+  "memory_bytes": 35743748096,
+  "filesystem": "same /tmp filesystem for both versions",
+  "workload": {
+    "mutation": "new small files with expectedSha256=null in an isolated temporary project",
+    "bytes_per_file": 10,
+    "sizes": [100, 1000, 10000],
+    "repetitions_per_size": 3,
+    "warmup": 0,
+    "network": "none",
+    "logical_file_operations": "2 per new file: one staged write and one final rename; journal, lock and directory operations excluded",
+    "measurement": "parent-observed wall time; child /proc VmRSS sampled every 5ms",
+    "limitations": "RSS sampling can miss short peaks; p95 from three samples is diagnostic; physical device I/O and syscall counts were not traced"
+  },
+  "results": {
+    "v3.0.0": [
+      { "files": 100, "bytes": 1090, "latency_ms": { "p50": 31.566, "p95": 40.671 }, "sampled_peak_rss_kb": 82448, "errors": 0 },
+      { "files": 1000, "bytes": 11890, "latency_ms": { "p50": 224.829, "p95": 232.895 }, "sampled_peak_rss_kb": 84256, "errors": 0 },
+      { "files": 10000, "bytes": 128890, "latency_ms": { "p50": 1978.325, "p95": 2210.651 }, "sampled_peak_rss_kb": 99136, "errors": 0 }
+    ],
+    "candidate": [
+      { "files": 100, "bytes": 1090, "latency_ms": { "p50": 78.228, "p95": 94.731 }, "sampled_peak_rss_kb": 82724, "errors": 0 },
+      { "files": 1000, "bytes": 11890, "latency_ms": { "p50": 610.95, "p95": 764.03 }, "sampled_peak_rss_kb": 92680, "errors": 0 },
+      { "files": 10000, "bytes": 128890, "latency_ms": { "p50": 6269.865, "p95": 7024.931 }, "sampled_peak_rss_kb": 102312, "errors": 0 }
+    ]
+  },
+  "concurrency": {
+    "writers": [8, 32],
+    "result": "all processes completed; unique files from every writer were present and intact",
+    "test": "tests/project-lifecycle-v3.test.ts"
+  }
+}

@@ -25,6 +25,7 @@
     "format": "prettier --write .",
     "test:run": "vitest run --config vitest.config.ts",
     "bench:template": "vitest bench bench/template-render.bench.ts",
+    "bench:transactions": "tsx bench/mutations.ts",
     "audit:runtime": "npm audit --omit=dev --audit-level=high",
     "verify:dist": "npm run build && git diff --exit-code -- dist",
     "check": "npm run lint && npm run typecheck && npm run test:run && npm run verify:dist && npm pack --dry-run",

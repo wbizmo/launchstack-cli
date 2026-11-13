@@ -24,6 +24,14 @@
 - Extend production audit findings to cover runtime policy, npm lock consistency and production Compose requirements; unsupported-runtime findings are marked heuristic.
 - Security regression checks passed: lint, strict typecheck and 4 focused files / 17 tests.
 
+### Atomic lifecycle mutations (issue #32)
+- Add a versioned prepared/committing/committed journal, file and directory flushes, compare-and-swap preconditions, overlap rejection, process-start lock identity and bounded lock waiting.
+- Recover uncommitted plans idempotently; committed plans retain the complete new state while cleanup can resume.
+- Batch multi-capability reconciliation installs into one package, manifest, state and generated-file transaction.
+- Benchmark 100 / 1,000 / 10,000 file plans against v3.0.0 and run 8 / 32 independent writer processes. Results, including the measured fsync cost, are in `docs/benchmarks/issue-32-transactions.md`.
+- Transaction checks passed on Node 24.22.3: lint, strict typecheck and 2 focused files / 14 tests.
+- The full `release:check` also passed on Node 24.22.3 with PostgreSQL 16: 36 files / 119 tests, production audit, packed artifact smoke and generated API PostgreSQL checks (8 files / 26 tests), build and audit.
+
 ## 3.0.0 - 2026-09-14
 
 ### Lifecycle platform

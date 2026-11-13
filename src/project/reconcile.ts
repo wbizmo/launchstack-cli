@@ -16,7 +16,15 @@ export function planReconciliation(projectDirectoryInput: string): Reconciliatio
 }
 export function applyReconciliation(input: { projectDirectory: string; allowRemove?: boolean }): ReconciliationPlan {
   let plan = planReconciliation(input.projectDirectory); if (plan.conflicts.length) throw new Error(`Cannot reconcile project: ${plan.conflicts.join("; ")}`); if (plan.removeCapabilities.length && !input.allowRemove) throw new Error("Reconciliation includes capability removal. Re-run with --allow-remove after reviewing the plan.");
-  for (const id of plan.installCapabilities) { const item = FIRST_PARTY_EXTENSIONS[id]; if (!item) throw new Error(`Unknown first-party capability: ${id}`); const desiredVersion = loadProjectManifest(input.projectDirectory).capabilities[id]?.version; if (desiredVersion && desiredVersion !== item.version) throw new Error(`Requested ${id}@${desiredVersion}, but this CLI provides ${item.version}.`); applyExtensionInstall(planExtensionInstall({ projectDirectory: input.projectDirectory, requested: [id], registry: FIRST_PARTY_EXTENSIONS })); }
+  if (plan.installCapabilities.length) {
+    for (const id of plan.installCapabilities) {
+      const item = FIRST_PARTY_EXTENSIONS[id];
+      if (!item) throw new Error(`Unknown first-party capability: ${id}`);
+      const desiredVersion = loadProjectManifest(input.projectDirectory).capabilities[id]?.version;
+      if (desiredVersion && desiredVersion !== item.version) throw new Error(`Requested ${id}@${desiredVersion}, but this CLI provides ${item.version}.`);
+    }
+    applyExtensionInstall(planExtensionInstall({ projectDirectory: input.projectDirectory, requested: plan.installCapabilities, registry: FIRST_PARTY_EXTENSIONS }));
+  }
   if (plan.removeCapabilities.length) { const ordered = resolveExtensionOrder(plan.removeCapabilities, FIRST_PARTY_EXTENSIONS).reverse(); for (const item of ordered) { if (!plan.removeCapabilities.includes(item.id)) continue; const fresh = planReconciliation(input.projectDirectory); if (fresh.removeCapabilities.includes(item.id)) applyExtensionRemoval(planExtensionRemoval({ projectDirectory: input.projectDirectory, extension: item })); } }
   plan = planReconciliation(input.projectDirectory); return plan;
 }

@@ -13,6 +13,8 @@
 - Keeps Prisma at 6.19.3, the latest Prisma 6 release. Prisma 7's new client and datasource configuration need a separately tested migration to preserve current generated-project compatibility.
 - Rejects malformed recovery journals before touching project or external paths, protects the secret store from symlinks and permissive POSIX modes, and gives new projects unique development JWT secrets.
 - Binds generated local services to loopback and expands audit checks for runtime policies, lockfiles and production Compose settings.
+- Uses a versioned crash-recovery journal, durable file and directory flushes, lock identity checks, compare-and-swap preconditions and one transaction for multi-capability installs.
+- Measures 100 / 1,000 / 10,000 file mutations against v3.0.0 and verifies 8 / 32 concurrent writer processes. The measured durability latency cost is documented in `docs/benchmarks/issue-32-transactions.md`.
 
 ## Verification
 
@@ -20,6 +22,7 @@
 - Production dependency audits reported zero vulnerabilities for both the CLI and generated API.
 - The generated production Docker image passed its healthcheck and `/health` request.
 - The v3.0.0-to-candidate CLI comparison is recorded in `docs/benchmarks/issue-30-runtime.md`. It shows no consistent startup speedup.
+- The Node 24.22.3 full release check passed with PostgreSQL 16, including 36 CLI test files / 119 tests and 8 generated API test files / 26 tests.
 
 ## Compatibility and limitations
 

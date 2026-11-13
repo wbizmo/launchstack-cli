@@ -1,6 +1,7 @@
 import { mkdtempSync, mkdirSync, readdirSync, symlinkSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { spawn } from "node:child_process";
 import { describe, expect, test } from "vitest";
 import { createProjectManifest, parseProjectManifest, serializeProjectManifest } from "../src/project/manifest";
 import { resolveProjectPath } from "../src/project/paths";
@@ -81,10 +82,77 @@ describe("v3 project lifecycle primitives", () => {
     writeFileSync(join(root, ".launchstack", "mutation-journal.json"), JSON.stringify({
       version: 1,
       id: "2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31",
+      state: "committing",
       mutations: [{ type: "delete", path: "../../outside/keep.txt", hadOriginal: true }]
     }));
 
     expect(() => recoverInterruptedMutation(root)).toThrow(/unsafe|escape/i);
     expect(readFileSync(victim, "utf8")).toBe("must survive\n");
+  });
+
+  test("recovers an interrupted rename idempotently and retains committed output", () => {
+    const root = fixture();
+    const metadata = join(root, ".launchstack");
+    const id = "2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31";
+    const backup = join(metadata, `.backup-${id}`, "src", "managed.txt");
+    const stage = join(metadata, `.stage-${id}`);
+    const target = join(root, "src", "managed.txt");
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(target, "new\n");
+    mkdirSync(join(metadata, `.backup-${id}`, "src"), { recursive: true });
+    writeFileSync(backup, "old\n");
+    mkdirSync(stage, { recursive: true });
+    writeFileSync(join(metadata, "mutation-journal.json"), JSON.stringify({
+      version: 1,
+      id,
+      state: "committing",
+      mutations: [{ type: "write", path: "src/managed.txt", hadOriginal: true }]
+    }));
+
+    expect(recoverInterruptedMutation(root)).toBe(true);
+    expect(readFileSync(target, "utf8")).toBe("old\n");
+    expect(recoverInterruptedMutation(root)).toBe(false);
+
+    const committedId = "3c13b7b8-72c0-4db6-ae5c-9f2b776d6b32";
+    mkdirSync(join(metadata, `.backup-${committedId}`), { recursive: true });
+    writeFileSync(join(metadata, "mutation-journal.json"), JSON.stringify({
+      version: 1,
+      id: committedId,
+      state: "committed",
+      mutations: [{ type: "write", path: "src/managed.txt", hadOriginal: true }]
+    }));
+    expect(recoverInterruptedMutation(root)).toBe(true);
+    expect(readFileSync(target, "utf8")).toBe("old\n");
+  });
+
+  test("serializes 8 and 32 independent writer processes without losing updates", async () => {
+    const transactionModule = resolve(process.cwd(), "src/project/transaction.ts");
+    const typesModule = resolve(process.cwd(), "src/project/types.ts");
+    for (const count of [8, 32]) {
+      const root = fixture();
+      const writers = Array.from({ length: count }, (_, index) => new Promise<void>((resolvePromise, rejectPromise) => {
+        const code = `const { applyFileMutations } = require(${JSON.stringify(transactionModule)}); const { emptyProjectState } = require(${JSON.stringify(typesModule)}); const projectDirectory = ${JSON.stringify(root)}; const index = ${index}; applyFileMutations({ projectDirectory, state: emptyProjectState("3.0.0", "3.0.0"), mutations: [{ type: "write", path: "writers/writer-" + index + ".txt", content: "writer-" + index + "\\n", owner: "test", version: "1", expectedSha256: null }] });`;
+        const child = spawn(process.execPath, ["--import", "tsx", "--eval", code], { cwd: process.cwd(), stdio: ["ignore", "ignore", "pipe"] });
+        let stderr = "";
+        child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+        child.once("error", rejectPromise);
+        child.once("exit", (codeValue) => codeValue === 0 ? resolvePromise() : rejectPromise(new Error(`writer exited with ${codeValue}: ${stderr}`)));
+      }));
+      await Promise.all(writers);
+      for (let index = 0; index < count; index += 1) expect(readFileSync(join(root, "writers", `writer-${index}.txt`), "utf8")).toBe(`writer-${index}\n`);
+    }
+  }, 30_000);
+
+  test("rejects overlapping targets before staging either write", () => {
+    const root = fixture();
+    const state = emptyProjectState("3.0.0", "3.0.0");
+    expect(() => applyFileMutations({
+      projectDirectory: root,
+      state,
+      mutations: [
+        { type: "write", path: "nested", content: "file", owner: "test", version: "1", expectedSha256: null },
+        { type: "write", path: "nested/child", content: "child", owner: "test", version: "1", expectedSha256: null }
+      ]
+    })).toThrow(/overlapping paths/i);
   });
 });

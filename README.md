@@ -58,6 +58,8 @@ launchstack doctor --fix
 
 Plans are read-only. Mutations are path-confined, protected by an exclusive project lock, staged before commit and journaled for rollback/recovery. Existing v2 projects can adopt v3 metadata through the ordered upgrade path; ambiguous edits are reported as conflicts instead of overwritten.
 
+Lifecycle mutation plans write staged files, journal each transaction and flush affected directories before marking the new project state committed. For `N` new files, the file work is `O(N)` with two logical file operations per file, plus lock and journal work; existing-file replacements add one backup rename. The 100 / 1,000 / 10,000 file v3.0.0 comparison records a measured latency increase from durable flushing in [the issue #32 report](docs/benchmarks/issue-32-transactions.md).
+
 ### Local development orchestration
 
 ```bash
