@@ -1,7 +1,7 @@
 {
   "issue": 33,
   "baseline": { "version": "v3.0.0", "commit": "c27e7f6ff06ac33b2b8c877ab57966e5f19ceb9" },
-  "candidate_commit": "pending-issue-33-commit",
+  "candidate_commit": "d042819b35eb0e0987ad398db5df109d99a4b5c8",
   "node": "v24.22.3",
   "platform": "linux x64",
   "cpu": "AMD EPYC 9V74 80-Core Processor",
