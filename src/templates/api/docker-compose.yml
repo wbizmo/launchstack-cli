@@ -33,10 +33,10 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       LOG_LEVEL: info
-      CORS_ORIGIN: "*"
+      CORS_ORIGIN: ${CORS_ORIGIN:?Set an explicit production origin}
       DATABASE_URL: postgresql://launchstack:launchstack@postgres:5432/{{PROJECT_NAME}}?schema=public
-      JWT_ACCESS_SECRET: replace-with-a-production-access-secret-at-least-32-characters
-      JWT_REFRESH_SECRET: replace-with-a-production-refresh-secret-at-least-32-characters
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set a production access secret}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set a production refresh secret}
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d
     ports:

@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.0.4] - Draft / Unreleased
+
+### Changed
+- Set the supported Node.js lines to patched Node 24.22.3 and 26.13.1; dropping Node 20 is a breaking support-policy change despite the patch version.
+- Updated generated Docker stages and CI policy to Node 24.22.3, with generated API CI testing both supported Node lines.
+- Upgraded root and generated-template Zod dependencies to 4.6.7 for the high severity advisory affecting earlier 4.x versions.
+- Require explicit CORS origins and JWT secrets in the generated production Compose configuration.
+
+### Fixed
+- Copy the generated healthcheck script into the production Docker image.
+
+### Verification
+- Root `release:check` passed on Node 24.22.3 with PostgreSQL 16, including 36 test files / 110 tests, production audit, packed CLI smoke, and generated API tests (8 files / 26 tests), build, and audit.
+- The same root and generated-project checks passed on Node 26.13.1; the generated API database integration suite used PostgreSQL 17.
+- A generated production Docker image passed its non-root healthcheck and `/health` request. The image was built with a BuildKit CA secret because this environment's npm proxy certificate is not in the base image store.
+- Runtime measurements are in `docs/benchmarks/issue-30-runtime.md`; they show no consistent startup speedup.
+
 ## 3.0.0 - 2026-09-14
 
 ### Lifecycle platform

@@ -4,7 +4,7 @@ const {
   mkdirSync,
   rmSync
 } = require("node:fs");
-const { resolve } = require("node:path");
+const { resolve, sep } = require("node:path");
 
 const sourceDirectory = resolve(
   process.cwd(),
@@ -33,7 +33,8 @@ mkdirSync(destinationDirectory, {
 
 cpSync(sourceDirectory, destinationDirectory, {
   recursive: true,
-  force: true
+  force: true,
+  filter: (source) => !source.split(sep).includes("node_modules")
 });
 
 console.log("Copied project templates to dist/templates");

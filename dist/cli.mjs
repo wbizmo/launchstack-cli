@@ -30,7 +30,7 @@ import {
   renderDockerfile,
   runProductionAudit,
   severityRank
-} from "./chunk-CV34FFVK.mjs";
+} from "./chunk-IOO3FVOX.mjs";
 
 // src/cli.ts
 import { Command as Command22 } from "commander";
@@ -1012,7 +1012,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24.22.3
           cache: npm
 
       - name: Install dependencies

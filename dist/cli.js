@@ -346,7 +346,7 @@ function applyFileMutations(input) {
 // src/version.ts
 function currentLaunchStackVersion() {
   if (process.env.LAUNCHSTACK_VERSION_OVERRIDE) return process.env.LAUNCHSTACK_VERSION_OVERRIDE;
-  return true ? "3.0.0" : "0.0.0-dev";
+  return true ? "3.0.4" : "0.0.0-dev";
 }
 
 // src/extensions/engine.ts
@@ -1094,17 +1094,22 @@ function renderDockerfile(options) {
   const startCommand = options.startCommand ?? ["npm", "start"];
   const port = options.port ?? 3e3;
   const packageFiles = options.hasLockfile ? "COPY package.json package-lock.json ./" : "COPY package.json ./";
+  const productionPackageFiles = options.hasLockfile ? "COPY --chown=node:node package.json package-lock.json ./" : "COPY --chown=node:node package.json ./";
   const prismaCopy = options.prisma ? "COPY prisma ./prisma\n" : "";
   const prismaRuntimeCopy = options.prisma ? "COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma\nCOPY --from=build /app/node_modules/@prisma ./node_modules/@prisma\n" : "";
-  return `FROM node:20-alpine AS dependencies
+  const healthcheckCopy = options.healthcheck ? "COPY --chown=node:node scripts/healthcheck.cjs ./scripts/healthcheck.cjs\n" : "";
+  const healthcheckDirective = options.healthcheck ? `HEALTHCHECK --interval=10s --timeout=5s --retries=10 CMD ["node","scripts/healthcheck.cjs"]
+` : "";
+  return `# syntax=docker/dockerfile:1.7
+FROM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS dependencies
 
 WORKDIR /app
 
 ${packageFiles}
 ${prismaCopy}
-RUN ${install}
+RUN --mount=type=secret,id=npmca,required=false if [ -f /run/secrets/npmca ]; then NODE_EXTRA_CA_CERTS=/run/secrets/npmca ${install}; else ${install}; fi
 
-FROM node:20-alpine AS build
+FROM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS build
 
 WORKDIR /app
 
@@ -1113,21 +1118,23 @@ COPY . .
 
 RUN ${options.buildCommand}
 
-FROM node:20-alpine AS production
+FROM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS production
 
 ENV NODE_ENV=production
 
 WORKDIR /app
 
-${packageFiles}
+${productionPackageFiles}
 ${prismaCopy}
-RUN ${productionInstall} && npm cache clean --force
+RUN --mount=type=secret,id=npmca,required=false if [ -f /run/secrets/npmca ]; then NODE_EXTRA_CA_CERTS=/run/secrets/npmca ${productionInstall}; else ${productionInstall}; fi && npm cache clean --force
 
 COPY --from=build /app/${options.outputDirectory} ./${options.outputDirectory}
 ${prismaRuntimeCopy}
+${healthcheckCopy}
 USER node
 
 EXPOSE ${port}
+${healthcheckDirective}
 
 CMD ${dockerJsonCommand(startCommand)}
 `;
@@ -1150,12 +1157,14 @@ docker-compose*.yml
 function writeCanonicalDockerAssets(projectDirectory, options) {
   const hasLockfile = options.hasLockfile ?? (0, import_node_fs12.existsSync)((0, import_node_path11.join)(projectDirectory, "package-lock.json"));
   const prisma = options.prisma ?? (0, import_node_fs12.existsSync)((0, import_node_path11.join)(projectDirectory, "prisma", "schema.prisma"));
+  const healthcheck = (0, import_node_fs12.existsSync)((0, import_node_path11.join)(projectDirectory, "scripts", "healthcheck.cjs"));
   (0, import_node_fs12.writeFileSync)(
     (0, import_node_path11.join)(projectDirectory, "Dockerfile"),
     renderDockerfile({
       ...options,
       hasLockfile,
-      prisma
+      prisma,
+      healthcheck
     })
   );
   (0, import_node_fs12.writeFileSync)(
@@ -2605,7 +2614,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24.22.3
           cache: npm
 
       - name: Install dependencies

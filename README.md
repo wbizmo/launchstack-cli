@@ -10,8 +10,10 @@ npm install -g launchstack-cli
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 24.22.3+ within 24.x, or 26.13.1+ within 26.x. Node 20 is no longer supported; this is a breaking support change under semantic versioning despite the requested 3.0.4 patch version.
 - PostgreSQL or Docker for generated API runtime work
+
+The initial CLI runtime comparison records measurements and limitations in [the benchmark report](docs/benchmarks/issue-30-runtime.md); it shows no consistent startup speedup.
 
 ## Create a backend
 

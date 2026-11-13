@@ -1,14 +1,21 @@
 {
   "name": "launchstack-cli",
-  "version": "3.0.0",
+  "version": "3.0.4",
   "description": "A TypeScript CLI for production-ready backend API scaffolding, lifecycle management, deployment preparation, configuration management, and developer workflows.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
-  "bin": { "launchstack": "./dist/cli.js" },
-  "repository": { "type": "git", "url": "git+https://github.com/wbizmo/launchstack-cli.git" },
+  "bin": {
+    "launchstack": "./dist/cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wbizmo/launchstack-cli.git"
+  },
   "homepage": "https://github.com/wbizmo/launchstack-cli#readme",
-  "bugs": { "url": "https://github.com/wbizmo/launchstack-cli/issues" },
+  "bugs": {
+    "url": "https://github.com/wbizmo/launchstack-cli/issues"
+  },
   "scripts": {
     "dev": "tsup --watch",
     "build": "tsup && npm run copy:templates",
@@ -28,12 +35,50 @@
     "release:verify-tag": "node scripts/verify-release-tag.cjs",
     "release:check": "npm run check && npm run audit:runtime && npm run pack:smoke && npm run template:smoke"
   },
-  "keywords": ["launchstack", "cli", "backend", "typescript", "fastify", "prisma", "postgresql", "api-scaffolding", "lifecycle", "openapi", "deployment", "devops", "plugin-system", "code-generation"],
+  "keywords": [
+    "launchstack",
+    "cli",
+    "backend",
+    "typescript",
+    "fastify",
+    "prisma",
+    "postgresql",
+    "api-scaffolding",
+    "lifecycle",
+    "openapi",
+    "deployment",
+    "devops",
+    "plugin-system",
+    "code-generation"
+  ],
   "author": "Williams Ashibuogwu",
   "license": "MIT",
-  "files": ["dist", "README.md", "LICENSE"],
-  "publishConfig": { "access": "public", "provenance": true },
-  "dependencies": { "chalk": "^5.6.2", "commander": "^14.0.2", "ora": "^9.4.0", "zod": "^4.1.12" },
-  "devDependencies": { "@types/node": "^25.9.5", "eslint": "^10.10.0", "prettier": "^3.9.6", "tsx": "^4.20.0", "tsup": "^8.5.1", "typescript": "^6.0.3", "typescript-eslint": "^8.70.0", "vitest": "^4.1.11" },
-  "engines": { "node": ">=20" }
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "commander": "^14.0.2",
+    "ora": "^9.4.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.5",
+    "eslint": "^10.10.0",
+    "prettier": "^3.9.6",
+    "tsup": "^8.5.1",
+    "tsx": "^4.20.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=24.22.3 <25 || >=26.13.1 <27"
+  }
 }

@@ -2,6 +2,8 @@
 
 LaunchStack releases are produced from verified `main` commits only.
 
+The v3.0.4 candidate supports Node.js 24.22.3 through 24.x and 26.13.1 through 26.x. Dropping Node 20 is a breaking support change; maintainers must review that semver impact before release. Production Docker base images are pinned to a reviewed Node 24.22.3 Alpine manifest digest. Update the patch and digest together with image build and health checks.
+
 1. Update `package.json`, generated template metadata, README and `CHANGELOG.md`.
 2. Add `RELEASE_NOTES_<version>.md` with the public release title/content.
 3. Refresh root/template lockfiles and committed `dist/` from the exact source.
