@@ -17,6 +17,10 @@
 - Measures 100 / 1,000 / 10,000 file mutations against v3.0.0 and verifies 8 / 32 concurrent writer processes. The measured durability latency cost is documented in `docs/benchmarks/issue-32-transactions.md`.
 - Registers the explicit v2.0.0-to-v3.0.0 template upgrade, preserves unrelated TypeScript edits through AST-based integration, tracks shared-file migration bases and reports exact read-only plan diffs.
 - Records the measured v2 upgrade-plan latency and memory comparison at 100 / 1,000 / 10,000 managed files in `docs/benchmarks/issue-33-upgrades.md`.
+- Assembles capability Compose fragments into a validated file consumed by `launchstack dev`, and resolves package and lockfile writes together before committing the transaction.
+- Generates a BullMQ worker and cron scheduler with health-checked Redis startup and graceful process shutdown; documents OAuth, storage, observability, WebSocket, email and webhook helpers as helper-only.
+- Prevents removal of capabilities still required by another installed capability and removes generated worker/scheduler scripts safely.
+- Records 1k/10k-node and up to 100k-edge dependency planning, Redis readiness/shutdown and ten BullMQ roundtrips in `docs/benchmarks/issue-34-capabilities.md`.
 
 ## Verification
 

@@ -41,7 +41,7 @@ launchstack add observability
 launchstack add webhooks
 ```
 
-Capability dependency planning is topological and cycle-safe. Re-applying the same version is a no-op. Managed files are hashed; LaunchStack refuses to silently replace user files or locally drifted generated files.
+Capability dependency planning is topological and cycle-safe. Package and lockfile changes are prepared together, and the generated Compose file is assembled and checked against the project's existing services. `redis`, `queue` and `cron` include runnable local service/process wiring. `oauth`, `storage`, `observability`, `websocket`, `email` and `webhooks` currently install helper-only code; `launchstack add --list` and `launchstack add <capability>` identify that coverage. Re-applying the same version is a no-op. Managed files are hashed; LaunchStack refuses to silently replace user files or locally drifted generated files.
 
 ### Plan, drift and upgrades
 
@@ -60,6 +60,8 @@ Plans are read-only. Mutations are path-confined, protected by a project lock, s
 
 Upgrade planning parses the tracked state of `F` managed files and the syntax trees of the integration files (`A` TypeScript nodes), then emits diffs proportional to changed bytes. Its time and auxiliary memory are `O(F + S + A)`, where `S` is the serialized state size. The v3.0.0 comparison is in [the issue #33 benchmark](docs/benchmarks/issue-33-upgrades.md); the AST and ownership evidence increases planning time and memory in these measurements.
 
+Capability coverage and removal behavior are documented in [the first-party capability guide](docs/CAPABILITIES.md). Dependency graph, Redis readiness, queue roundtrip and scheduler measurements are in [the issue #34 benchmark](docs/benchmarks/issue-34-capabilities.md).
+
 Lifecycle mutation plans write staged files, journal each transaction and flush affected directories before marking the new project state committed. For `N` new files, the file work is `O(N)` with two logical file operations per file, plus lock and journal work; existing-file replacements add one backup rename. The 100 / 1,000 / 10,000 file v3.0.0 comparison records a measured latency increase from durable flushing in [the issue #32 report](docs/benchmarks/issue-32-transactions.md).
 
 ### Local development orchestration
@@ -69,7 +71,7 @@ launchstack dev
 launchstack dev --json
 ```
 
-The orchestrator derives required PostgreSQL/Redis/workers/API services from the project manifest, starts dependencies in deterministic order, checks ports, uses bounded readiness timeouts and terminates LaunchStack-owned children on failure or signals.
+The orchestrator derives required PostgreSQL/Redis/workers/API services from the project manifest, starts dependencies in deterministic order, asks Compose to wait for infrastructure health, checks ports, uses bounded readiness timeouts and terminates LaunchStack-owned children on failure or signals. `queue` adds `npm run worker`; `cron` adds `npm run scheduler`.
 
 ### Typed API clients
 

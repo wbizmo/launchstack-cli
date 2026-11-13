@@ -12,6 +12,11 @@ export function planReconciliation(projectDirectoryInput: string): Reconciliatio
   const projectDirectory = resolve(projectDirectoryInput); const manifest = loadProjectManifest(projectDirectory); const state = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() }); const desiredCapabilities = Object.keys(manifest.capabilities).sort(); const installedCapabilities = Object.values(state.extensions).filter((item) => item.kind === "capability").map((item) => item.id).sort(); const installCapabilities = desiredCapabilities.filter((id) => !state.extensions[id] || state.extensions[id]?.version !== manifest.capabilities[id]?.version); const desiredSet = new Set(desiredCapabilities); const removeCapabilities = installedCapabilities.filter((id) => !desiredSet.has(id)); const drift = detectManagedDrift(projectDirectory, state); const conflicts = drift.filter((item) => item.kind === "modified").map((item) => `Managed file has local modifications: ${item.path}`); const actions: LifecycleAction[] = [];
   for (const id of installCapabilities) { if (!FIRST_PARTY_EXTENSIONS[id]) { conflicts.push(`Manifest capability is not available: ${id}`); continue; } actions.push({ id: `capability:${id}:install`, kind: state.extensions[id] ? "upgrade" : "install", target: id, detail: `${state.extensions[id]?.version ?? "absent"} -> ${manifest.capabilities[id]?.version ?? "unknown"}` }); }
   for (const id of removeCapabilities) { if (!FIRST_PARTY_EXTENSIONS[id]) conflicts.push(`Installed capability cannot be removed by this CLI: ${id}`); actions.push({ id: `capability:${id}:remove`, kind: "remove", target: id, detail: "installed capability is absent from desired manifest", destructive: true }); }
+  const removeSet = new Set(removeCapabilities);
+  for (const id of removeCapabilities) {
+    const dependents = Object.values(FIRST_PARTY_EXTENSIONS).filter((item) => !removeSet.has(item.id) && (state.extensions[item.id] || desiredCapabilities.includes(item.id)) && item.dependencies?.includes(id)).map((item) => item.id);
+    if (dependents.length) conflicts.push(`Cannot remove ${id}; capabilities still depend on it: ${dependents.sort().join(", ")}.`);
+  }
   return { projectDirectory, desiredCapabilities, installCapabilities, removeCapabilities, drift, actions, warnings: removeCapabilities.length ? ["Capability removals are destructive and require --allow-remove during apply."] : [], conflicts };
 }
 export function applyReconciliation(input: { projectDirectory: string; allowRemove?: boolean }): ReconciliationPlan {
@@ -25,7 +30,7 @@ export function applyReconciliation(input: { projectDirectory: string; allowRemo
     }
     applyExtensionInstall(planExtensionInstall({ projectDirectory: input.projectDirectory, requested: plan.installCapabilities, registry: FIRST_PARTY_EXTENSIONS }));
   }
-  if (plan.removeCapabilities.length) { const ordered = resolveExtensionOrder(plan.removeCapabilities, FIRST_PARTY_EXTENSIONS).reverse(); for (const item of ordered) { if (!plan.removeCapabilities.includes(item.id)) continue; const fresh = planReconciliation(input.projectDirectory); if (fresh.removeCapabilities.includes(item.id)) applyExtensionRemoval(planExtensionRemoval({ projectDirectory: input.projectDirectory, extension: item })); } }
+  if (plan.removeCapabilities.length) { const ordered = resolveExtensionOrder(plan.removeCapabilities, FIRST_PARTY_EXTENSIONS).reverse(); for (const item of ordered) { if (!plan.removeCapabilities.includes(item.id)) continue; const fresh = planReconciliation(input.projectDirectory); if (fresh.removeCapabilities.includes(item.id)) applyExtensionRemoval(planExtensionRemoval({ projectDirectory: input.projectDirectory, extension: item, registry: FIRST_PARTY_EXTENSIONS })); } }
   plan = planReconciliation(input.projectDirectory); return plan;
 }
 export function projectHasManifest(projectDirectory: string): boolean { return existsSync(resolve(projectDirectory, "launchstack.json")); }

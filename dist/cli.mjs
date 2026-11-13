@@ -30,7 +30,7 @@ import {
   renderDockerfile,
   runProductionAudit,
   severityRank
-} from "./chunk-CDAR7BIY.mjs";
+} from "./chunk-WDIJLAHI.mjs";
 
 // src/cli.ts
 import { Command as Command22 } from "commander";
@@ -40,9 +40,9 @@ import { Command } from "commander";
 var addCommand = new Command("add").description("Add a production capability to an existing LaunchStack project").argument("[capability]", "Capability ID").argument("[provider]", "Optional provider, for example google for oauth").option("--list").option("--dry-run").option("--json").option("-d, --directory <path>").action((capability, provider, options) => {
   try {
     if (options.list) {
-      const capabilities = listFirstPartyExtensions().map((item) => ({ id: item.id, version: item.version, dependencies: item.dependencies ?? [] }));
+      const capabilities = listFirstPartyExtensions().map((item) => ({ id: item.id, version: item.version, coverage: item.coverage ?? "helper-only", dependencies: item.dependencies ?? [] }));
       if (options.json) console.log(JSON.stringify(capabilities, null, 2));
-      else for (const item of capabilities) console.log(`${item.id}	${item.version}${item.dependencies.length ? `	depends: ${item.dependencies.join(",")}` : ""}`);
+      else for (const item of capabilities) console.log(`${item.id}	${item.version}	${item.coverage}${item.dependencies.length ? `	depends: ${item.dependencies.join(",")}` : ""}`);
       return;
     }
     if (!capability) throw new Error("Provide a capability ID or use --list.");
@@ -50,11 +50,14 @@ var addCommand = new Command("add").description("Add a production capability to 
     const plan = planExtensionInstall({ projectDirectory: options.directory ?? process.cwd(), requested: [capability], registry: FIRST_PARTY_EXTENSIONS });
     if (provider && plan.nextManifest.capabilities[capability]) plan.nextManifest.capabilities[capability] = { ...plan.nextManifest.capabilities[capability], provider };
     if (!options.dryRun) applyExtensionInstall(plan);
-    const output = { dryRun: Boolean(options.dryRun), noop: plan.noop, extensions: plan.extensionIds, provider: provider ?? null, actions: plan.actions, warnings: plan.warnings };
+    const capabilityDefinition = FIRST_PARTY_EXTENSIONS[capability];
+    const coverageWarning = capabilityDefinition?.coverage === "helper-only" ? [`${capability} installs helper files only; wire it into your application and provide the service adapter yourself.`] : [];
+    const output = { dryRun: Boolean(options.dryRun), noop: plan.noop, extensions: plan.extensionIds, provider: provider ?? null, coverage: capabilityDefinition?.coverage ?? "helper-only", actions: plan.actions, warnings: [...plan.warnings, ...coverageWarning] };
     if (options.json) console.log(JSON.stringify(output, null, 2));
     else {
       if (plan.noop) console.log(`${capability} is already up to date.`);
       else for (const action of plan.actions) console.log(`${options.dryRun ? "PLAN" : "APPLY"} ${action.kind} ${action.target}: ${action.detail}`);
+      for (const warning of coverageWarning) console.warn(`NOTE ${warning}`);
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
@@ -535,6 +538,7 @@ import { Command as Command8 } from "commander";
 
 // src/dev/orchestrator.ts
 import { spawn } from "child_process";
+import { existsSync as existsSync6 } from "fs";
 import { createServer } from "net";
 import { resolve as resolve6 } from "path";
 var defaultAdapters = { spawn(command, args, options) {
@@ -587,8 +591,10 @@ function createDevPlan(projectDirectoryInput) {
   const projectDirectory = resolve6(projectDirectoryInput);
   const manifest = loadProjectManifest(projectDirectory);
   const capabilities = new Set(Object.keys(manifest.capabilities));
-  const services = [{ id: "postgres", kind: "infrastructure", dependencies: [], command: "docker", args: ["compose", "up", "-d", "postgres"], port: 5432, required: true }];
-  if (capabilities.has("redis") || capabilities.has("queue")) services.push({ id: "redis", kind: "infrastructure", dependencies: [], command: "docker", args: ["compose", "up", "-d", "redis"], port: 6379, required: true });
+  const composeArgs = ["compose", "-f", "docker-compose.yml"];
+  if (existsSync6(resolve6(projectDirectory, "docker-compose.launchstack.yml"))) composeArgs.push("-f", "docker-compose.launchstack.yml");
+  const services = [{ id: "postgres", kind: "infrastructure", dependencies: [], command: "docker", args: [...composeArgs, "up", "-d", "--wait", "postgres"], port: 5432, required: true }];
+  if (capabilities.has("redis") || capabilities.has("queue")) services.push({ id: "redis", kind: "infrastructure", dependencies: [], command: "docker", args: [...composeArgs, "up", "-d", "--wait", "redis"], port: 6379, required: true });
   services.push({ id: "migrations", kind: "migration", dependencies: ["postgres"], command: "npm", args: ["run", "prisma:deploy"], required: true }, { id: "api", kind: "process", dependencies: ["postgres", ...services.some((item) => item.id === "redis") ? ["redis"] : [], "migrations"], command: "npm", args: ["run", "dev"], port: 3e3, required: true });
   if (capabilities.has("queue")) services.push({ id: "worker", kind: "process", dependencies: ["redis", "migrations"], command: "npm", args: ["run", "worker"], required: false });
   if (capabilities.has("cron")) services.push({ id: "scheduler", kind: "process", dependencies: ["migrations"], command: "npm", args: ["run", "scheduler"], required: false });
@@ -725,13 +731,13 @@ import { Command as Command9 } from "commander";
 
 // src/release/doctor.ts
 import {
-  existsSync as existsSync6,
+  existsSync as existsSync7,
   readFileSync as readFileSync4
 } from "fs";
 import { resolve as resolve7 } from "path";
 function checkFile(projectDirectory, file, label) {
   const path = resolve7(projectDirectory, file);
-  const passed = existsSync6(path);
+  const passed = existsSync7(path);
   return {
     name: label,
     passed,
@@ -743,7 +749,7 @@ function checkPackageScripts(projectDirectory) {
     projectDirectory,
     "package.json"
   );
-  if (!existsSync6(packagePath)) {
+  if (!existsSync7(packagePath)) {
     return {
       name: "Package scripts",
       passed: false,
@@ -777,7 +783,7 @@ function checkEnvironmentExample(projectDirectory) {
     projectDirectory,
     ".env.example"
   );
-  if (!existsSync6(path)) {
+  if (!existsSync7(path)) {
     return {
       name: "Environment example",
       passed: false,
@@ -890,10 +896,10 @@ var doctorCommand = new Command9("doctor").description("Inspect a generated Laun
 });
 
 // src/commands/docker.ts
-import { existsSync as existsSync7, writeFileSync as writeFileSync3 } from "fs";
+import { existsSync as existsSync8, writeFileSync as writeFileSync3 } from "fs";
 import { Command as Command10 } from "commander";
 function writeFileIfAllowed(path, content, force) {
-  if (existsSync7(path) && !force) {
+  if (existsSync8(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
@@ -904,8 +910,8 @@ var dockerCommand = new Command10("docker").description("Generate Docker deploym
 dockerCommand.command("init").description("Create hardened Dockerfile, .dockerignore, and docker-compose.yml").option("-f, --force", "Overwrite existing Docker files").action((options) => {
   const config = readConfig();
   const force = Boolean(options.force);
-  const hasLockfile = existsSync7("package-lock.json");
-  const prisma = existsSync7("prisma/schema.prisma");
+  const hasLockfile = existsSync8("package-lock.json");
+  const prisma = existsSync8("prisma/schema.prisma");
   const dockerfile = renderDockerfile({
     buildCommand: config.buildCommand,
     outputDirectory: config.outputDirectory,
@@ -976,11 +982,11 @@ function configure(kind) {
 var generateCommand = new Command12("generate").description("Generate architecture-aware modules and resources").addCommand(configure("module")).addCommand(configure("resource"));
 
 // src/commands/github.ts
-import { existsSync as existsSync8, mkdirSync as mkdirSync3 } from "fs";
+import { existsSync as existsSync9, mkdirSync as mkdirSync3 } from "fs";
 import { dirname as dirname3 } from "path";
 import { Command as Command13 } from "commander";
 function writeWorkflowFile(path, content, force) {
-  if (existsSync8(path) && !force) {
+  if (existsSync9(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
@@ -1074,7 +1080,7 @@ var initCommand = new Command15("init").description("Create a LaunchStack config
 import { Command as Command16 } from "commander";
 
 // src/extensions/plugins.ts
-import { existsSync as existsSync9, readFileSync as readFileSync5 } from "fs";
+import { existsSync as existsSync10, readFileSync as readFileSync5 } from "fs";
 import { isAbsolute as isAbsolute2, join as join2, resolve as resolve8 } from "path";
 import { z as z2 } from "zod";
 var fileSchema = z2.object({ path: z2.string().min(1).max(240), content: z2.string().max(1e6), executable: z2.boolean().optional() }).strict();
@@ -1112,7 +1118,7 @@ function resolvePluginManifestPath(projectDirectory, specifier) {
 }
 function loadPluginManifest(projectDirectory, specifier, options = {}) {
   const path = resolvePluginManifestPath(projectDirectory, specifier);
-  if (!existsSync9(path)) throw new Error(`Plugin manifest not found at ${path}. Install third-party packages with scripts disabled, review launchstack-plugin.json, then run launchstack plugin add.`);
+  if (!existsSync10(path)) throw new Error(`Plugin manifest not found at ${path}. Install third-party packages with scripts disabled, review launchstack-plugin.json, then run launchstack plugin add.`);
   try {
     return parsePluginManifest(JSON.parse(readFileSync5(path, "utf8")), options.allowHooks ?? false);
   } catch (error) {
@@ -1236,7 +1242,7 @@ var rollbackCommand = new Command18("rollback").description("Show the latest suc
 import { Command as Command19 } from "commander";
 
 // src/secrets-store.ts
-import { chmodSync as chmodSync2, existsSync as existsSync10, lstatSync, mkdirSync as mkdirSync4, readFileSync as readFileSync6 } from "fs";
+import { chmodSync as chmodSync2, existsSync as existsSync11, lstatSync, mkdirSync as mkdirSync4, readFileSync as readFileSync6 } from "fs";
 import { resolve as resolve9 } from "path";
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
@@ -1265,14 +1271,14 @@ function validateSecretKey(key) {
 function readSecrets(projectDirectory = process.cwd()) {
   const path = getSecretsPath(projectDirectory);
   const directory2 = resolve9(projectDirectory, STORE_DIR2);
-  if (existsSync10(directory2)) {
+  if (existsSync11(directory2)) {
     const directoryStat = lstatSync(directory2);
     if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
       throw new Error("LaunchStack secrets directory must be a real directory.");
     }
   }
   let parsed = {};
-  if (existsSync10(path)) {
+  if (existsSync11(path)) {
     const secretStat = lstatSync(path);
     if (secretStat.isSymbolicLink() || !secretStat.isFile()) {
       throw new Error("secrets.json must be a regular file, not a link or special file.");
@@ -1426,7 +1432,7 @@ secretsCommand.command("remove").description("Remove a local secret").argument("
 });
 
 // src/commands/status.ts
-import { existsSync as existsSync11 } from "fs";
+import { existsSync as existsSync12 } from "fs";
 import { join as join3 } from "path";
 import { Command as Command20 } from "commander";
 var statusCommand = new Command20("status").description("Show LaunchStack project or stage status").option("--stage <stage>", "Show one named stage").option("--json").option("-d, --directory <path>").action((options) => {
@@ -1439,7 +1445,7 @@ var statusCommand = new Command20("status").description("Show LaunchStack projec
       else console.log(`Stage ${options.stage}: ${output2.status}${output2.provider ? ` (${output2.provider})` : ""}`);
       return;
     }
-    if (existsSync11(join3(directory2, "launchstack.json"))) {
+    if (existsSync12(join3(directory2, "launchstack.json"))) {
       const manifest = loadProjectManifest(directory2);
       const state = loadProjectState(directory2, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
       const drift = detectManagedDrift(directory2, state);

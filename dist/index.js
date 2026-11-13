@@ -36,6 +36,7 @@ __export(index_exports, {
   applyReconciliation: () => applyReconciliation,
   applyUpgrade: () => applyUpgrade,
   collectOperations: () => collectOperations,
+  composeMutation: () => composeMutation,
   copyDirectory: () => copyDirectory,
   createOrUpdateStage: () => createOrUpdateStage,
   createProjectManifest: () => createProjectManifest,
@@ -694,6 +695,8 @@ var import_node_path12 = require("path");
 
 // src/extensions/engine.ts
 var import_node_fs10 = require("fs");
+var import_node_child_process2 = require("child_process");
+var import_node_os = require("os");
 var import_node_path10 = require("path");
 
 // src/project/paths.ts
@@ -1094,6 +1097,7 @@ function currentLaunchStackVersion() {
 }
 
 // src/extensions/engine.ts
+var import_yaml = require("yaml");
 function compatible(version, range) {
   const major = Number.parseInt(version.split(".")[0] ?? "", 10);
   if (!Number.isInteger(major)) return false;
@@ -1119,25 +1123,120 @@ function resolveExtensionOrder(requested, registry) {
   for (const id of requested) visit2(id, []);
   return order;
 }
-function packageMutation(projectDirectory, extensions) {
+function packageMutations(projectDirectory, extensions) {
   const deps = {};
   const devDeps = {};
+  const scripts = {};
   for (const item of extensions) {
     Object.assign(deps, item.packages?.dependencies ?? {});
     Object.assign(devDeps, item.packages?.devDependencies ?? {});
+    Object.assign(scripts, item.scripts ?? {});
   }
-  if (!Object.keys(deps).length && !Object.keys(devDeps).length) return null;
+  if (!Object.keys(deps).length && !Object.keys(devDeps).length && !Object.keys(scripts).length) return [];
   const path = resolveProjectPath(projectDirectory, "package.json");
   if (!(0, import_node_fs10.existsSync)(path)) throw new Error("Cannot install package-backed capability without package.json");
   const existingText = (0, import_node_fs10.readFileSync)(path, "utf8");
   const parsed = JSON.parse(existingText);
   const currentDeps = parsed.dependencies ?? {};
   const currentDev = parsed.devDependencies ?? {};
+  const currentScripts = parsed.scripts ?? {};
+  for (const [name, version] of Object.entries(deps)) if (currentDeps[name] && currentDeps[name] !== version) throw new Error(`Dependency ${name} is already declared as ${currentDeps[name]}, which conflicts with capability requirement ${version}.`);
+  for (const [name, version] of Object.entries(devDeps)) if (currentDev[name] && currentDev[name] !== version) throw new Error(`Development dependency ${name} is already declared as ${currentDev[name]}, which conflicts with capability requirement ${version}.`);
+  for (const [name, command] of Object.entries(scripts)) if (currentScripts[name] && currentScripts[name] !== command) throw new Error(`npm script ${name} already exists with a different command.`);
   const sort = (value) => Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
-  const nextText = `${JSON.stringify({ ...parsed, dependencies: sort({ ...currentDeps, ...deps }), devDependencies: sort({ ...currentDev, ...devDeps }) }, null, 2)}
+  const nextPackage = `${JSON.stringify({ ...parsed, ...Object.keys(scripts).length ? { scripts: sort({ ...currentScripts, ...scripts }) } : {}, ...Object.keys(deps).length ? { dependencies: sort({ ...currentDeps, ...deps }) } : {}, ...Object.keys(devDeps).length ? { devDependencies: sort({ ...currentDev, ...devDeps }) } : {} }, null, 2)}
 `;
-  if (nextText === existingText) return null;
-  return { type: "write", path: "package.json", content: nextText, owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: hashFile(path) };
+  const lockPath = resolveProjectPath(projectDirectory, "package-lock.json");
+  const temporary = (0, import_node_fs10.mkdtempSync)((0, import_node_path10.join)((0, import_node_os.tmpdir)(), "launchstack-lock-"));
+  try {
+    (0, import_node_fs10.writeFileSync)((0, import_node_path10.join)(temporary, "package.json"), nextPackage);
+    if ((0, import_node_fs10.existsSync)(lockPath)) (0, import_node_fs10.writeFileSync)((0, import_node_path10.join)(temporary, "package-lock.json"), (0, import_node_fs10.readFileSync)(lockPath));
+    const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+    const result = (0, import_node_child_process2.spawnSync)(npm, ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund", "--no-update-notifier"], { cwd: temporary, env: process.env, encoding: "utf8", maxBuffer: 4 * 1024 * 1024 });
+    if (result.error || result.status !== 0) throw new Error(`Unable to resolve a matching package-lock.json${result.stderr ? `: ${result.stderr.trim()}` : ""}`);
+    const lockContent = (0, import_node_fs10.readFileSync)((0, import_node_path10.join)(temporary, "package-lock.json"), "utf8");
+    const mutations = [];
+    if (nextPackage !== existingText) mutations.push({ type: "write", path: "package.json", content: nextPackage, owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: hashFile(path) });
+    const existingLock = (0, import_node_fs10.existsSync)(lockPath) ? (0, import_node_fs10.readFileSync)(lockPath, "utf8") : null;
+    if (lockContent !== existingLock) mutations.push({ type: "write", path: "package-lock.json", content: lockContent, owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: (0, import_node_fs10.existsSync)(lockPath) ? hashFile(lockPath) : null });
+    return mutations;
+  } finally {
+    (0, import_node_fs10.rmSync)(temporary, { recursive: true, force: true });
+  }
+}
+function composeMutation(projectDirectory, state, pending) {
+  const pendingByPath = new Map(pending.map((mutation) => [mutation.path, mutation]));
+  const fragments = /* @__PURE__ */ new Map();
+  for (const [path, managed] of Object.entries(state.managedFiles)) {
+    if (!path.startsWith(".launchstack/generated/compose/") || !path.endsWith(".json")) continue;
+    const mutation = pendingByPath.get(path);
+    if (mutation?.type === "delete") continue;
+    if (mutation?.type === "write") fragments.set(path, mutation.content);
+    else {
+      const absolute2 = resolveProjectPath(projectDirectory, path);
+      if (!(0, import_node_fs10.existsSync)(absolute2)) continue;
+      if (managed.sha256 !== hashFile(absolute2)) throw new Error(`Compose fragment has local modifications: ${path}`);
+      fragments.set(path, (0, import_node_fs10.readFileSync)(absolute2, "utf8"));
+    }
+  }
+  for (const mutation of pending) if (mutation.type === "write" && mutation.path.startsWith(".launchstack/generated/compose/") && mutation.path.endsWith(".json")) fragments.set(mutation.path, mutation.content);
+  const merged = { services: {}, volumes: {}, networks: {} };
+  const baseline = { services: {}, volumes: {}, networks: {} };
+  const basePath = resolveProjectPath(projectDirectory, "docker-compose.yml");
+  if ((0, import_node_fs10.existsSync)(basePath)) {
+    let base;
+    try {
+      base = (0, import_yaml.parse)((0, import_node_fs10.readFileSync)(basePath, "utf8"));
+    } catch (error) {
+      throw new Error(`Cannot parse docker-compose.yml: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (!base || typeof base !== "object" || Array.isArray(base)) throw new Error("docker-compose.yml must contain a top-level mapping.");
+    for (const section of ["services", "volumes", "networks"]) {
+      const values = base[section];
+      if (values === void 0) continue;
+      if (!values || typeof values !== "object" || Array.isArray(values)) throw new Error(`docker-compose.yml has an invalid ${section} section.`);
+      for (const [name, value] of Object.entries(values)) baseline[section][name] = value;
+    }
+  }
+  for (const [path, content2] of [...fragments].sort(([left], [right]) => left.localeCompare(right))) {
+    let fragment;
+    try {
+      fragment = JSON.parse(content2);
+    } catch {
+      throw new Error(`Invalid Compose JSON fragment: ${path}`);
+    }
+    if (!fragment || typeof fragment !== "object" || Array.isArray(fragment)) throw new Error(`Compose fragment ${path} must be a mapping.`);
+    for (const section of ["services", "volumes", "networks"]) {
+      const values = fragment[section];
+      if (values === void 0) continue;
+      if (!values || typeof values !== "object" || Array.isArray(values)) throw new Error(`Compose fragment ${path} has an invalid ${section} section.`);
+      for (const [name, value] of Object.entries(values)) {
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/.test(name) || !value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Compose fragment ${path} has an invalid ${section} entry: ${name}`);
+        const baselineValue = baseline[section][name];
+        if (baselineValue && JSON.stringify(baselineValue) !== JSON.stringify(value)) throw new Error(`Compose ${section} name ${name} conflicts with docker-compose.yml (from ${path}).`);
+        const previous = merged[section][name];
+        if (previous && JSON.stringify(previous) !== JSON.stringify(value)) throw new Error(`Compose ${section} name ${name} has conflicting definitions (from ${path}).`);
+        merged[section][name] = value;
+      }
+    }
+    for (const section of Object.keys(fragment)) if (!["services", "volumes", "networks"].includes(section)) throw new Error(`Compose fragment ${path} contains unsupported top-level section ${section}.`);
+  }
+  for (const [name, rawService] of Object.entries(merged.services)) {
+    const service = rawService;
+    if (service.healthcheck !== void 0 && (!service.healthcheck || typeof service.healthcheck !== "object" || Array.isArray(service.healthcheck))) throw new Error(`Compose service ${name} has an invalid healthcheck.`);
+  }
+  const target = "docker-compose.launchstack.yml";
+  const absolute = resolveProjectPath(projectDirectory, target);
+  const tracked = state.managedFiles[target];
+  if ((0, import_node_fs10.existsSync)(absolute) && (!tracked || tracked.owner !== "launchstack:compose" || tracked.sha256 !== hashFile(absolute))) throw new Error(`Refusing to overwrite unmanaged or modified Compose file: ${target}`);
+  if (!Object.keys(merged.services).length) {
+    if (!(0, import_node_fs10.existsSync)(absolute)) return null;
+    return { type: "delete", path: target, owner: "launchstack:compose", expectedSha256: hashFile(absolute) };
+  }
+  const content = `${JSON.stringify(Object.fromEntries(Object.entries(merged).filter(([, value]) => Object.keys(value).length).map(([key, value]) => [key, Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)))])), null, 2)}
+`;
+  if ((0, import_node_fs10.existsSync)(absolute) && (0, import_node_fs10.readFileSync)(absolute, "utf8") === content) return null;
+  return { type: "write", path: target, content, owner: "launchstack:compose", version: currentLaunchStackVersion(), expectedSha256: (0, import_node_fs10.existsSync)(absolute) ? hashFile(absolute) : null };
 }
 function envMutation(projectDirectory, extensions) {
   const vars = extensions.flatMap((item) => item.environment ?? []);
@@ -1211,10 +1310,11 @@ function planExtensionInstall(input) {
     for (const conflict of item.conflicts ?? []) if (selected.has(conflict) || state.extensions[conflict]) throw new Error(`${item.id} conflicts with ${conflict}`);
   }
   const mutations = fileMutations(projectDirectory, state, ordered);
-  const packageWrite = packageMutation(projectDirectory, ordered);
-  if (packageWrite) mutations.push(packageWrite);
+  mutations.push(...packageMutations(projectDirectory, ordered));
   const envWrite = envMutation(projectDirectory, ordered);
   if (envWrite) mutations.push(envWrite);
+  const composeWrite = composeMutation(projectDirectory, state, mutations);
+  if (composeWrite) mutations.push(composeWrite);
   const nextManifest = structuredClone(manifest);
   const nextState = withTrackedMutations(state, mutations);
   const installedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -1227,7 +1327,7 @@ function planExtensionInstall(input) {
   nextState.cliVersion = currentLaunchStackVersion();
   if (mutations.length || ordered.some((item) => state.extensions[item.id]?.version !== item.version)) nextState.updatedAt = installedAt;
   const changed = ordered.filter((item) => state.extensions[item.id]?.version !== item.version);
-  const actions = [...changed.map((item) => ({ kind: "metadata", target: item.id, detail: state.extensions[item.id] ? `upgrade ${state.extensions[item.id]?.version} -> ${item.version}` : `install ${item.version}` })), ...mutations.map((mutation) => ({ kind: mutation.path === "package.json" ? "package" : mutation.path === ".env.example" ? "environment" : mutation.path.includes("/compose/") ? "compose" : "file", target: mutation.path, detail: mutation.type }))];
+  const actions = [...changed.map((item) => ({ kind: "metadata", target: item.id, detail: state.extensions[item.id] ? `upgrade ${state.extensions[item.id]?.version} -> ${item.version}` : `install ${item.version}` })), ...mutations.map((mutation) => ({ kind: mutation.path === "package.json" || mutation.path === "package-lock.json" ? "package" : mutation.path === ".env.example" ? "environment" : mutation.path.includes("/compose/") || mutation.path === "docker-compose.launchstack.yml" ? "compose" : "file", target: mutation.path, detail: mutation.type }))];
   return { projectDirectory, extensionIds: ordered.map((item) => item.id), actions, warnings: ordered.flatMap((item) => item.hooks?.length ? [`${item.id} declares executable hooks; declarative installation does not execute them.`] : []), noop: actions.length === 0, mutations, nextManifest, nextState };
 }
 function applyExtensionInstall(plan) {
@@ -1237,32 +1337,58 @@ function applyExtensionInstall(plan) {
 
 // src/extensions/first-party.ts
 var extension = (value) => value;
-var redis = extension({ schemaVersion: 1, id: "redis", version: "1.0.0", kind: "capability", displayName: "Redis", supportedLaunchStack: ">=2 <4", packages: { dependencies: { ioredis: "^5.4.0" } }, environment: [{ name: "REDIS_URL", description: "Redis connection URL", example: "redis://localhost:6379", required: true, secret: true }], composeServices: { redis: { image: "redis:8-alpine", restart: "unless-stopped", ports: ["6379:6379"], healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: "5s", timeout: "3s", retries: 10 } } }, files: [{ path: "src/launchstack/capabilities/redis.ts", content: `import Redis from "ioredis";
-export function createRedisClient(url = process.env.REDIS_URL): Redis { if (!url) throw new Error("REDIS_URL is required"); return new Redis(url, { lazyConnect: true, maxRetriesPerRequest: null }); }
+var redis = extension({ schemaVersion: 1, id: "redis", version: "1.0.0", kind: "capability", displayName: "Redis service and client", supportedLaunchStack: ">=2 <4", coverage: "complete", packages: { dependencies: { ioredis: "^5.4.0" } }, environment: [{ name: "REDIS_URL", description: "Redis connection URL", example: "redis://localhost:6379", required: true }], composeServices: { redis: { image: "redis:8-alpine", restart: "unless-stopped", ports: ["127.0.0.1:6379:6379"], healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: "5s", timeout: "3s", retries: 10 } } }, files: [{ path: "src/launchstack/capabilities/redis.ts", content: `import Redis from "ioredis";
+export function createRedisClient(url = process.env.REDIS_URL): Redis { if (!url) throw new Error("REDIS_URL is required"); return new Redis(url, { lazyConnect: true, maxRetriesPerRequest: null, enableReadyCheck: true }); }
 ` }] });
-var queue = extension({ schemaVersion: 1, id: "queue", version: "1.0.0", kind: "capability", displayName: "BullMQ queues", supportedLaunchStack: ">=2 <4", dependencies: ["redis"], packages: { dependencies: { bullmq: "^5.0.0" } }, environment: [{ name: "QUEUE_PREFIX", description: "BullMQ key prefix", example: "app" }], files: [{ path: "src/launchstack/capabilities/queue.ts", content: `import { Queue, type JobsOptions } from "bullmq";
+var queue = extension({ schemaVersion: 1, id: "queue", version: "1.0.0", kind: "capability", displayName: "BullMQ worker and queue", supportedLaunchStack: ">=2 <4", coverage: "complete", dependencies: ["redis"], packages: { dependencies: { bullmq: "^5.0.0" } }, scripts: { worker: "tsx src/worker.ts" }, environment: [{ name: "QUEUE_PREFIX", description: "BullMQ key prefix", example: "launchstack" }], files: [
+  { path: "src/launchstack/capabilities/queue.ts", content: `import { Queue, type JobsOptions } from "bullmq";
 import { createRedisClient } from "./redis";
-export function createQueue<Data>(name: string): Queue<Data> { if (!/^[a-zA-Z0-9:_-]{1,80}$/.test(name)) throw new Error("Invalid queue name"); return new Queue<Data>(name, { connection: createRedisClient(), prefix: process.env.QUEUE_PREFIX || undefined, defaultJobOptions: { attempts: 3, removeOnComplete: 1000, removeOnFail: 5000 } satisfies JobsOptions }); }
+export const DEFAULT_QUEUE_NAME = "launchstack-default";
+export function createQueue<Data>(name = DEFAULT_QUEUE_NAME): Queue<Data> { if (!/^[a-zA-Z0-9:_-]{1,80}$/.test(name)) throw new Error("Invalid queue name"); return new Queue<Data>(name, { connection: createRedisClient(), prefix: process.env.QUEUE_PREFIX || undefined, defaultJobOptions: { attempts: 3, backoff: { type: "exponential", delay: 1000 }, removeOnComplete: 1000, removeOnFail: 5000 } satisfies JobsOptions }); }
+` },
+  { path: "src/worker.ts", content: `import { Worker } from "bullmq";
+import { createRedisClient } from "./launchstack/capabilities/redis";
+import { DEFAULT_QUEUE_NAME } from "./launchstack/capabilities/queue";
+const connection = createRedisClient();
+const worker = new Worker(DEFAULT_QUEUE_NAME, async (job) => { console.info(JSON.stringify({ event: "job.processed", jobId: job.id, name: job.name })); return { processed: true }; }, { connection, prefix: process.env.QUEUE_PREFIX || undefined, concurrency: 4 });
+worker.on("failed", (job, error) => console.error(JSON.stringify({ event: "job.failed", jobId: job?.id, error: error.message })));
+worker.on("ready", () => console.info(JSON.stringify({ event: "worker.ready", queue: DEFAULT_QUEUE_NAME })));
+let stopping = false;
+async function shutdown(): Promise<void> { if (stopping) return; stopping = true; await worker.close(); await connection.quit(); }
+process.once("SIGINT", () => { void shutdown().then(() => process.exit(0)); });
+process.once("SIGTERM", () => { void shutdown().then(() => process.exit(0)); });
+` }
+] });
+var oauth = extension({ schemaVersion: 1, id: "oauth", version: "1.0.0", kind: "capability", coverage: "helper-only", displayName: "OAuth client helpers", supportedLaunchStack: ">=2 <4", environment: [{ name: "OAUTH_CLIENT_ID", description: "OAuth client identifier", required: true }, { name: "OAUTH_CLIENT_SECRET", description: "OAuth client secret", required: true, secret: true }, { name: "OAUTH_REDIRECT_URI", description: "OAuth callback URL", example: "http://localhost:3000/api/auth/callback", required: true }], files: [{ path: "src/launchstack/capabilities/oauth.ts", content: `export function buildAuthorizationUrl(input: { authorizationEndpoint: string; state: string; scope: string[] }): string { if (input.state.length < 16) throw new Error("OAuth state must contain at least 16 characters"); const clientId = process.env.OAUTH_CLIENT_ID; const redirectUri = process.env.OAUTH_REDIRECT_URI; if (!clientId || !redirectUri) throw new Error("OAuth client configuration is incomplete"); const url = new URL(input.authorizationEndpoint); url.searchParams.set("response_type", "code"); url.searchParams.set("client_id", clientId); url.searchParams.set("redirect_uri", redirectUri); url.searchParams.set("scope", input.scope.join(" ")); url.searchParams.set("state", input.state); return url.toString(); }
 ` }] });
-var oauth = extension({ schemaVersion: 1, id: "oauth", version: "1.0.0", kind: "capability", displayName: "OAuth client helpers", supportedLaunchStack: ">=2 <4", environment: [{ name: "OAUTH_CLIENT_ID", description: "OAuth client identifier", required: true }, { name: "OAUTH_CLIENT_SECRET", description: "OAuth client secret", required: true, secret: true }, { name: "OAUTH_REDIRECT_URI", description: "OAuth callback URL", example: "http://localhost:3000/api/auth/callback", required: true }], files: [{ path: "src/launchstack/capabilities/oauth.ts", content: `export function buildAuthorizationUrl(input: { authorizationEndpoint: string; state: string; scope: string[] }): string { if (input.state.length < 16) throw new Error("OAuth state must contain at least 16 characters"); const clientId = process.env.OAUTH_CLIENT_ID; const redirectUri = process.env.OAUTH_REDIRECT_URI; if (!clientId || !redirectUri) throw new Error("OAuth client configuration is incomplete"); const url = new URL(input.authorizationEndpoint); url.searchParams.set("response_type", "code"); url.searchParams.set("client_id", clientId); url.searchParams.set("redirect_uri", redirectUri); url.searchParams.set("scope", input.scope.join(" ")); url.searchParams.set("state", input.state); return url.toString(); }
-` }] });
-var storage = extension({ schemaVersion: 1, id: "storage", version: "1.0.0", kind: "capability", displayName: "S3-compatible storage", supportedLaunchStack: ">=2 <4", environment: [{ name: "STORAGE_ENDPOINT", description: "S3-compatible endpoint", required: true }, { name: "STORAGE_BUCKET", description: "Storage bucket", required: true }, { name: "STORAGE_ACCESS_KEY_ID", description: "Storage access key", required: true, secret: true }, { name: "STORAGE_SECRET_ACCESS_KEY", description: "Storage secret key", required: true, secret: true }], files: [{ path: "src/launchstack/capabilities/storage.ts", content: `export type StorageConfig = { endpoint: URL; bucket: string; accessKeyId: string; secretAccessKey: string };
+var storage = extension({ schemaVersion: 1, id: "storage", version: "1.0.0", kind: "capability", coverage: "helper-only", displayName: "S3-compatible storage", supportedLaunchStack: ">=2 <4", environment: [{ name: "STORAGE_ENDPOINT", description: "S3-compatible endpoint", required: true }, { name: "STORAGE_BUCKET", description: "Storage bucket", required: true }, { name: "STORAGE_ACCESS_KEY_ID", description: "Storage access key", required: true, secret: true }, { name: "STORAGE_SECRET_ACCESS_KEY", description: "Storage secret key", required: true, secret: true }], files: [{ path: "src/launchstack/capabilities/storage.ts", content: `export type StorageConfig = { endpoint: URL; bucket: string; accessKeyId: string; secretAccessKey: string };
 export function storageConfig(): StorageConfig { const endpoint = process.env.STORAGE_ENDPOINT; const bucket = process.env.STORAGE_BUCKET; const accessKeyId = process.env.STORAGE_ACCESS_KEY_ID; const secretAccessKey = process.env.STORAGE_SECRET_ACCESS_KEY; if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) throw new Error("Storage configuration is incomplete"); return { endpoint: new URL(endpoint), bucket, accessKeyId, secretAccessKey }; }
 ` }] });
-var observability = extension({ schemaVersion: 1, id: "observability", version: "1.0.0", kind: "capability", displayName: "OpenTelemetry baseline", supportedLaunchStack: ">=2 <4", packages: { dependencies: { "@opentelemetry/api": "^1.9.0" } }, environment: [{ name: "OTEL_SERVICE_NAME", description: "OpenTelemetry service name" }], files: [{ path: "src/launchstack/capabilities/observability.ts", content: `import { trace } from "@opentelemetry/api";
+var observability = extension({ schemaVersion: 1, id: "observability", version: "1.0.0", kind: "capability", coverage: "helper-only", displayName: "OpenTelemetry baseline", supportedLaunchStack: ">=2 <4", packages: { dependencies: { "@opentelemetry/api": "^1.9.0" } }, environment: [{ name: "OTEL_SERVICE_NAME", description: "OpenTelemetry service name" }], files: [{ path: "src/launchstack/capabilities/observability.ts", content: `import { trace } from "@opentelemetry/api";
 export const tracer = trace.getTracer(process.env.OTEL_SERVICE_NAME ?? "launchstack-api");
 ` }] });
-var websocket = extension({ schemaVersion: 1, id: "websocket", version: "1.0.0", kind: "capability", displayName: "Fastify WebSocket", supportedLaunchStack: ">=2 <4", packages: { dependencies: { "@fastify/websocket": "^11.0.0" } }, files: [{ path: "src/launchstack/capabilities/websocket.ts", content: `import websocket from "@fastify/websocket";
+var websocket = extension({ schemaVersion: 1, id: "websocket", version: "1.0.0", kind: "capability", coverage: "helper-only", displayName: "Fastify WebSocket", supportedLaunchStack: ">=2 <4", packages: { dependencies: { "@fastify/websocket": "^11.0.0" } }, files: [{ path: "src/launchstack/capabilities/websocket.ts", content: `import websocket from "@fastify/websocket";
 import type { FastifyInstance } from "fastify";
 export async function registerWebsocket(app: FastifyInstance): Promise<void> { await app.register(websocket); }
 ` }] });
-var email = extension({ schemaVersion: 1, id: "email", version: "1.0.0", kind: "capability", displayName: "Email/notification adapter", supportedLaunchStack: ">=2 <4", environment: [{ name: "EMAIL_FROM", description: "Default sender address", required: true }], files: [{ path: "src/launchstack/capabilities/email.ts", content: `export type EmailMessage = { to: string; subject: string; text: string; html?: string };
+var email = extension({ schemaVersion: 1, id: "email", version: "1.0.0", kind: "capability", coverage: "helper-only", displayName: "Email/notification adapter", supportedLaunchStack: ">=2 <4", environment: [{ name: "EMAIL_FROM", description: "Default sender address", required: true }], files: [{ path: "src/launchstack/capabilities/email.ts", content: `export type EmailMessage = { to: string; subject: string; text: string; html?: string };
 export interface EmailAdapter { send(message: EmailMessage): Promise<void>; }
 export function requireEmailFrom(): string { const value = process.env.EMAIL_FROM; if (!value) throw new Error("EMAIL_FROM is required"); return value; }
 ` }] });
-var cron = extension({ schemaVersion: 1, id: "cron", version: "1.0.0", kind: "capability", displayName: "Background scheduling", supportedLaunchStack: ">=2 <4", files: [{ path: "src/launchstack/capabilities/cron.ts", content: `export function scheduleInterval(task: () => Promise<void>, intervalMs: number): () => void { if (!Number.isFinite(intervalMs) || intervalMs < 1000) throw new Error("intervalMs must be at least 1000"); let running = false; const timer = setInterval(() => { if (running) return; running = true; void task().finally(() => { running = false; }); }, intervalMs); timer.unref(); return () => clearInterval(timer); }
-` }] });
-var webhooks = extension({ schemaVersion: 1, id: "webhooks", version: "1.0.0", kind: "capability", displayName: "Signed webhooks", supportedLaunchStack: ">=2 <4", environment: [{ name: "WEBHOOK_SIGNING_SECRET", description: "Webhook HMAC secret", required: true, secret: true }], files: [{ path: "src/launchstack/capabilities/webhooks.ts", content: `import { createHmac, timingSafeEqual } from "node:crypto";
+var cron = extension({ schemaVersion: 1, id: "cron", version: "1.0.0", kind: "capability", coverage: "complete", displayName: "Scheduled worker", supportedLaunchStack: ">=2 <4", scripts: { scheduler: "tsx src/scheduler.ts" }, files: [
+  { path: "src/launchstack/capabilities/cron.ts", content: `export function scheduleInterval(task: () => Promise<void>, intervalMs: number, onError: (error: unknown) => void = console.error): () => void { if (!Number.isFinite(intervalMs) || intervalMs < 1000) throw new Error("intervalMs must be at least 1000"); let running = false; const timer = setInterval(() => { if (running) return; running = true; void task().catch(onError).finally(() => { running = false; }); }, intervalMs); return () => clearInterval(timer); }
+` },
+  { path: "src/scheduler.ts", content: `import { scheduleInterval } from "./launchstack/capabilities/cron";
+const intervalMs = Number(process.env.CRON_INTERVAL_MS ?? 60000);
+const stop = scheduleInterval(async () => { console.info(JSON.stringify({ event: "schedule.tick", at: new Date().toISOString() })); }, intervalMs);
+console.info(JSON.stringify({ event: "scheduler.ready", intervalMs }));
+let stopping = false;
+function shutdown(): void { if (stopping) return; stopping = true; stop(); process.exit(0); }
+process.once("SIGINT", shutdown);
+process.once("SIGTERM", shutdown);
+` }
+] });
+var webhooks = extension({ schemaVersion: 1, id: "webhooks", version: "1.0.0", kind: "capability", coverage: "helper-only", displayName: "Signed webhooks", supportedLaunchStack: ">=2 <4", environment: [{ name: "WEBHOOK_SIGNING_SECRET", description: "Webhook HMAC secret", required: true, secret: true }], files: [{ path: "src/launchstack/capabilities/webhooks.ts", content: `import { createHmac, timingSafeEqual } from "node:crypto";
 export function verifyWebhookSignature(payload: string | Buffer, signature: string, secret = process.env.WEBHOOK_SIGNING_SECRET): boolean { if (!secret || !/^[a-f0-9]{64}$/i.test(signature)) return false; const expected = createHmac("sha256", secret).update(payload).digest(); const supplied = Buffer.from(signature, "hex"); return supplied.length === expected.length && timingSafeEqual(supplied, expected); }
 ` }] });
 var FIRST_PARTY_EXTENSIONS = Object.fromEntries([redis, queue, oauth, storage, observability, websocket, email, cron, webhooks].map((item) => [item.id, item]));
@@ -1282,6 +1408,11 @@ function planExtensionRemoval(input) {
   const manifest = loadProjectManifest(projectDirectory);
   const state = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
   if (!state.extensions[input.extension.id]) throw new Error(`${input.extension.id} is not installed.`);
+  if (input.registry && input.extension.kind === "capability") {
+    const remaining = Object.keys(state.extensions).filter((id) => id !== input.extension.id && state.extensions[id]?.kind === "capability");
+    const dependents = remaining.filter((id) => input.registry?.[id]?.dependencies?.includes(input.extension.id));
+    if (dependents.length) throw new Error(`Cannot remove ${input.extension.id}; installed capabilities still depend on it: ${dependents.sort().join(", ")}.`);
+  }
   const mutations = [];
   for (const [path, managed] of Object.entries(state.managedFiles)) {
     if (managed.owner !== input.extension.id) continue;
@@ -1291,10 +1422,32 @@ function planExtensionRemoval(input) {
     if (current !== managed.sha256) throw new Error(`Refusing to remove locally modified file: ${path}`);
     mutations.push({ type: "delete", path, owner: input.extension.id, expectedSha256: current });
   }
+  if (input.extension.scripts) {
+    const packagePath = resolveProjectPath(projectDirectory, "package.json");
+    if ((0, import_node_fs11.existsSync)(packagePath)) {
+      const packageText = (0, import_node_fs11.readFileSync)(packagePath, "utf8");
+      const packageJson2 = JSON.parse(packageText);
+      const scripts = { ...packageJson2.scripts ?? {} };
+      let changed = false;
+      for (const [name, command] of Object.entries(input.extension.scripts)) {
+        if (scripts[name] !== command) continue;
+        const inUse = Object.values(state.extensions).some((installed) => installed.id !== input.extension.id && input.registry?.[installed.id]?.scripts?.[name] === command);
+        if (!inUse) {
+          delete scripts[name];
+          changed = true;
+        }
+      }
+      if (changed) {
+        const sortedScripts = Object.fromEntries(Object.entries(scripts).sort(([left], [right]) => left.localeCompare(right)));
+        mutations.push({ type: "write", path: "package.json", content: JSON.stringify({ ...packageJson2, scripts: sortedScripts }, null, 2) + "\n", owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: hashFile(packagePath) });
+      }
+    }
+  }
+  const composeWrite = composeMutation(projectDirectory, state, mutations);
+  if (composeWrite) mutations.push(composeWrite);
   const nextManifest = structuredClone(manifest);
   if (input.extension.kind === "capability") delete nextManifest.capabilities[input.extension.id];
-  const nextState = structuredClone(state);
-  for (const mutation of mutations) delete nextState.managedFiles[mutation.path];
+  const nextState = withTrackedMutations(state, mutations);
   delete nextState.extensions[input.extension.id];
   nextState.cliVersion = currentLaunchStackVersion();
   nextState.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -1331,6 +1484,11 @@ function planReconciliation(projectDirectoryInput) {
     if (!FIRST_PARTY_EXTENSIONS[id]) conflicts.push(`Installed capability cannot be removed by this CLI: ${id}`);
     actions.push({ id: `capability:${id}:remove`, kind: "remove", target: id, detail: "installed capability is absent from desired manifest", destructive: true });
   }
+  const removeSet = new Set(removeCapabilities);
+  for (const id of removeCapabilities) {
+    const dependents = Object.values(FIRST_PARTY_EXTENSIONS).filter((item) => !removeSet.has(item.id) && (state.extensions[item.id] || desiredCapabilities.includes(item.id)) && item.dependencies?.includes(id)).map((item) => item.id);
+    if (dependents.length) conflicts.push(`Cannot remove ${id}; capabilities still depend on it: ${dependents.sort().join(", ")}.`);
+  }
   return { projectDirectory, desiredCapabilities, installCapabilities, removeCapabilities, drift, actions, warnings: removeCapabilities.length ? ["Capability removals are destructive and require --allow-remove during apply."] : [], conflicts };
 }
 function applyReconciliation(input) {
@@ -1351,7 +1509,7 @@ function applyReconciliation(input) {
     for (const item of ordered) {
       if (!plan.removeCapabilities.includes(item.id)) continue;
       const fresh = planReconciliation(input.projectDirectory);
-      if (fresh.removeCapabilities.includes(item.id)) applyExtensionRemoval(planExtensionRemoval({ projectDirectory: input.projectDirectory, extension: item }));
+      if (fresh.removeCapabilities.includes(item.id)) applyExtensionRemoval(planExtensionRemoval({ projectDirectory: input.projectDirectory, extension: item, registry: FIRST_PARTY_EXTENSIONS }));
     }
   }
   plan = planReconciliation(input.projectDirectory);
@@ -1757,7 +1915,7 @@ function severityRank(severity) {
 
 // src/audit/run.ts
 var import_node_fs15 = require("fs");
-var import_node_child_process2 = require("child_process");
+var import_node_child_process3 = require("child_process");
 var import_node_path14 = require("path");
 var readIfPresent = (root, path) => {
   const absolute = (0, import_node_path14.join)(root, path);
@@ -1775,7 +1933,7 @@ function packageJson(root) {
 }
 function gitTrackedFiles(root) {
   try {
-    return (0, import_node_child_process2.execFileSync)("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split("\0").filter(Boolean);
+    return (0, import_node_child_process3.execFileSync)("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split("\0").filter(Boolean);
   } catch {
     return [];
   }
@@ -2021,9 +2179,9 @@ var import_node_fs17 = require("fs");
 var import_node_path16 = require("path");
 
 // src/git.ts
-var import_node_child_process3 = require("child_process");
+var import_node_child_process4 = require("child_process");
 function run(args, cwd) {
-  return (0, import_node_child_process3.execFileSync)("git", args, {
+  return (0, import_node_child_process4.execFileSync)("git", args, {
     cwd,
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "ignore"]
@@ -2057,9 +2215,9 @@ function getGitMetadata(cwd = process.cwd()) {
 }
 
 // src/stages/docker.ts
-var import_node_child_process4 = require("child_process");
+var import_node_child_process5 = require("child_process");
 function run2(projectDirectory, args, environment = {}) {
-  return (0, import_node_child_process4.execFileSync)("docker", args, { cwd: projectDirectory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...environment } });
+  return (0, import_node_child_process5.execFileSync)("docker", args, { cwd: projectDirectory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...environment } });
 }
 var dockerStageAdapter = { id: "docker", capabilities: { create: true, inspect: true, update: true, destroy: true }, create(input) {
   run2(input.projectDirectory, ["compose", "-p", input.resourceId, "up", "-d", "--build"], input.environment);
@@ -2198,6 +2356,7 @@ function destroyStage(input) {
   applyReconciliation,
   applyUpgrade,
   collectOperations,
+  composeMutation,
   copyDirectory,
   createOrUpdateStage,
   createProjectManifest,

@@ -40,6 +40,13 @@
 - Added upgrade fixtures for read-only planning, preservation, idempotency, legacy CLI/template version separation, and unsupported edges.
 - Measured clean v2-to-v3 plans with 100 / 1,000 / 10,000 tracked files against v3.0.0; timing and memory increases are recorded in `docs/benchmarks/issue-33-upgrades.md`.
 
+### Capability wiring (issue #34)
+- Assemble generated Compose service fragments into `docker-compose.launchstack.yml`, validate the merged structure against the project's base Compose services, and load it for `launchstack dev` with health-aware `docker compose up --wait`.
+- Resolve package and script changes with npm in a temporary directory and commit `package.json` plus the matching `package-lock.json` in the same recoverable project transaction. `npm ci` succeeds immediately after adding capabilities.
+- Generate a runnable BullMQ worker and a scheduler with error handling and graceful signal shutdown. Redis, queue and cron are marked complete local integrations; OAuth, storage, observability, WebSocket, email and webhook entries are explicitly identified as helper-only.
+- Refuse capability removal when another installed capability depends on it; remove generated process scripts and regenerate Compose state without deleting modified or user-owned files.
+- Verified packed CLI capability addition, lockfile installation, Compose validation, Redis health/readiness and a real BullMQ job roundtrip. The scheduler emitted repeated ticks and stopped on SIGTERM.
+
 ## 3.0.0 - 2026-09-14
 
 ### Lifecycle platform
