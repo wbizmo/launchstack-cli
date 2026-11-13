@@ -1,6 +1,6 @@
 {
   "baseline_commit": "c27e7f6ff06ac33b2b8c877ab57966e5f19ceb9",
-  "candidate_commit": "working-tree-uncommitted",
+  "candidate_commit": "bec7880e94d7f298d474a78a030ccd0908a31157",
   "node": "v24.22.3",
   "platform": "linux 6.18.57 x64",
   "cpu": "AMD EPYC 9V74 80-Core Processor",
