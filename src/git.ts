@@ -7,25 +7,17 @@ export type GitMetadata = {
   dirty: boolean;
 };
 
-function run(
-  args: string[],
-  cwd: string
-): string {
+function run(args: string[], cwd: string): string {
   return execFileSync("git", args, {
     cwd,
     encoding: "utf-8",
-    stdio: ["ignore", "pipe", "ignore"]
+    stdio: ["ignore", "pipe", "ignore"],
   }).trim();
 }
 
-export function getGitMetadata(
-  cwd = process.cwd()
-): GitMetadata | null {
+export function getGitMetadata(cwd = process.cwd()): GitMetadata | null {
   try {
-    const status = run(
-      ["status", "--porcelain=v2", "--branch"],
-      cwd
-    );
+    const status = run(["status", "--porcelain=v2", "--branch"], cwd);
     const lines = status.split("\n").filter(Boolean);
     const branch = lines
       .find((line) => line.startsWith("# branch.head "))
@@ -38,19 +30,13 @@ export function getGitMetadata(
       return null;
     }
 
-    const commitMessage = run(
-      ["log", "-1", "--pretty=%B"],
-      cwd
-    );
+    const commitMessage = run(["log", "-1", "--pretty=%B"], cwd);
 
     return {
-      branch:
-        !branch || branch === "(detached)"
-          ? "HEAD"
-          : branch,
+      branch: !branch || branch === "(detached)" ? "HEAD" : branch,
       commitHash,
       commitMessage,
-      dirty: lines.some((line) => !line.startsWith("# "))
+      dirty: lines.some((line) => !line.startsWith("# ")),
     };
   } catch {
     return null;

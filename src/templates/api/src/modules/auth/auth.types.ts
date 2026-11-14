@@ -3,20 +3,14 @@ import type { z } from "zod";
 import type {
   loginBodySchema,
   refreshBodySchema,
-  registerBodySchema
+  registerBodySchema,
 } from "./auth.schemas";
 
-export type RegisterInput = z.infer<
-  typeof registerBodySchema
->;
+export type RegisterInput = z.infer<typeof registerBodySchema>;
 
-export type LoginInput = z.infer<
-  typeof loginBodySchema
->;
+export type LoginInput = z.infer<typeof loginBodySchema>;
 
-export type RefreshInput = z.infer<
-  typeof refreshBodySchema
->;
+export type RefreshInput = z.infer<typeof refreshBodySchema>;
 
 export type AuthenticatedUser = {
   id: string;

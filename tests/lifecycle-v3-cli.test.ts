@@ -11,7 +11,11 @@ function run(args: string[], cwd: string) {
   return spawnSync(process.execPath, [tsxCli, sourceCli, ...args], {
     cwd,
     encoding: "utf8",
-    env: { ...process.env, NO_COLOR: "1", LAUNCHSTACK_VERSION_OVERRIDE: "3.0.0" }
+    env: {
+      ...process.env,
+      NO_COLOR: "1",
+      LAUNCHSTACK_VERSION_OVERRIDE: "3.0.0",
+    },
   });
 }
 
@@ -26,11 +30,11 @@ function tempProject(): string {
         project: { name: "fixture", templateVersion: "3.0.0" },
         capabilities: {},
         provider: { id: "docker" },
-        stages: {}
+        stages: {},
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
   return directory;
 }
@@ -59,7 +63,9 @@ describe("LaunchStack v3 CLI contract", () => {
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout)).toHaveProperty("actions");
-    expect(readFileSync(join(directory, "launchstack.json"), "utf8")).toBe(before);
+    expect(readFileSync(join(directory, "launchstack.json"), "utf8")).toBe(
+      before,
+    );
   });
 
   test("emits a JSON production audit report", () => {
@@ -75,24 +81,51 @@ describe("LaunchStack v3 CLI contract", () => {
     const directory = tempProject();
     const schemaPath = join(directory, "openapi.json");
     const outputPath = join(directory, "sdk.ts");
-    writeFileSync(schemaPath, JSON.stringify({ openapi: "3.1.0", info: { title: "Fixture", version: "1" }, paths: { "/health": { get: { operationId: "health", responses: { "200": { description: "ok" } } } } } }));
-    const result = run(["client", "generate", "--schema", schemaPath, "--output", outputPath], directory);
+    writeFileSync(
+      schemaPath,
+      JSON.stringify({
+        openapi: "3.1.0",
+        info: { title: "Fixture", version: "1" },
+        paths: {
+          "/health": {
+            get: {
+              operationId: "health",
+              responses: { "200": { description: "ok" } },
+            },
+          },
+        },
+      }),
+    );
+    const result = run(
+      ["client", "generate", "--schema", schemaPath, "--output", outputPath],
+      directory,
+    );
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
-    expect(readFileSync(outputPath, "utf8")).toContain("class LaunchStackClient");
+    expect(readFileSync(outputPath, "utf8")).toContain(
+      "class LaunchStackClient",
+    );
   });
 
   test("dry-runs module generation without writing files", () => {
     const directory = tempProject();
-    const result = run(["generate", "module", "billing", "--dry-run", "--json"], directory);
+    const result = run(
+      ["generate", "module", "billing", "--dry-run", "--json"],
+      directory,
+    );
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     const plan = JSON.parse(result.stdout);
-    expect(plan.files.some((path: string) => path.includes("billing"))).toBe(true);
+    expect(plan.files.some((path: string) => path.includes("billing"))).toBe(
+      true,
+    );
   });
 
   test("accepts stage-aware status", () => {
-    const result = run(["status", "--stage", "pr-142", "--json"], tempProject());
+    const result = run(
+      ["status", "--stage", "pr-142", "--json"],
+      tempProject(),
+    );
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     const status = JSON.parse(result.stdout);

@@ -1,9 +1,5 @@
 import { Command } from "commander";
-import {
-  configExists,
-  createDefaultConfig,
-  writeConfig
-} from "../config";
+import { configExists, createDefaultConfig, writeConfig } from "../config";
 
 export const initCommand = new Command("init")
   .description("Create a LaunchStack config file")
@@ -11,7 +7,9 @@ export const initCommand = new Command("init")
   .option("-f, --force", "Overwrite existing config file")
   .action((options) => {
     if (configExists() && !options.force) {
-      console.log("launchstack.config.json already exists. Use --force to overwrite.");
+      console.log(
+        "launchstack.config.json already exists. Use --force to overwrite.",
+      );
       return;
     }
 

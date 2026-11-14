@@ -1,22 +1,15 @@
-import type {
-  Prisma,
-  PrismaClient,
-  RefreshToken,
-  User
-} from "@prisma/client";
+import type { Prisma, PrismaClient, RefreshToken, User } from "@prisma/client";
 
 type AuthDatabase = PrismaClient | Prisma.TransactionClient;
 
 export class AuthRepository {
-  constructor(
-    private readonly prisma: AuthDatabase
-  ) {}
+  constructor(private readonly prisma: AuthDatabase) {}
 
   findUserByEmail(email: string): Promise<User | null> {
     return this.prisma.user.findUnique({
       where: {
-        email
-      }
+        email,
+      },
     });
   }
 
@@ -26,7 +19,7 @@ export class AuthRepository {
     passwordHash: string;
   }): Promise<User> {
     return this.prisma.user.create({
-      data: input
+      data: input,
     });
   }
 
@@ -36,24 +29,24 @@ export class AuthRepository {
     expiresAt: Date;
   }): Promise<RefreshToken> {
     return this.prisma.refreshToken.create({
-      data: input
+      data: input,
     });
   }
 
   findRefreshTokenWithUser(tokenHash: string) {
     return this.prisma.refreshToken.findUnique({
       where: {
-        tokenHash
+        tokenHash,
       },
       include: {
-        user: true
-      }
+        user: true,
+      },
     });
   }
 
   consumeRefreshToken(
     tokenHash: string,
-    now: Date
+    now: Date,
   ): Promise<{
     count: number;
   }> {
@@ -62,28 +55,26 @@ export class AuthRepository {
         tokenHash,
         revokedAt: null,
         expiresAt: {
-          gt: now
-        }
+          gt: now,
+        },
       },
       data: {
-        revokedAt: now
-      }
+        revokedAt: now,
+      },
     });
   }
 
-  revokeRefreshTokensByHash(
-    tokenHash: string
-  ): Promise<{
+  revokeRefreshTokensByHash(tokenHash: string): Promise<{
     count: number;
   }> {
     return this.prisma.refreshToken.updateMany({
       where: {
         tokenHash,
-        revokedAt: null
+        revokedAt: null,
       },
       data: {
-        revokedAt: new Date()
-      }
+        revokedAt: new Date(),
+      },
     });
   }
 }

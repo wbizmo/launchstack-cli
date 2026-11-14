@@ -1,16 +1,17 @@
 import {
+  chmodSync,
+  lstatSync,
   mkdtempSync,
   readFileSync,
   rmSync,
-  writeFileSync
+  symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  renderDirectory,
-  renderTemplate
-} from "../../src/generator/template";
+import { parse as parseYaml } from "yaml";
+import { renderDirectory, renderTemplate } from "../../src/generator/template";
 
 const directories: string[] = [];
 
@@ -26,8 +27,8 @@ describe("template renderer", () => {
       "Welcome to {{PROJECT_DISPLAY_NAME}} ({{PROJECT_NAME}})",
       {
         PROJECT_NAME: "my-api",
-        PROJECT_DISPLAY_NAME: "My Api"
-      }
+        PROJECT_DISPLAY_NAME: "My Api",
+      },
     );
 
     expect(result).toBe("Welcome to My Api (my-api)");
@@ -37,15 +38,61 @@ describe("template renderer", () => {
     expect(renderTemplate("{{UNKNOWN}}", {})).toBe("{{UNKNOWN}}");
   });
 
+  it("renders valid generated Compose and deployment YAML project names", () => {
+    const compose = parseYaml(
+      renderTemplate(
+        `services:\n  postgres:\n    environment:\n      POSTGRES_DB: "{{PROJECT_NAME}}"\n`,
+        { PROJECT_NAME: "my-api" },
+      ),
+    );
+    const deploy = parseYaml(
+      renderTemplate(
+        `services:\n  - type: web\n    name: "{{PROJECT_NAME}}"\n`,
+        { PROJECT_NAME: "my-api" },
+      ),
+    );
+
+    expect(compose.services.postgres.environment.POSTGRES_DB).toBe("my-api");
+    expect(deploy.services[0].name).toBe("my-api");
+  });
+
   it("does not decode or rewrite binary-looking assets", () => {
     const directory = mkdtempSync(join(tmpdir(), "launchstack-template-"));
     directories.push(directory);
     const asset = join(directory, "logo.png");
-    const original = Buffer.from([0, 255, 123, 123, 80, 82, 79, 74, 69, 67, 84, 95, 78, 65, 77, 69, 125, 125]);
+    const original = Buffer.from([
+      0, 255, 123, 123, 80, 82, 79, 74, 69, 67, 84, 95, 78, 65, 77, 69, 125,
+      125,
+    ]);
     writeFileSync(asset, original);
 
     renderDirectory(directory, { PROJECT_NAME: "changed" });
 
     expect(readFileSync(asset)).toEqual(original);
+  });
+
+  it("preserves executable mode when rendering and skips existing symlinks", () => {
+    if (process.platform === "win32") return;
+    const directory = mkdtempSync(join(tmpdir(), "launchstack-template-mode-"));
+    directories.push(directory);
+    const script = join(directory, "run.sh");
+    const parent = mkdtempSync(
+      join(tmpdir(), "launchstack-template-link-target-"),
+    );
+    directories.push(parent);
+    const external = join(parent, "external.txt");
+    const link = join(directory, "user-link.txt");
+    writeFileSync(script, "#!/bin/sh\necho {{PROJECT_NAME}}\n");
+    chmodSync(script, 0o755);
+    writeFileSync(external, "{{PROJECT_NAME}}\n");
+    symlinkSync(external, link);
+
+    expect(() =>
+      renderDirectory(directory, { PROJECT_NAME: "rendered" }),
+    ).not.toThrow();
+    expect(readFileSync(script, "utf8")).toContain("echo rendered");
+    expect(lstatSync(script).mode & 0o777).toBe(0o755);
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(readFileSync(external, "utf8")).toBe("{{PROJECT_NAME}}\n");
   });
 });

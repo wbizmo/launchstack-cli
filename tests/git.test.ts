@@ -14,7 +14,7 @@ function createRepository(): string {
   const git = (args: string[]) =>
     execFileSync("git", args, {
       cwd: directory,
-      stdio: "ignore"
+      stdio: "ignore",
     });
 
   git(["init", "-b", "main"]);

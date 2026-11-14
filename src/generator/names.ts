@@ -7,7 +7,7 @@ export function validateProjectName(projectName: string): void {
 
   if (!PROJECT_NAME_PATTERN.test(projectName)) {
     throw new Error(
-      "Project name must use lowercase letters, numbers, and hyphens only."
+      "Project name must use lowercase letters, numbers, and hyphens only.",
     );
   }
 }

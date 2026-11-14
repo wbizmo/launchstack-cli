@@ -5,7 +5,8 @@ import {
   readFileSync,
   rmSync,
   statSync,
-  writeFileSync
+  symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,7 +15,7 @@ import {
   getSecretsPath,
   readSecrets,
   setSecret,
-  validateSecretKey
+  validateSecretKey,
 } from "../src/secrets-store";
 
 const directories: string[] = [];
@@ -49,6 +50,15 @@ describe("secret store", () => {
     }
   });
 
+  it("rejects serialized stores over the read limit without replacing the prior store", () => {
+    const directory = temporaryDirectory();
+    setSecret("API_KEY", "safe", directory);
+    expect(() => setSecret("LARGE", "x".repeat(1_048_576), directory)).toThrow(
+      /1 MiB/,
+    );
+    expect(readSecrets(directory).API_KEY).toBe("safe");
+  });
+
   it("fails closed for malformed secret JSON", () => {
     const directory = temporaryDirectory();
     const storeDirectory = join(directory, ".launchstack");
@@ -57,6 +67,22 @@ describe("secret store", () => {
     chmodSync(join(storeDirectory, "secrets.json"), 0o600);
 
     expect(() => readSecrets(directory)).toThrow("Invalid JSON");
-    expect(readFileSync(join(storeDirectory, "secrets.json"), "utf8")).toBe("{not-json");
+    expect(readFileSync(join(storeDirectory, "secrets.json"), "utf8")).toBe(
+      "{not-json",
+    );
+  });
+
+  it("refuses a secrets file symlink", () => {
+    if (process.platform === "win32") return;
+    const directory = temporaryDirectory();
+    const storeDirectory = join(directory, ".launchstack");
+    const outside = join(directory, "outside.json");
+    mkdirSync(storeDirectory, { recursive: true, mode: 0o700 });
+    writeFileSync(outside, '{"API_KEY":"must not be followed"}\n', {
+      mode: 0o600,
+    });
+    symlinkSync(outside, join(storeDirectory, "secrets.json"));
+
+    expect(() => readSecrets(directory)).toThrow(/regular file/i);
   });
 });

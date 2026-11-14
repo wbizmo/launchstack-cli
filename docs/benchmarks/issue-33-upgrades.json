@@ -1,0 +1,90 @@
+{
+  "issue": 33,
+  "baseline": {
+    "version": "v3.0.0",
+    "commit": "f76996cc0c3d125abcb1e6f998d2cc037c02b140"
+  },
+  "candidate_commit": "d042819b35eb0e0987ad398db5df109d99a4b5c8",
+  "node": "v24.22.3",
+  "platform": "linux x64",
+  "cpu": "AMD EPYC 9V74 80-Core Processor",
+  "visible_cpus": 5,
+  "memory_bytes": 35743748096,
+  "filesystem": "same /tmp filesystem for both versions",
+  "fixture": "v2.0.0 manifest; package version 2.1.3; real managed fixture files; drift scan and plan only",
+  "workload": {
+    "managed_files": [100, 1000, 10000],
+    "state_bytes": [15849, 157149, 1570149],
+    "warmup_per_size": 1,
+    "repetitions_per_size": 3,
+    "network": "none",
+    "measurement": "full managed-file SHA-256 drift scan, plan wall time, parent /proc VmRSS sampled every 5ms after fixture setup",
+    "limitations": "RSS sampling can miss short peaks; p95 from three measured samples is diagnostic; plan does not apply mutations; no 50k+ run was recorded"
+  },
+  "results": {
+    "v3.0.0": [
+      {
+        "files": 100,
+        "state_bytes": 15849,
+        "drift_scan_ms": { "p50": 10.523, "p95": 10.73 },
+        "drift_entries": 100,
+        "plan_latency_ms": { "p50": 5.611, "p95": 5.806 },
+        "sampled_peak_rss_kb": 83944,
+        "planned_changes": 4,
+        "conflicts": 0
+      },
+      {
+        "files": 1000,
+        "state_bytes": 157149,
+        "drift_scan_ms": { "p50": 19.068, "p95": 19.169 },
+        "drift_entries": 1000,
+        "plan_latency_ms": { "p50": 15.759, "p95": 19.985 },
+        "sampled_peak_rss_kb": 89676,
+        "planned_changes": 4,
+        "conflicts": 0
+      },
+      {
+        "files": 10000,
+        "state_bytes": 1570149,
+        "drift_scan_ms": { "p50": 109.513, "p95": 131.573 },
+        "drift_entries": 10000,
+        "plan_latency_ms": { "p50": 46.898, "p95": 97.526 },
+        "sampled_peak_rss_kb": 129116,
+        "planned_changes": 4,
+        "conflicts": 0
+      }
+    ],
+    "candidate": [
+      {
+        "files": 100,
+        "state_bytes": 15849,
+        "drift_scan_ms": { "p50": 7.047, "p95": 7.252 },
+        "drift_entries": 100,
+        "plan_latency_ms": { "p50": 17.146, "p95": 17.603 },
+        "sampled_peak_rss_kb": 94356,
+        "planned_changes": 6,
+        "conflicts": 0
+      },
+      {
+        "files": 1000,
+        "state_bytes": 157149,
+        "drift_scan_ms": { "p50": 18.988, "p95": 34.236 },
+        "drift_entries": 1000,
+        "plan_latency_ms": { "p50": 29.616, "p95": 30.948 },
+        "sampled_peak_rss_kb": 103496,
+        "planned_changes": 6,
+        "conflicts": 0
+      },
+      {
+        "files": 10000,
+        "state_bytes": 1570149,
+        "drift_scan_ms": { "p50": 109.121, "p95": 109.321 },
+        "drift_entries": 10000,
+        "plan_latency_ms": { "p50": 82.069, "p95": 83.196 },
+        "sampled_peak_rss_kb": 146376,
+        "planned_changes": 6,
+        "conflicts": 0
+      }
+    ]
+  }
+}

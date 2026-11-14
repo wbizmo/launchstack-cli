@@ -1,7 +1,4 @@
-import {
-  existsSync,
-  readFileSync
-} from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 export type DoctorCheck = {
@@ -19,7 +16,7 @@ export type DoctorReport = {
 function checkFile(
   projectDirectory: string,
   file: string,
-  label: string
+  label: string,
 ): DoctorCheck {
   const path = resolve(projectDirectory, file);
   const passed = existsSync(path);
@@ -27,31 +24,22 @@ function checkFile(
   return {
     name: label,
     passed,
-    detail: passed
-      ? `${file} found`
-      : `${file} is missing`
+    detail: passed ? `${file} found` : `${file} is missing`,
   };
 }
 
-function checkPackageScripts(
-  projectDirectory: string
-): DoctorCheck {
-  const packagePath = resolve(
-    projectDirectory,
-    "package.json"
-  );
+function checkPackageScripts(projectDirectory: string): DoctorCheck {
+  const packagePath = resolve(projectDirectory, "package.json");
 
   if (!existsSync(packagePath)) {
     return {
       name: "Package scripts",
       passed: false,
-      detail: "package.json is missing"
+      detail: "package.json is missing",
     };
   }
 
-  const packageJson = JSON.parse(
-    readFileSync(packagePath, "utf8")
-  ) as {
+  const packageJson = JSON.parse(readFileSync(packagePath, "utf8")) as {
     scripts?: Record<string, string>;
   };
 
@@ -63,11 +51,11 @@ function checkPackageScripts(
     "typecheck",
     "prisma:generate",
     "prisma:migrate",
-    "prisma:deploy"
+    "prisma:deploy",
   ];
 
   const missingScripts = requiredScripts.filter(
-    (script) => !packageJson.scripts?.[script]
+    (script) => !packageJson.scripts?.[script],
   );
 
   return {
@@ -76,23 +64,18 @@ function checkPackageScripts(
     detail:
       missingScripts.length === 0
         ? "Required scripts are present"
-        : `Missing scripts: ${missingScripts.join(", ")}`
+        : `Missing scripts: ${missingScripts.join(", ")}`,
   };
 }
 
-function checkEnvironmentExample(
-  projectDirectory: string
-): DoctorCheck {
-  const path = resolve(
-    projectDirectory,
-    ".env.example"
-  );
+function checkEnvironmentExample(projectDirectory: string): DoctorCheck {
+  const path = resolve(projectDirectory, ".env.example");
 
   if (!existsSync(path)) {
     return {
       name: "Environment example",
       passed: false,
-      detail: ".env.example is missing"
+      detail: ".env.example is missing",
     };
   }
 
@@ -101,12 +84,11 @@ function checkEnvironmentExample(
   const requiredVariables = [
     "DATABASE_URL",
     "JWT_ACCESS_SECRET",
-    "JWT_REFRESH_SECRET"
+    "JWT_REFRESH_SECRET",
   ];
 
   const missingVariables = requiredVariables.filter(
-    (variable) =>
-      !content.includes(`${variable}=`)
+    (variable) => !content.includes(`${variable}=`),
   );
 
   return {
@@ -115,61 +97,27 @@ function checkEnvironmentExample(
     detail:
       missingVariables.length === 0
         ? "Required environment variables are documented"
-        : `Missing variables: ${missingVariables.join(", ")}`
+        : `Missing variables: ${missingVariables.join(", ")}`,
   };
 }
 
-export function runDoctor(
-  projectDirectory = process.cwd()
-): DoctorReport {
+export function runDoctor(projectDirectory = process.cwd()): DoctorReport {
   const checks: DoctorCheck[] = [
-    checkFile(
-      projectDirectory,
-      "package.json",
-      "Package manifest"
-    ),
-    checkFile(
-      projectDirectory,
-      "tsconfig.json",
-      "TypeScript configuration"
-    ),
-    checkFile(
-      projectDirectory,
-      "prisma/schema.prisma",
-      "Prisma schema"
-    ),
-    checkFile(
-      projectDirectory,
-      "src/app.ts",
-      "Fastify application"
-    ),
-    checkFile(
-      projectDirectory,
-      "src/server.ts",
-      "Server entrypoint"
-    ),
-    checkFile(
-      projectDirectory,
-      "Dockerfile",
-      "Dockerfile"
-    ),
-    checkFile(
-      projectDirectory,
-      "docker-compose.yml",
-      "Docker Compose"
-    ),
-    checkFile(
-      projectDirectory,
-      ".github/workflows/ci.yml",
-      "CI workflow"
-    ),
+    checkFile(projectDirectory, "package.json", "Package manifest"),
+    checkFile(projectDirectory, "tsconfig.json", "TypeScript configuration"),
+    checkFile(projectDirectory, "prisma/schema.prisma", "Prisma schema"),
+    checkFile(projectDirectory, "src/app.ts", "Fastify application"),
+    checkFile(projectDirectory, "src/server.ts", "Server entrypoint"),
+    checkFile(projectDirectory, "Dockerfile", "Dockerfile"),
+    checkFile(projectDirectory, "docker-compose.yml", "Docker Compose"),
+    checkFile(projectDirectory, ".github/workflows/ci.yml", "CI workflow"),
     checkPackageScripts(projectDirectory),
-    checkEnvironmentExample(projectDirectory)
+    checkEnvironmentExample(projectDirectory),
   ];
 
   return {
     healthy: checks.every((check) => check.passed),
     projectDirectory: resolve(projectDirectory),
-    checks
+    checks,
   };
 }

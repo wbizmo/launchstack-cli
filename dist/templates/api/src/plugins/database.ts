@@ -11,6 +11,6 @@ export const databasePlugin = fp(
   },
   {
     name: "database",
-    dependencies: ["config"]
-  }
+    dependencies: ["config"],
+  },
 );

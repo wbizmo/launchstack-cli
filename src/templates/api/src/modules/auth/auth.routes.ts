@@ -1,33 +1,24 @@
-import type {
-  FastifyPluginAsync
-} from "fastify";
-import {
-  getCurrentUserController
-} from "../users/user.controller";
+import type { FastifyPluginAsync } from "fastify";
+import { getCurrentUserController } from "../users/user.controller";
 import {
   loginController,
   logoutController,
   refreshController,
-  registerController
+  registerController,
 } from "./auth.controller";
 import {
   loginSchema,
   logoutSchema,
   meSchema,
   refreshSchema,
-  registerSchema
+  registerSchema,
 } from "./auth.schemas";
-import type {
-  LoginInput,
-  RefreshInput,
-  RegisterInput
-} from "./auth.types";
+import type { LoginInput, RefreshInput, RegisterInput } from "./auth.types";
 
-export const authRoutes:
-FastifyPluginAsync = async (app) => {
+export const authRoutes: FastifyPluginAsync = async (app) => {
   const rateLimit = {
     max: app.config.authRateLimitMax,
-    timeWindow: app.config.authRateLimitWindowMs
+    timeWindow: app.config.authRateLimitWindowMs,
   };
 
   app.post<{
@@ -37,10 +28,10 @@ FastifyPluginAsync = async (app) => {
     {
       schema: registerSchema,
       config: {
-        rateLimit
-      }
+        rateLimit,
+      },
     },
-    registerController
+    registerController,
   );
 
   app.post<{
@@ -50,10 +41,10 @@ FastifyPluginAsync = async (app) => {
     {
       schema: loginSchema,
       config: {
-        rateLimit
-      }
+        rateLimit,
+      },
     },
-    loginController
+    loginController,
   );
 
   app.post<{
@@ -63,10 +54,10 @@ FastifyPluginAsync = async (app) => {
     {
       schema: refreshSchema,
       config: {
-        rateLimit
-      }
+        rateLimit,
+      },
     },
-    refreshController
+    refreshController,
   );
 
   app.post<{
@@ -76,20 +67,18 @@ FastifyPluginAsync = async (app) => {
     {
       schema: logoutSchema,
       config: {
-        rateLimit
-      }
+        rateLimit,
+      },
     },
-    logoutController
+    logoutController,
   );
 
   app.get(
     "/me",
     {
       schema: meSchema,
-      preHandler: [
-        app.authenticate
-      ]
+      preHandler: [app.authenticate],
     },
-    getCurrentUserController
+    getCurrentUserController,
   );
 };

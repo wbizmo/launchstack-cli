@@ -14,9 +14,7 @@ describe("create command", () => {
   });
 
   it("supports skipping dependency installation", () => {
-    const optionFlags = createCommand.options.map(
-      (option) => option.flags
-    );
+    const optionFlags = createCommand.options.map((option) => option.flags);
 
     expect(optionFlags).toContain("--no-install");
   });

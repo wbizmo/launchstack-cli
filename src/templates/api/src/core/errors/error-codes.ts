@@ -5,8 +5,7 @@ export const ErrorCode = {
   ResourceNotFound: "RESOURCE_NOT_FOUND",
   ResourceConflict: "RESOURCE_CONFLICT",
   Forbidden: "FORBIDDEN",
-  InternalError: "INTERNAL_ERROR"
+  InternalError: "INTERNAL_ERROR",
 } as const;
 
-export type ErrorCode =
-  (typeof ErrorCode)[keyof typeof ErrorCode];
+export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

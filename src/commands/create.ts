@@ -15,9 +15,12 @@ export const createCommand = new Command("create")
   .argument("<project-name>", "Name of the project to create")
   .option(
     "-d, --directory <path>",
-    "Directory where the project should be created"
+    "Directory where the project should be created",
   )
-  .option("-f, --force", "Allow replacing a non-empty destination after staging succeeds")
+  .option(
+    "-f, --force",
+    "Allow replacing a non-empty destination after staging succeeds",
+  )
   .option("--no-install", "Skip dependency installation")
   .action((projectName: string, options: CreateCommandOptions) => {
     try {
@@ -33,7 +36,7 @@ export const createCommand = new Command("create")
         projectName,
         destinationDirectory,
         template: "api",
-        overwrite: options.force ?? false
+        overwrite: options.force ?? false,
       });
 
       console.log(`Project files created in ${generatedDirectory}`);
@@ -50,7 +53,8 @@ export const createCommand = new Command("create")
       console.log("Next steps:");
 
       if (!destinationAlreadyExists || destinationDirectory !== process.cwd()) {
-        const relativeDestination = relative(process.cwd(), destinationDirectory) || ".";
+        const relativeDestination =
+          relative(process.cwd(), destinationDirectory) || ".";
         console.log(`  cd ${relativeDestination}`);
       }
 

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: {{PROJECT_NAME}}
+    name: "{{PROJECT_NAME}}"
     runtime: docker
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health

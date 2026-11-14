@@ -1,25 +1,13 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  afterEach,
-  describe,
-  expect,
-  it
-} from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { runDoctor } from "../../src/release/doctor";
 
 const directories: string[] = [];
 
 function createProjectDirectory(): string {
-  const directory = mkdtempSync(
-    join(tmpdir(), "launchstack-doctor-")
-  );
+  const directory = mkdtempSync(join(tmpdir(), "launchstack-doctor-"));
 
   directories.push(directory);
 
@@ -30,7 +18,7 @@ afterEach(() => {
   for (const directory of directories.splice(0)) {
     rmSync(directory, {
       recursive: true,
-      force: true
+      force: true,
     });
   }
 });
@@ -41,11 +29,7 @@ describe("LaunchStack doctor", () => {
     const report = runDoctor(directory);
 
     expect(report.healthy).toBe(false);
-    expect(
-      report.checks.some(
-        (check) => !check.passed
-      )
-    ).toBe(true);
+    expect(report.checks.some((check) => !check.passed)).toBe(true);
   });
 
   it("passes for a complete generated structure", () => {
@@ -58,17 +42,14 @@ describe("LaunchStack doctor", () => {
       "src/server.ts",
       "Dockerfile",
       "docker-compose.yml",
-      ".github/workflows/ci.yml"
+      ".github/workflows/ci.yml",
     ];
 
     for (const file of files) {
       const path = join(directory, file);
-      mkdirSync(
-        join(path, ".."),
-        {
-          recursive: true
-        }
-      );
+      mkdirSync(join(path, ".."), {
+        recursive: true,
+      });
       writeFileSync(path, "");
     }
 
@@ -77,8 +58,8 @@ describe("LaunchStack doctor", () => {
       [
         "DATABASE_URL=value",
         "JWT_ACCESS_SECRET=value",
-        "JWT_REFRESH_SECRET=value"
-      ].join("\n")
+        "JWT_REFRESH_SECRET=value",
+      ].join("\n"),
     );
 
     writeFileSync(
@@ -92,9 +73,9 @@ describe("LaunchStack doctor", () => {
           typecheck: "typecheck",
           "prisma:generate": "generate",
           "prisma:migrate": "migrate",
-          "prisma:deploy": "deploy"
-        }
-      })
+          "prisma:deploy": "deploy",
+        },
+      }),
     );
 
     const report = runDoctor(directory);

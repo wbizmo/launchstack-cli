@@ -5,10 +5,10 @@ export const PROVIDER_IDS = [
   "railway",
   "fly",
   "docker",
-  "custom"
+  "custom",
 ] as const;
 
-export type ProviderId = typeof PROVIDER_IDS[number];
+export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 export type ProviderDefinition = {
   id: ProviderId;
@@ -17,57 +17,52 @@ export type ProviderDefinition = {
   remoteDeploymentSupported: boolean;
 };
 
-export const PROVIDERS: Record<
-  ProviderId,
-  ProviderDefinition
-> = {
+export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
   vercel: {
     id: "vercel",
     label: "Vercel",
     hasGeneratedPreset: false,
-    remoteDeploymentSupported: false
+    remoteDeploymentSupported: false,
   },
   netlify: {
     id: "netlify",
     label: "Netlify",
     hasGeneratedPreset: false,
-    remoteDeploymentSupported: false
+    remoteDeploymentSupported: false,
   },
   render: {
     id: "render",
     label: "Render",
     hasGeneratedPreset: true,
-    remoteDeploymentSupported: false
+    remoteDeploymentSupported: false,
   },
   railway: {
     id: "railway",
     label: "Railway",
     hasGeneratedPreset: true,
-    remoteDeploymentSupported: false
+    remoteDeploymentSupported: false,
   },
   fly: {
     id: "fly",
     label: "Fly.io",
     hasGeneratedPreset: true,
-    remoteDeploymentSupported: false
+    remoteDeploymentSupported: false,
   },
   docker: {
     id: "docker",
     label: "Docker",
     hasGeneratedPreset: true,
-    remoteDeploymentSupported: false
+    remoteDeploymentSupported: false,
   },
   custom: {
     id: "custom",
     label: "Custom",
     hasGeneratedPreset: false,
-    remoteDeploymentSupported: false
-  }
+    remoteDeploymentSupported: false,
+  },
 };
 
-export function isProviderId(
-  value: string
-): value is ProviderId {
+export function isProviderId(value: string): value is ProviderId {
   return (PROVIDER_IDS as readonly string[]).includes(value);
 }
 

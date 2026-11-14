@@ -3,7 +3,7 @@ import {
   readSecrets,
   removeSecret,
   setSecret,
-  validateSecretKey
+  validateSecretKey,
 } from "../secrets-store";
 
 async function readSecretFromStdin(): Promise<string> {
@@ -17,12 +17,9 @@ async function readSecretFromStdin(): Promise<string> {
 }
 
 async function promptHiddenSecret(): Promise<string> {
-  if (
-    !process.stdin.isTTY ||
-    typeof process.stdin.setRawMode !== "function"
-  ) {
+  if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== "function") {
     throw new Error(
-      "Interactive secret entry requires a TTY. Pipe the value and use --stdin instead."
+      "Interactive secret entry requires a TTY. Pipe the value and use --stdin instead.",
     );
   }
 
@@ -71,12 +68,15 @@ async function promptHiddenSecret(): Promise<string> {
   });
 }
 
-export const secretsCommand = new Command("secrets")
-  .description("Manage local LaunchStack secrets");
+export const secretsCommand = new Command("secrets").description(
+  "Manage local LaunchStack secrets",
+);
 
 secretsCommand
   .command("add")
-  .description("Add or update a local secret without exposing it in process arguments")
+  .description(
+    "Add or update a local secret without exposing it in process arguments",
+  )
   .argument("<key>", "Secret key")
   .option("--stdin", "Read the secret value from standard input")
   .action(async (key: string, options: { stdin?: boolean }) => {
@@ -89,7 +89,9 @@ secretsCommand
       setSecret(key, value);
       console.log(`Secret saved: ${key}`);
     } catch (error) {
-      console.error(error instanceof Error ? error.message : "Could not save secret.");
+      console.error(
+        error instanceof Error ? error.message : "Could not save secret.",
+      );
       process.exitCode = 1;
     }
   });
@@ -110,7 +112,9 @@ secretsCommand
         console.log(`${key}=********`);
       });
     } catch (error) {
-      console.error(error instanceof Error ? error.message : "Could not read secrets.");
+      console.error(
+        error instanceof Error ? error.message : "Could not read secrets.",
+      );
       process.exitCode = 1;
     }
   });
@@ -128,7 +132,9 @@ secretsCommand
 
       console.log(`Secret removed: ${key}`);
     } catch (error) {
-      console.error(error instanceof Error ? error.message : "Could not remove secret.");
+      console.error(
+        error instanceof Error ? error.message : "Could not remove secret.",
+      );
       process.exitCode = 1;
     }
   });

@@ -6,41 +6,30 @@ const safetyRules = {
   "no-debugger": "error",
   "no-duplicate-imports": "error",
   "no-unsafe-finally": "error",
-  "no-unreachable": "error"
+  "no-unreachable": "error",
 };
 
 export default [
   {
-    ignores: [
-      "dist/**",
-      "node_modules/**"
-    ]
+    ignores: ["dist/**", "node_modules/**"],
   },
   {
-    files: [
-      "src/**/*.ts",
-      "tests/**/*.ts",
-      "bench/**/*.ts"
-    ],
+    files: ["src/**/*.ts", "tests/**/*.ts", "bench/**/*.ts"],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
         ecmaVersion: "latest",
-        sourceType: "module"
-      }
+        sourceType: "module",
+      },
     },
-    rules: safetyRules
+    rules: safetyRules,
   },
   {
-    files: [
-      "scripts/**/*.js",
-      "scripts/**/*.cjs",
-      "scripts/**/*.mjs"
-    ],
+    files: ["scripts/**/*.js", "scripts/**/*.cjs", "scripts/**/*.mjs"],
     languageOptions: {
       ecmaVersion: "latest",
-      sourceType: "commonjs"
+      sourceType: "commonjs",
     },
-    rules: safetyRules
-  }
+    rules: safetyRules,
+  },
 ];

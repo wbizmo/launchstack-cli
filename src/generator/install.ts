@@ -5,6 +5,6 @@ export function installDependencies(projectDirectory: string): void {
 
   execFileSync(npmExecutable, ["install"], {
     cwd: projectDirectory,
-    stdio: "inherit"
+    stdio: "inherit",
   });
 }

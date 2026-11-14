@@ -7,11 +7,11 @@ const request = http.get(
     host: "127.0.0.1",
     port,
     path: "/health",
-    timeout: 3000
+    timeout: 3000,
   },
   (response) => {
     process.exit(response.statusCode === 200 ? 0 : 1);
-  }
+  },
 );
 
 request.on("timeout", () => {

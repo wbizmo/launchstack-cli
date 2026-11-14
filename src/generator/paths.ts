@@ -18,7 +18,7 @@ export function getPackageRoot(): string {
     resolve(runtimeDirectory, ".."),
     resolve(runtimeDirectory, "../.."),
     resolve(process.cwd(), ".."),
-    resolve(process.cwd(), "../..")
+    resolve(process.cwd(), "../.."),
   ];
 
   for (const candidate of candidates) {
@@ -38,16 +38,16 @@ export function getTemplateDirectory(templateName: string): string {
     resolve(runtimeDirectory, "templates", templateName),
     resolve(packageRoot, "dist", "templates", templateName),
     resolve(packageRoot, "src", "templates", templateName),
-    resolve(packageRoot, "templates", templateName)
+    resolve(packageRoot, "templates", templateName),
   ];
 
   const templateDirectory = candidates.find((candidate) =>
-    existsSync(candidate)
+    existsSync(candidate),
   );
 
   if (!templateDirectory) {
     throw new Error(
-      `Template "${templateName}" could not be found in the LaunchStack installation.`
+      `Template "${templateName}" could not be found in the LaunchStack installation.`,
     );
   }
 
