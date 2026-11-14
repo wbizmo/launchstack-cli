@@ -410,6 +410,7 @@ declare function applyExtensionInstall(plan: PreparedExtensionPlan): ProjectStat
 
 type OpenApiSchema = {
     type?: string | string[];
+    format?: string;
     nullable?: boolean;
     enum?: Array<string | number | boolean | null>;
     properties?: Record<string, OpenApiSchema>;
@@ -426,6 +427,12 @@ type OpenApiParameter = {
     in: "path" | "query" | "header" | "cookie";
     required?: boolean;
     schema?: OpenApiSchema;
+    content?: Record<string, {
+        schema?: OpenApiSchema;
+    }>;
+    style?: string;
+    explode?: boolean;
+    allowReserved?: boolean;
 };
 type OpenApiOperation = {
     operationId?: string;
@@ -462,7 +469,8 @@ type ParsedOperation = {
     operation: OpenApiOperation;
 };
 declare function collectOperations(document: OpenApiDocument): ParsedOperation[];
-declare function schemaToType(schema: OpenApiSchema | undefined): string;
+declare function componentTypeNames(document: OpenApiDocument): Record<string, string>;
+declare function schemaToType(schema: OpenApiSchema | undefined, names?: Record<string, string>): string;
 declare function responseSchema(operation: OpenApiOperation): OpenApiSchema | undefined;
 declare function requestBodySchema(operation: OpenApiOperation): OpenApiSchema | undefined;
 
@@ -572,4 +580,4 @@ declare function destroyStage(input: {
     production?: boolean;
 }): void;
 
-export { AUDIT_SEVERITIES, type AuditFinding, type AuditReport, type AuditSeverity, type AuditSuppression, type CapabilitySelection, type ChangelogEntry, type ClientTarget, type CreateChangelogInput, type CreateDeploymentInput, type CreateLaunchInput, type Deployment, type DesiredStage, type DriftEntry, type DriftKind, type ExtensionCoverage, type ExtensionEnvironmentVariable, type ExtensionFile, type ExtensionKind, type ExtensionManifest, type ExtensionPlan, FIRST_PARTY_EXTENSIONS, type FileMutation, type GenerateProjectOptions, type InstalledExtensionState, type JsonPrimitive, type JsonValue, type Launch, LaunchStackClient, type LaunchStackConfig, LaunchStackError, type LifecycleAction, type LifecyclePlan, MANIFEST_FILENAME, MANIFEST_SCHEMA_URL, MANIFEST_SCHEMA_VERSION, type ManagedFileState, type ModuleGenerationPlan, type OpenApiDocument, type OpenApiOperation, type OpenApiParameter, type OpenApiSchema, type ParsedOperation, type PlannedDelete, type PlannedWrite, type PreparedExtensionPlan, type ProjectManifest, type ProjectState, type ProjectTemplate, type ReconciliationPlan, type ResourceField, type ResourceFieldType, STATE_DIRECTORY, STATE_FILENAME, STATE_SCHEMA_VERSION, type StageCreateInput, type StageCreateResult, type StageProviderAdapter, type StageState, type StageStatus, type TemplateFile, type TemplateName, type UpgradeDiff, type UpgradePlan, V3_TEMPLATE_VERSION, applyExtensionInstall, applyModuleGeneration, applyReconciliation, applyUpgrade, collectOperations, composeMutation, copyDirectory, createOrUpdateStage, createProjectManifest, destroyStage, detectManagedDrift, emptyProjectState, ensureDestinationAvailable, generateProject, generateTypeScriptClient, getPackageRoot, getTemplateDirectory, hashFile, inspectStage, installDependencies, listFirstPartyExtensions, loadOpenApiSource, loadProjectManifest, loadProjectState, parseFieldSpec, parseOpenApiDocument, parseProjectManifest, parseProjectState, planExtensionInstall, planModuleGeneration, planReconciliation, planUpgrade, projectHasManifest, projectManifestSchema, projectStateSchema, renderDirectory, renderTemplate, requestBodySchema, resolveExtensionOrder, responseSchema, runProductionAudit, schemaToType, serializeProjectManifest, serializeProjectState, severityRank, sha256, stageResourceId, toDisplayName, validateProjectName, validateStageName };
+export { AUDIT_SEVERITIES, type AuditFinding, type AuditReport, type AuditSeverity, type AuditSuppression, type CapabilitySelection, type ChangelogEntry, type ClientTarget, type CreateChangelogInput, type CreateDeploymentInput, type CreateLaunchInput, type Deployment, type DesiredStage, type DriftEntry, type DriftKind, type ExtensionCoverage, type ExtensionEnvironmentVariable, type ExtensionFile, type ExtensionKind, type ExtensionManifest, type ExtensionPlan, FIRST_PARTY_EXTENSIONS, type FileMutation, type GenerateProjectOptions, type InstalledExtensionState, type JsonPrimitive, type JsonValue, type Launch, LaunchStackClient, type LaunchStackConfig, LaunchStackError, type LifecycleAction, type LifecyclePlan, MANIFEST_FILENAME, MANIFEST_SCHEMA_URL, MANIFEST_SCHEMA_VERSION, type ManagedFileState, type ModuleGenerationPlan, type OpenApiDocument, type OpenApiOperation, type OpenApiParameter, type OpenApiSchema, type ParsedOperation, type PlannedDelete, type PlannedWrite, type PreparedExtensionPlan, type ProjectManifest, type ProjectState, type ProjectTemplate, type ReconciliationPlan, type ResourceField, type ResourceFieldType, STATE_DIRECTORY, STATE_FILENAME, STATE_SCHEMA_VERSION, type StageCreateInput, type StageCreateResult, type StageProviderAdapter, type StageState, type StageStatus, type TemplateFile, type TemplateName, type UpgradeDiff, type UpgradePlan, V3_TEMPLATE_VERSION, applyExtensionInstall, applyModuleGeneration, applyReconciliation, applyUpgrade, collectOperations, componentTypeNames, composeMutation, copyDirectory, createOrUpdateStage, createProjectManifest, destroyStage, detectManagedDrift, emptyProjectState, ensureDestinationAvailable, generateProject, generateTypeScriptClient, getPackageRoot, getTemplateDirectory, hashFile, inspectStage, installDependencies, listFirstPartyExtensions, loadOpenApiSource, loadProjectManifest, loadProjectState, parseFieldSpec, parseOpenApiDocument, parseProjectManifest, parseProjectState, planExtensionInstall, planModuleGeneration, planReconciliation, planUpgrade, projectHasManifest, projectManifestSchema, projectStateSchema, renderDirectory, renderTemplate, requestBodySchema, resolveExtensionOrder, responseSchema, runProductionAudit, schemaToType, serializeProjectManifest, serializeProjectState, severityRank, sha256, stageResourceId, toDisplayName, validateProjectName, validateStageName };

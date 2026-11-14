@@ -13,6 +13,7 @@ import {
   applyReconciliation,
   applyUpgrade,
   collectOperations,
+  componentTypeNames,
   composeMutation,
   copyDirectory,
   createOrUpdateStage,
@@ -58,7 +59,7 @@ import {
   toDisplayName,
   validateProjectName,
   validateStageName
-} from "./chunk-NI3IS4ZS.mjs";
+} from "./chunk-C4KUPDJH.mjs";
 
 // src/errors.ts
 var LaunchStackError = class extends Error {
@@ -175,6 +176,7 @@ export {
   applyReconciliation,
   applyUpgrade,
   collectOperations,
+  componentTypeNames,
   composeMutation,
   copyDirectory,
   createOrUpdateStage,

@@ -1295,17 +1295,170 @@ function severityRank(severity) {
 // src/client/openapi.ts
 import { createHash as createHash2 } from "crypto";
 var METHODS = /* @__PURE__ */ new Set(["get", "post", "put", "patch", "delete", "head", "options"]);
+var TYPES = /* @__PURE__ */ new Set(["null", "boolean", "object", "array", "number", "integer", "string"]);
+var RESERVED = /* @__PURE__ */ new Set(["break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "enum", "export", "extends", "false", "finally", "for", "function", "if", "import", "in", "instanceof", "new", "null", "return", "super", "switch", "this", "throw", "true", "try", "typeof", "var", "void", "while", "with", "yield", "let", "static", "implements", "interface", "package", "private", "protected", "public", "arguments", "eval"]);
+var MAX_DOCUMENT_BYTES = 1048576;
+var MAX_DEPTH = 64;
+var MAX_NODES = 1e5;
 var object = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+function jsonSize(value) {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), "utf8");
+  } catch {
+    throw new Error("OpenAPI document must be acyclic JSON data.");
+  }
+}
+function validateTree(root) {
+  const stack = [{ value: root, depth: 0 }];
+  const active = /* @__PURE__ */ new WeakSet();
+  let nodes = 0;
+  while (stack.length) {
+    const item = stack.pop();
+    if (!item.value || typeof item.value !== "object") continue;
+    if (item.leaving) {
+      active.delete(item.value);
+      continue;
+    }
+    if (active.has(item.value)) throw new Error("OpenAPI document contains a cyclic object graph.");
+    if (++nodes > MAX_NODES) throw new Error("OpenAPI document exceeds the 100000-node limit.");
+    if (item.depth > MAX_DEPTH) throw new Error("OpenAPI document exceeds the maximum nesting depth of 64.");
+    active.add(item.value);
+    stack.push({ value: item.value, depth: item.depth, leaving: true });
+    const values = Array.isArray(item.value) ? item.value : Object.values(item.value);
+    for (const child of values) stack.push({ value: child, depth: item.depth + 1 });
+  }
+}
+function pointerParts(ref) {
+  if (!ref.startsWith("#/")) throw new Error("Only local OpenAPI references are supported.");
+  return ref.slice(2).split("/").map((part) => {
+    try {
+      return decodeURIComponent(part).replace(/~1/g, "/").replace(/~0/g, "~");
+    } catch {
+      throw new Error("OpenAPI reference contains invalid pointer escaping.");
+    }
+  });
+}
+function resolveReference(root, ref) {
+  let current = root;
+  for (const part of pointerParts(ref)) {
+    if (!object(current) && !Array.isArray(current)) throw new Error("OpenAPI reference does not resolve: " + ref);
+    current = current[part];
+    if (current === void 0) throw new Error("OpenAPI reference does not resolve: " + ref);
+  }
+  if (!object(current)) throw new Error("OpenAPI reference must target an object: " + ref);
+  return current;
+}
+function resolveObject(value, document) {
+  if (!object(value)) throw new Error("Referenced OpenAPI object is invalid.");
+  if (typeof value.$ref !== "string") return value;
+  return { ...resolveReference(document, value.$ref), ...value, $ref: void 0 };
+}
+function validateSchema(schema, version, path, depth = 0) {
+  if (depth > MAX_DEPTH) throw new Error("OpenAPI schema exceeds the maximum nesting depth of 64.");
+  if (!object(schema)) throw new Error("Invalid OpenAPI schema at " + path + ".");
+  if (schema.$ref !== void 0 && typeof schema.$ref !== "string") throw new Error("Schema $ref must be a string at " + path + ".");
+  if (typeof schema.$ref === "string") return;
+  if (schema.type !== void 0) {
+    const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+    if (Array.isArray(schema.type) && !version.startsWith("3.1.")) throw new Error("Type arrays require OpenAPI 3.1 at " + path + ".");
+    if (!types.length || types.some((type) => typeof type !== "string" || !TYPES.has(type))) throw new Error("Invalid schema type at " + path + ".");
+  }
+  if (schema.required !== void 0 && (!Array.isArray(schema.required) || schema.required.some((item) => typeof item !== "string"))) throw new Error("Schema required must be an array of property names at " + path + ".");
+  if (schema.properties !== void 0) {
+    if (!object(schema.properties)) throw new Error("Schema properties must be an object at " + path + ".");
+    for (const name of Object.keys(schema.properties)) validateSchema(schema.properties[name], version, path + ".properties." + name, depth + 1);
+    const propertyNames = new Set(Object.keys(schema.properties));
+    if (schema.required?.some((name) => !propertyNames.has(name))) throw new Error("Schema required references an unknown property at " + path + ".");
+  }
+  for (const key of ["oneOf", "anyOf", "allOf"]) {
+    if (schema[key] !== void 0) {
+      if (!Array.isArray(schema[key]) || schema[key].length === 0) throw new Error("Schema " + key + " must be a non-empty array at " + path + ".");
+      for (let index = 0; index < schema[key].length; index += 1) validateSchema(schema[key][index], version, path + "." + key + "[" + index + "]", depth + 1);
+    }
+  }
+  if (schema.items !== void 0) validateSchema(schema.items, version, path + ".items", depth + 1);
+  if (schema.additionalProperties !== void 0 && typeof schema.additionalProperties !== "boolean") validateSchema(schema.additionalProperties, version, path + ".additionalProperties", depth + 1);
+  if (schema.enum !== void 0 && (!Array.isArray(schema.enum) || schema.enum.length === 0)) throw new Error("Schema enum must be a non-empty array at " + path + ".");
+}
+function resolveOperationReferences(document) {
+  const paths = document.paths;
+  for (const path of Object.keys(paths).sort()) {
+    const item = resolveObject(paths[path], document);
+    if (Array.isArray(item.parameters)) item.parameters = item.parameters.map((parameter) => resolveObject(parameter, document));
+    for (const method of Object.keys(item).sort()) {
+      if (!METHODS.has(method.toLowerCase()) || !object(item[method])) continue;
+      const operation = item[method];
+      const inherited = Array.isArray(item.parameters) ? item.parameters : [];
+      const local = Array.isArray(operation.parameters) ? operation.parameters.map((parameter) => resolveObject(parameter, document)) : [];
+      const seen = /* @__PURE__ */ new Map();
+      for (const parameter of [...inherited, ...local]) {
+        if (!object(parameter) || typeof parameter.name !== "string" || typeof parameter.in !== "string") throw new Error("OpenAPI parameter requires a name and location.");
+        if (!"path query header cookie".split(" ").includes(parameter.in)) throw new Error("OpenAPI parameter has an unsupported location: " + parameter.in);
+        if (parameter.in === "path" && parameter.required !== true) throw new Error("OpenAPI path parameters must be required: " + parameter.name);
+        if (parameter.schema !== void 0) validateSchema(parameter.schema, String(document.openapi), "parameter." + parameter.name);
+        if (parameter.content !== void 0 && !object(parameter.content)) throw new Error("OpenAPI parameter content must be an object: " + parameter.name);
+        if (parameter.schema === void 0 && parameter.content === void 0) throw new Error("OpenAPI parameter requires a schema or content: " + parameter.name);
+        seen.set(parameter.name + "\0" + parameter.in, parameter);
+      }
+      operation.parameters = [...seen.values()].sort((a, b) => String(a.in).localeCompare(String(b.in)) || String(a.name).localeCompare(String(b.name)));
+      if (operation.requestBody) operation.requestBody = resolveObject(operation.requestBody, document);
+      if (object(operation.responses)) {
+        const responses = {};
+        for (const code of Object.keys(operation.responses).sort()) responses[code] = resolveObject(operation.responses[code], document);
+        operation.responses = responses;
+      }
+    }
+    paths[path] = item;
+  }
+}
+function validateDocumentSchemas(document) {
+  const pending = [{ value: document, path: "" }];
+  const visited = /* @__PURE__ */ new WeakSet();
+  while (pending.length) {
+    const { value, path } = pending.pop();
+    if (!object(value) && !Array.isArray(value)) continue;
+    if (visited.has(value)) continue;
+    visited.add(value);
+    for (const [key, child] of Object.entries(value)) {
+      const childPath = path + "." + key;
+      if (key === "schema") validateSchema(child, String(document.openapi), childPath);
+      else if (child && typeof child === "object") pending.push({ value: child, path: childPath });
+    }
+    if (Array.isArray(value)) for (let index = 0; index < value.length; index += 1) pending.push({ value: value[index], path: path + "[" + index + "]" });
+  }
+}
 function parseOpenApiDocument(value) {
-  if (!object(value) || typeof value.openapi !== "string" || !object(value.paths)) throw new Error("OpenAPI document must contain an openapi version and paths object.");
-  return value;
+  if (!object(value) || typeof value.openapi !== "string" || !/^3\.(0|1)\.\d+$/.test(value.openapi) || !object(value.paths)) throw new Error("OpenAPI document must contain a supported 3.0/3.1 version and paths object.");
+  if (jsonSize(value) > MAX_DOCUMENT_BYTES) throw new Error("OpenAPI document exceeds the 1 MiB size limit.");
+  validateTree(value);
+  const document = JSON.parse(JSON.stringify(value));
+  const paths = document.paths;
+  if (Object.keys(paths).length > 1e3) throw new Error("OpenAPI document exceeds the 1000-path limit.");
+  const schemas = object(document.components) && object(document.components.schemas) ? document.components.schemas : {};
+  if (Object.keys(schemas).length > 1e3) throw new Error("OpenAPI document exceeds the 1000-schema limit.");
+  for (const [name, schema] of Object.entries(schemas)) validateSchema(schema, document.openapi, "components.schemas." + name);
+  const references = [];
+  const referenceStack = [document];
+  while (referenceStack.length) {
+    const current = referenceStack.pop();
+    if (Array.isArray(current)) referenceStack.push(...current);
+    else if (object(current)) {
+      if (typeof current.$ref === "string") references.push(current.$ref);
+      referenceStack.push(...Object.values(current));
+    }
+  }
+  for (const ref of references) resolveReference(document, ref);
+  resolveOperationReferences(document);
+  validateDocumentSchemas(document);
+  return document;
 }
 function sanitize(input) {
   const words = input.replace(/[^A-Za-z0-9_$]+/g, " ").trim().split(/\s+/).filter(Boolean);
   let result = words.map((word, index) => index === 0 ? word.charAt(0).toLowerCase() + word.slice(1) : word.charAt(0).toUpperCase() + word.slice(1)).join("");
   if (!result) result = "operation";
-  if (/^[0-9]/.test(result)) result = `op${result}`;
-  return result.replace(/[^A-Za-z0-9_$]/g, "");
+  if (/^[0-9]/.test(result)) result = "op" + result;
+  result = result.replace(/[^A-Za-z0-9_$]/g, "");
+  return RESERVED.has(result) ? "api_" + result : result;
 }
 function collectOperations(document) {
   const raw = [];
@@ -1316,125 +1469,207 @@ function collectOperations(document) {
       const operation = item[method];
       if (!object(operation)) continue;
       const typed = operation;
-      raw.push({ method: method.toUpperCase(), path, operation: typed, preferredName: sanitize(typed.operationId ?? `${method}-${path.replace(/[{}]/g, "")}`) });
+      raw.push({ method: method.toUpperCase(), path, operation: typed, preferredName: sanitize(typed.operationId ?? method + "-" + path.replace(/[{}]/g, "")) });
     }
   }
   const counts = /* @__PURE__ */ new Map();
   for (const item of raw) counts.set(item.preferredName, (counts.get(item.preferredName) ?? 0) + 1);
-  return raw.map(({ preferredName, ...item }) => ({ ...item, name: (counts.get(preferredName) ?? 0) > 1 ? `${preferredName}_${createHash2("sha256").update(`${item.method} ${item.path}`).digest("hex").slice(0, 8)}` : preferredName }));
+  return raw.map(({ preferredName, ...item }) => ({ ...item, name: (counts.get(preferredName) ?? 0) > 1 ? preferredName + "_" + createHash2("sha256").update(item.method + " " + item.path).digest("hex").slice(0, 8) : preferredName }));
 }
-var refName = (ref) => (ref.split("/").pop() ?? "Unknown").replace(/[^A-Za-z0-9_$]/g, "_");
-function schemaToType(schema) {
+function decodeRefName(ref) {
+  return pointerParts(ref).pop() ?? "Unknown";
+}
+function componentTypeNames(document) {
+  const result = {};
+  const used = /* @__PURE__ */ new Set();
+  for (const name of Object.keys(document.components?.schemas ?? {}).sort()) {
+    let candidate = name.replace(/[^A-Za-z0-9_$]+/g, "_");
+    if (!candidate || /^[0-9]/.test(candidate)) candidate = "Schema_" + candidate;
+    if (RESERVED.has(candidate)) candidate = "Schema_" + candidate;
+    if (used.has(candidate)) candidate += "_" + createHash2("sha256").update(name).digest("hex").slice(0, 8);
+    used.add(candidate);
+    result[name] = candidate;
+  }
+  return result;
+}
+function schemaToType(schema, names = {}) {
   if (!schema) return "unknown";
-  if (schema.$ref) return refName(schema.$ref);
-  if (schema.enum?.length) return schema.enum.map((value) => value === null ? "null" : JSON.stringify(value)).join(" | ");
-  if (schema.oneOf?.length) return schema.oneOf.map(schemaToType).join(" | ");
-  if (schema.anyOf?.length) return schema.anyOf.map(schemaToType).join(" | ");
-  if (schema.allOf?.length) return schema.allOf.map(schemaToType).join(" & ");
   const types = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
   const nullable = schema.nullable === true || types.includes("null");
-  const type = types.find((entry) => entry !== "null");
-  let rendered = "unknown";
-  if (type === "string") rendered = "string";
-  else if (type === "integer" || type === "number") rendered = "number";
-  else if (type === "boolean") rendered = "boolean";
-  else if (type === "array") rendered = `Array<${schemaToType(schema.items)}>`;
-  else if (schema.properties) {
-    const required = new Set(schema.required ?? []);
-    rendered = `{ ${Object.keys(schema.properties).sort().map((key) => `${JSON.stringify(key)}${required.has(key) ? "" : "?"}: ${schemaToType(schema.properties?.[key])};`).join(" ")} }`;
-  } else if (schema.additionalProperties && typeof schema.additionalProperties === "object") rendered = `Record<string, ${schemaToType(schema.additionalProperties)}>`;
-  else rendered = "Record<string, unknown>";
-  return nullable ? `${rendered} | null` : rendered;
+  let rendered;
+  if (schema.$ref) {
+    const name = decodeRefName(schema.$ref);
+    rendered = names[name] ?? componentTypeNames({ openapi: "3.1.0", paths: {}, components: { schemas: { [name]: {} } } })[name] ?? "unknown";
+  } else if (schema.enum?.length) {
+    rendered = schema.enum.map((value) => value === null ? "null" : JSON.stringify(value)).join(" | ");
+  } else if (schema.oneOf?.length) {
+    rendered = schema.oneOf.map((item) => schemaToType(item, names)).join(" | ");
+  } else if (schema.anyOf?.length) {
+    rendered = schema.anyOf.map((item) => schemaToType(item, names)).join(" | ");
+  } else if (schema.allOf?.length) {
+    rendered = schema.allOf.map((item) => schemaToType(item, names)).join(" & ");
+  } else {
+    const type = types.find((entry) => entry !== "null");
+    if (type === "string") rendered = "string";
+    else if (type === "integer" || type === "number") rendered = "number";
+    else if (type === "boolean") rendered = "boolean";
+    else if (type === "array") rendered = "Array<" + schemaToType(schema.items, names) + ">";
+    else if (schema.properties) {
+      const required = new Set(schema.required ?? []);
+      rendered = "{ " + Object.keys(schema.properties).sort().map((key) => JSON.stringify(key) + (required.has(key) ? "" : "?") + ": " + schemaToType(schema.properties?.[key], names) + ";").join(" ") + " }";
+    } else if (schema.additionalProperties && typeof schema.additionalProperties === "object") rendered = "Record<string, " + schemaToType(schema.additionalProperties, names) + ">";
+    else if (schema.additionalProperties === false) rendered = "{}";
+    else rendered = "Record<string, unknown>";
+  }
+  return nullable && !rendered.split(" | ").includes("null") ? rendered + " | null" : rendered;
+}
+function jsonMedia(content) {
+  if (!content) return void 0;
+  const names = Object.keys(content).sort();
+  return names.find((name) => name.toLowerCase() === "application/json" || name.toLowerCase().endsWith("+json")) ? content[names.find((name) => name.toLowerCase() === "application/json" || name.toLowerCase().endsWith("+json"))] : content[names[0]];
 }
 function responseSchema(operation) {
   const responses = operation.responses ?? {};
-  const code = Object.keys(responses).filter((value) => /^2\d\d$/.test(value)).sort()[0];
-  const content = (code ? responses[code] : responses.default)?.content ?? {};
-  return content["application/json"]?.schema ?? Object.values(content)[0]?.schema;
+  const codes = Object.keys(responses).filter((value) => /^2(?:\d\d|xx)$/i.test(value)).sort();
+  const selected = codes.length ? codes : Object.keys(responses).includes("default") ? ["default"] : [];
+  const schemas = [];
+  for (const code of selected) {
+    const content = responses[code]?.content;
+    const schema = jsonMedia(content)?.schema;
+    if (schema) schemas.push(schema);
+  }
+  if (!schemas.length) return void 0;
+  if (schemas.length === 1) return schemas[0];
+  return { oneOf: schemas };
 }
 function requestBodySchema(operation) {
-  const content = operation.requestBody?.content ?? {};
-  return content["application/json"]?.schema ?? Object.values(content)[0]?.schema;
+  return jsonMedia(operation.requestBody?.content)?.schema;
 }
 
 // src/client/generate.ts
-import { readFileSync as readFileSync8 } from "fs";
+import { readFileSync as readFileSync8, statSync } from "fs";
+async function readBoundedResponse(response) {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > 1048576) throw new Error("OpenAPI response exceeds the 1 MiB size limit.");
+  if (!response.body) throw new Error("OpenAPI response has no body.");
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const result = await reader.read();
+    if (result.done) break;
+    total += result.value.byteLength;
+    if (total > 1048576) {
+      await reader.cancel();
+      throw new Error("OpenAPI response exceeds the 1 MiB size limit.");
+    }
+    chunks.push(result.value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
 async function loadOpenApiSource(source) {
   if (/^https?:\/\//i.test(source)) {
-    const response = await fetch(source, { headers: { accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(1e4) });
-    if (!response.ok) throw new Error(`OpenAPI request failed with ${response.status}`);
+    const url = new URL(source);
+    if (url.protocol !== "https:" || url.username || url.password) throw new Error("Remote OpenAPI schemas require HTTPS without embedded credentials.");
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname === "0.0.0.0" || hostname === "::1") throw new Error("Remote OpenAPI schema host is not allowed.");
+    const response = await fetch(url, { headers: { accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(1e4) });
+    if (!response.ok) throw new Error("OpenAPI request failed with " + response.status);
     const contentType = response.headers.get("content-type") ?? "";
-    if (!contentType.includes("json")) throw new Error(`OpenAPI endpoint returned unsupported content type: ${contentType || "unknown"}`);
-    return parseOpenApiDocument(await response.json());
+    if (!/^(application\/json|application\/[^;]+\+json)(;|$)/i.test(contentType)) throw new Error("OpenAPI endpoint returned unsupported content type: " + (contentType || "unknown"));
+    let parsed2;
+    try {
+      parsed2 = JSON.parse(await readBoundedResponse(response));
+    } catch (error) {
+      if (error instanceof SyntaxError) throw new Error("OpenAPI endpoint returned invalid JSON.");
+      throw error;
+    }
+    return parseOpenApiDocument(parsed2);
   }
-  return parseOpenApiDocument(JSON.parse(readFileSync8(source, "utf8")));
+  const stats = statSync(source);
+  if (!stats.isFile()) throw new Error("OpenAPI schema path must be a regular file.");
+  if (stats.size > 1048576) throw new Error("OpenAPI file exceeds the 1 MiB size limit.");
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync8(source, "utf8"));
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error("OpenAPI file contains invalid JSON.");
+    throw error;
+  }
+  return parseOpenApiDocument(parsed);
 }
-function renderSchemas(document) {
-  return Object.keys(document.components?.schemas ?? {}).sort().map((name) => `export type ${name.replace(/[^A-Za-z0-9_$]/g, "_")} = ${schemaToType(document.components?.schemas?.[name])};`).join("\n");
+function renderSchemas(document, names) {
+  return Object.keys(document.components?.schemas ?? {}).sort().map((name) => "export type " + names[name] + " = " + schemaToType(document.components?.schemas?.[name], names) + ";").join("\n");
 }
 function property(name) {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
 }
-function renderInputs(document) {
+function access(name) {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? "." + name : "[" + JSON.stringify(name) + "]";
+}
+function renderInputs(document, names) {
   return collectOperations(document).map((item) => {
     const parameters = item.operation.parameters ?? [];
     const body = requestBodySchema(item.operation);
     if (!parameters.length && !body) return "";
-    const name = `${item.name.charAt(0).toUpperCase()}${item.name.slice(1)}Input`;
-    const path = parameters.filter((p) => p.in === "path");
-    const query = parameters.filter((p) => p.in === "query");
-    const headers = parameters.filter((p) => p.in === "header");
+    const name = item.name.charAt(0).toUpperCase() + item.name.slice(1) + "Input";
     const groups = [];
-    if (path.length) groups.push(`path: { ${path.map((p) => `${property(p.name)}: ${schemaToType(p.schema)};`).join(" ")} };`);
-    if (query.length) groups.push(`query${query.every((p) => !p.required) ? "?" : ""}: { ${query.map((p) => `${property(p.name)}${p.required ? "" : "?"}: ${schemaToType(p.schema)};`).join(" ")} };`);
-    if (headers.length) groups.push(`headers${headers.every((p) => !p.required) ? "?" : ""}: { ${headers.map((p) => `${property(p.name)}${p.required ? "" : "?"}: ${schemaToType(p.schema)};`).join(" ")} };`);
-    if (body) groups.push(`body${item.operation.requestBody?.required ? "" : "?"}: ${schemaToType(body)};`);
-    return `export type ${name} = { ${groups.join(" ")} };`;
+    for (const location of ["path", "query", "header", "cookie"]) {
+      const selected = parameters.filter((parameter) => parameter.in === location);
+      if (!selected.length) continue;
+      const fields = selected.map((parameter) => property(parameter.name) + (location !== "path" && !parameter.required ? "?" : "") + ": " + schemaToType(parameter.schema, names) + ";").join(" ");
+      const groupName = location === "cookie" ? "cookies" : location === "header" ? "headers" : location;
+      const optional = location !== "path" && selected.every((parameter) => !parameter.required);
+      groups.push(groupName + (optional ? "?" : "") + ": { " + fields + " };");
+    }
+    if (body) groups.push("body" + (item.operation.requestBody?.required ? "" : "?") + ": " + schemaToType(body, names) + ";");
+    return "export type " + name + " = { " + groups.join(" ") + " };";
   }).filter(Boolean).join("\n");
 }
-function renderMethod(item) {
+function renderMethod(item, names) {
   const parameters = item.operation.parameters ?? [];
   const body = requestBodySchema(item.operation);
   const hasInput = parameters.length > 0 || Boolean(body);
-  const inputName = `${item.name.charAt(0).toUpperCase()}${item.name.slice(1)}Input`;
-  const output = schemaToType(responseSchema(item.operation));
-  const paths = parameters.filter((p) => p.in === "path").map((p) => `path = path.replace(${JSON.stringify(`{${p.name}}`)}, encodeURIComponent(String(input.path.${property(p.name)})));`).join("\n    ");
-  const query = parameters.filter((p) => p.in === "query").map((p) => `if (input.query?.${property(p.name)} !== undefined) query.set(${JSON.stringify(p.name)}, String(input.query.${property(p.name)}));`).join("\n    ");
-  const headers = parameters.filter((p) => p.in === "header").map((p) => `if (input.headers?.${property(p.name)} !== undefined) headers.set(${JSON.stringify(p.name)}, String(input.headers.${property(p.name)}));`).join("\n    ");
-  return `  async ${item.name}(${hasInput ? `input: ${inputName}` : "input: Record<string, never> = {}"}): Promise<${output}> {
-    let path = ${JSON.stringify(item.path)};
-    ${paths}
-    const query = new URLSearchParams();
-    ${query}
-    const headers = new Headers({ accept: "application/json" });
-    ${headers}
-    const token = await this.tokenProvider?.();
-    if (token) headers.set("authorization", \`Bearer \${token}\`);
-    ${body ? `headers.set("content-type", "application/json");` : ""}
-    const url = new URL(path, this.baseUrl);
-    if ([...query].length > 0) url.search = query.toString();
-    const response = await this.fetchImpl(url, { method: ${JSON.stringify(item.method)}, headers, ${body ? "body: input.body === undefined ? undefined : JSON.stringify(input.body)," : ""} signal: AbortSignal.timeout(this.timeoutMs) });
-    const contentType = response.headers.get("content-type") ?? "";
-    const payload: unknown = response.status === 204 ? undefined : contentType.includes("json") ? await response.json() : await response.text();
-    if (!response.ok) throw new ApiError(response.status, response.statusText, payload);
-    return payload as ${output};
-  }`;
+  const inputName = item.name.charAt(0).toUpperCase() + item.name.slice(1) + "Input";
+  const output = schemaToType(responseSchema(item.operation), names);
+  const paths = parameters.filter((parameter) => parameter.in === "path").map((parameter) => "path = path.replace(" + JSON.stringify("{" + parameter.name + "}") + ", encodeURIComponent(String(input.path" + access(parameter.name) + ")));").join("\n    ");
+  const query = parameters.filter((parameter) => parameter.in === "query").map((parameter) => {
+    const value = "input.query?" + access(parameter.name);
+    const name = JSON.stringify(parameter.name);
+    return "if (" + value + " !== undefined) { const parameterValue = " + value + "; if (Array.isArray(parameterValue)) { for (const item of parameterValue) query.append(" + name + ', String(item)); } else if (parameterValue !== null && typeof parameterValue === "object") { for (const [key, item] of Object.entries(parameterValue)) query.append(' + name + ' + "[" + key + "]", String(item)); } else query.set(' + name + ", String(parameterValue)); }";
+  }).join("\n    ");
+  const headerParameters = parameters.filter((parameter) => parameter.in === "header").map((parameter) => "if (input.headers?" + access(parameter.name) + " !== undefined) headers.set(" + JSON.stringify(parameter.name) + ", String(input.headers" + access(parameter.name) + "));").join("\n    ");
+  const cookieParameters = parameters.filter((parameter) => parameter.in === "cookie").map((parameter) => "if (input.cookies?" + access(parameter.name) + " !== undefined) cookies.push(encodeURIComponent(" + JSON.stringify(parameter.name) + ') + "=" + encodeURIComponent(String(input.cookies' + access(parameter.name) + ")));").join("\n    ");
+  const requestHeaders = headerParameters + (cookieParameters ? "\n    const cookies: string[] = [];\n    " + cookieParameters + '\n    if (cookies.length) headers.set("cookie", cookies.join("; "));' : "");
+  const requestBody = body ? 'headers.set("content-type", "application/json");' : "";
+  const bodyValue = body ? "body: input.body === undefined ? undefined : JSON.stringify(input.body)," : "";
+  return "  async " + item.name + "(" + (hasInput ? "input: " + inputName : "input: Record<string, never> = {}") + "): Promise<" + output + "> {\n    let path = " + JSON.stringify(item.path) + ";\n    " + paths + "\n    const query = new URLSearchParams();\n    " + query + '\n    const headers = new Headers({ accept: "application/json" });\n    ' + requestHeaders + '\n    const token = await this.tokenProvider?.();\n    if (token) headers.set("authorization", "Bearer " + token);\n    ' + requestBody + "\n    const url = new URL(path, this.baseUrl);\n    if ([...query].length > 0) url.search = query.toString();\n    const response = await this.fetchImpl(url, { method: " + JSON.stringify(item.method) + ", headers, " + bodyValue + ' signal: AbortSignal.timeout(this.timeoutMs) });\n    const contentType = response.headers.get("content-type") ?? "";\n    const payload: unknown = response.status === 204 ? undefined : contentType.includes("json") ? await response.json() : await response.text();\n    if (!response.ok) throw new ApiError(response.status, response.statusText, payload);\n    return payload as ' + output + ";\n  }";
 }
 function generateTypeScriptClient(document, target = "typescript") {
+  const names = componentTypeNames(document);
   const operations = collectOperations(document);
+  if (operations.length > 3e3) throw new Error("OpenAPI document exceeds the 3000-operation limit.");
   const react = target === "react" ? `
 ${operations.map((item) => `export const ${item.name}QueryKey = (input: unknown) => [${JSON.stringify(item.name)}, input] as const;`).join("\n")}
 ` : target === "react-native" ? '\nexport const launchStackClientTarget = "react-native" as const;\n' : "";
-  return `/* eslint-disable */
+  const output = `/* eslint-disable */
 // Generated by LaunchStack CLI. Do not edit directly.
 export type TokenProvider = () => string | undefined | null | Promise<string | undefined | null>;
 export class ApiError extends Error { constructor(public readonly status: number, public readonly statusText: string, public readonly body: unknown) { super(\`API request failed: \${status} \${statusText}\`); this.name = "ApiError"; } }
-${renderSchemas(document)}
-${renderInputs(document)}
+${renderSchemas(document, names)}
+${renderInputs(document, names)}
 export class LaunchStackClient { private readonly baseUrl: URL; private readonly tokenProvider?: TokenProvider; private readonly fetchImpl: typeof fetch; private readonly timeoutMs: number; constructor(options: { baseUrl: string | URL; tokenProvider?: TokenProvider; fetch?: typeof fetch; timeoutMs?: number }) { this.baseUrl = new URL(options.baseUrl); this.tokenProvider = options.tokenProvider; this.fetchImpl = options.fetch ?? globalThis.fetch; this.timeoutMs = options.timeoutMs ?? 10000; if (!Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0) throw new Error("timeoutMs must be positive"); }
-${operations.map(renderMethod).join("\n\n")}
+${operations.map((item) => renderMethod(item, names)).join("\n\n")}
 }
 ${react}`;
+  if (Buffer.byteLength(output, "utf8") > 2097152) throw new Error("Generated OpenAPI client exceeds the 2 MiB output limit.");
+  return output;
 }
 
 // src/generator/files.ts
@@ -1445,7 +1680,7 @@ import {
   readdirSync,
   readFileSync as readFileSync9,
   renameSync as renameSync2,
-  statSync,
+  statSync as statSync2,
   unlinkSync as unlinkSync2
 } from "fs";
 import { basename, dirname as dirname3, resolve as resolve10 } from "path";
@@ -1481,7 +1716,7 @@ function copyDirectory(sourceDirectory, destinationDirectory, overwriteRenamedFi
 function renameTemplateFiles(directory, overwriteRenamedFiles) {
   for (const entry of readdirSync(directory)) {
     const currentPath = resolve10(directory, entry);
-    const stats = statSync(currentPath);
+    const stats = statSync2(currentPath);
     if (stats.isDirectory()) {
       renameTemplateFiles(currentPath, overwriteRenamedFiles);
       continue;
@@ -1578,7 +1813,7 @@ import {
   existsSync as existsSync11,
   readFileSync as readFileSync10,
   readdirSync as readdirSync2,
-  statSync as statSync2,
+  statSync as statSync3,
   writeFileSync as writeFileSync3
 } from "fs";
 import { basename as basename2, extname, join as join6 } from "path";
@@ -1625,7 +1860,7 @@ function renderDirectory(directory, variables) {
   }
   for (const entry of readdirSync2(directory)) {
     const path = join6(directory, entry);
-    const stats = statSync2(path);
+    const stats = statSync3(path);
     if (stats.isDirectory()) {
       renderDirectory(path, variables);
       continue;
@@ -1918,7 +2153,7 @@ function getGitMetadata(cwd = process.cwd()) {
 // src/stages/docker.ts
 import { execFileSync as execFileSync4 } from "child_process";
 import { createHash as createHash4 } from "crypto";
-import { existsSync as existsSync15, mkdtempSync as mkdtempSync3, rmSync as rmSync4, statSync as statSync4, writeFileSync as writeFileSync7 } from "fs";
+import { existsSync as existsSync15, mkdtempSync as mkdtempSync3, rmSync as rmSync4, statSync as statSync5, writeFileSync as writeFileSync7 } from "fs";
 import { tmpdir as tmpdir3 } from "os";
 import { join as join10 } from "path";
 import { createServer as createServer2 } from "net";
@@ -1926,7 +2161,7 @@ import { createServer as createServer2 } from "net";
 // src/dev/orchestrator.ts
 import { createHash as createHash3 } from "crypto";
 import { spawn } from "child_process";
-import { closeSync as closeSync2, existsSync as existsSync14, lstatSync as lstatSync3, openSync as openSync2, readFileSync as readFileSync12, statSync as statSync3, unlinkSync as unlinkSync3, writeFileSync as writeFileSync6 } from "fs";
+import { closeSync as closeSync2, existsSync as existsSync14, lstatSync as lstatSync3, openSync as openSync2, readFileSync as readFileSync12, statSync as statSync4, unlinkSync as unlinkSync3, writeFileSync as writeFileSync6 } from "fs";
 import { createServer } from "net";
 import { join as join9, resolve as resolve13 } from "path";
 import { tmpdir as tmpdir2 } from "os";
@@ -1967,7 +2202,7 @@ async function acquireHostPortLock() {
           if (probeError.code === "ESRCH") alive = false;
         }
         if (!alive) {
-          const current = statSync3(path);
+          const current = statSync4(path);
           if (current.ino === stat.ino) unlinkSync3(path);
           continue;
         }
@@ -2346,7 +2581,7 @@ var dockerStageAdapter = {
       const caFile = process.env.NODE_EXTRA_CA_CERTS;
       if (caFile) {
         try {
-          if (statSync4(caFile).isFile()) {
+          if (statSync5(caFile).isFile()) {
             buildOverrideDirectory = mkdtempSync3(join10(tmpdir3(), "launchstack-stage-build-"));
             const override = {
               services: { api: { build: { secrets: ["npmca"] } } },
@@ -2500,17 +2735,19 @@ function destroyStage(input) {
 // src/generator/module.ts
 import { existsSync as existsSync17, readFileSync as readFileSync13 } from "fs";
 import { resolve as resolve15 } from "path";
-var RESERVED_FIELDS = /* @__PURE__ */ new Set(["id", "ownerId", "createdAt", "updatedAt"]);
+var RESERVED_FIELDS = /* @__PURE__ */ new Set(["id", "ownerId", "createdAt", "updatedAt", "model", "enum", "type", "view", "datasource", "generator", "config", "future", "constructor", "prototype", "toString", "valueOf", "hasOwnProperty", "__defineGetter__", "__defineSetter__"]);
+var RESERVED_SCHEMA_IDENTIFIERS = /* @__PURE__ */ new Set(["String", "Boolean", "Int", "BigInt", "Float", "Decimal", "DateTime", "Json", "Bytes", "Unsupported", "Prisma"]);
 var FIELD_TYPES = /* @__PURE__ */ new Set(["string", "number", "boolean", "date"]);
 var validateName = (name) => {
-  if (!/^[a-z][a-z0-9-]{0,48}$/.test(name)) throw new Error("Generated names must use lowercase letters, numbers, and hyphens.");
+  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name) || name.length > 49) throw new Error("Generated names must use lowercase letters, numbers, and single hyphens between lowercase words.");
+  if (RESERVED_SCHEMA_IDENTIFIERS.has(pascal(name))) throw new Error(`Generated name maps to reserved Prisma identifier: ${pascal(name)}`);
   return name;
 };
 function validateFields(fields) {
   const names = /* @__PURE__ */ new Set();
   for (const field of fields) {
     if (!/^[a-z][A-Za-z0-9_]{0,48}$/.test(field.name)) throw new Error(`Invalid field name: ${field.name}`);
-    if (RESERVED_FIELDS.has(field.name)) throw new Error(`Field name is reserved: ${field.name}`);
+    if (RESERVED_FIELDS.has(field.name) || RESERVED_SCHEMA_IDENTIFIERS.has(field.name)) throw new Error(`Field name is reserved: ${field.name}`);
     if (!FIELD_TYPES.has(field.type)) throw new Error(`Unsupported field type: ${String(field.type)}`);
     if (names.has(field.name)) throw new Error(`Duplicate field name: ${field.name}`);
     names.add(field.name);
@@ -2564,20 +2801,25 @@ export const update${cls}Schema = z.object({
 ${updateFields}
 }).strict().refine((value) => Object.keys(value).length > 0, "At least one field is required");
 export const ${delegate}IdSchema = z.object({ id: z.string().min(1).max(128) }).strict();
+export const list${cls}Schema = z.object({ cursor: z.string().max(256).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).strict();
 export type Create${cls}Input = z.infer<typeof create${cls}Schema>;
 export type Update${cls}Input = z.infer<typeof update${cls}Schema>;
+export type List${cls}Input = z.infer<typeof list${cls}Schema>;
 `, [`src/modules/${name}/${name}.repository.ts`]: `import { PrismaClient } from "@prisma/client";
-import type { Create${cls}Input, Update${cls}Input } from "./${name}.schemas";
-export class ${cls}Repository { constructor(private readonly prisma: PrismaClient) {} create(ownerId: string, input: Create${cls}Input) { return this.prisma.${delegate}.create({ data: { ownerId, ${assignments} } }); } list(ownerId: string) { return this.prisma.${delegate}.findMany({ where: { ownerId }, orderBy: { createdAt: "desc" }, take: 100 }); } findOwned(id: string, ownerId: string) { return this.prisma.${delegate}.findFirst({ where: { id, ownerId } }); } updateOwned(id: string, ownerId: string, input: Update${cls}Input) { return this.prisma.$transaction(async (tx) => { const current = await tx.${delegate}.findFirst({ where: { id, ownerId }, select: { id: true } }); if (!current) return null; return tx.${delegate}.update({ where: { id: current.id }, data: input }); }); } deleteOwned(id: string, ownerId: string): Promise<boolean> { return this.prisma.${delegate}.deleteMany({ where: { id, ownerId } }).then((result) => result.count === 1); } }
+import { ApplicationError } from "../../core/errors/application-error";
+import type { Create${cls}Input, List${cls}Input, Update${cls}Input } from "./${name}.schemas";
+function decodeCursor(value: string): { id: string; createdAt: Date } { try { const cursor = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as { id?: unknown; createdAt?: unknown }; if (typeof cursor.id !== "string" || typeof cursor.createdAt !== "string") throw new Error(); const createdAt = new Date(cursor.createdAt); if (!Number.isFinite(createdAt.getTime())) throw new Error(); return { id: cursor.id, createdAt }; } catch { throw new ApplicationError({ statusCode: 400, code: "INVALID_CURSOR", message: "Invalid pagination cursor." }); } }
+function encodeCursor(value: { id: string; createdAt: Date }): string { return Buffer.from(JSON.stringify({ id: value.id, createdAt: value.createdAt.toISOString() })).toString("base64url"); }
+export class ${cls}Repository { constructor(private readonly prisma: PrismaClient) {} create(ownerId: string, input: Create${cls}Input) { return this.prisma.${delegate}.create({ data: { ownerId, ${assignments} } }); } async list(ownerId: string, input: List${cls}Input) { const cursor = input.cursor ? decodeCursor(input.cursor) : undefined; const rows = await this.prisma.${delegate}.findMany({ where: { ownerId, ...(cursor ? { OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] } : {}) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: input.limit + 1 }); const hasNext = rows.length > input.limit; const items = hasNext ? rows.slice(0, input.limit) : rows; return { items, hasNext, nextCursor: hasNext && items.length ? encodeCursor(items[items.length - 1]!) : null }; } findOwned(id: string, ownerId: string) { return this.prisma.${delegate}.findFirst({ where: { id, ownerId } }); } async updateOwned(id: string, ownerId: string, input: Update${cls}Input) { const rows = await this.prisma.${delegate}.updateManyAndReturn({ where: { id, ownerId }, data: input }); return rows[0] ?? null; } deleteOwned(id: string, ownerId: string): Promise<boolean> { return this.prisma.${delegate}.deleteMany({ where: { id, ownerId } }).then((result) => result.count === 1); } }
 `, [`src/modules/${name}/${name}.service.ts`]: `import { ApplicationError } from "../../core/errors/application-error";
 import { prisma } from "../../lib/prisma";
 import { ${cls}Repository } from "./${name}.repository";
-import type { Create${cls}Input, Update${cls}Input } from "./${name}.schemas";
-export class ${cls}Service { constructor(private readonly repository = new ${cls}Repository(prisma)) {} create(ownerId: string, input: Create${cls}Input) { return this.repository.create(ownerId, input); } list(ownerId: string) { return this.repository.list(ownerId); } async get(ownerId: string, id: string) { const value = await this.repository.findOwned(id, ownerId); if (!value) throw new ApplicationError({ statusCode: 404, code: "RESOURCE_NOT_FOUND", message: ${JSON.stringify(`${cls} not found.`)} }); return value; } async update(ownerId: string, id: string, input: Update${cls}Input) { const value = await this.repository.updateOwned(id, ownerId, input); if (!value) throw new ApplicationError({ statusCode: 404, code: "RESOURCE_NOT_FOUND", message: ${JSON.stringify(`${cls} not found.`)} }); return value; } async remove(ownerId: string, id: string): Promise<void> { if (!(await this.repository.deleteOwned(id, ownerId))) throw new ApplicationError({ statusCode: 404, code: "RESOURCE_NOT_FOUND", message: ${JSON.stringify(`${cls} not found.`)} }); } }
+import type { Create${cls}Input, List${cls}Input, Update${cls}Input } from "./${name}.schemas";
+export class ${cls}Service { constructor(private readonly repository = new ${cls}Repository(prisma)) {} create(ownerId: string, input: Create${cls}Input) { return this.repository.create(ownerId, input); } list(ownerId: string, input: List${cls}Input) { return this.repository.list(ownerId, input); } async get(ownerId: string, id: string) { const value = await this.repository.findOwned(id, ownerId); if (!value) throw new ApplicationError({ statusCode: 404, code: "RESOURCE_NOT_FOUND", message: ${JSON.stringify(`${cls} not found.`)} }); return value; } async update(ownerId: string, id: string, input: Update${cls}Input) { const value = await this.repository.updateOwned(id, ownerId, input); if (!value) throw new ApplicationError({ statusCode: 404, code: "RESOURCE_NOT_FOUND", message: ${JSON.stringify(`${cls} not found.`)} }); return value; } async remove(ownerId: string, id: string): Promise<void> { if (!(await this.repository.deleteOwned(id, ownerId))) throw new ApplicationError({ statusCode: 404, code: "RESOURCE_NOT_FOUND", message: ${JSON.stringify(`${cls} not found.`)} }); } }
 `, [`src/modules/${name}/${name}.controller.ts`]: `import type { FastifyReply, FastifyRequest } from "fastify";
-import { create${cls}Schema, ${delegate}IdSchema, update${cls}Schema } from "./${name}.schemas";
+import { create${cls}Schema, ${delegate}IdSchema, list${cls}Schema, update${cls}Schema } from "./${name}.schemas";
 import { ${cls}Service } from "./${name}.service";
-export class ${cls}Controller { constructor(private readonly service = new ${cls}Service()) {} create = async (request: FastifyRequest, reply: FastifyReply) => reply.code(201).send(await this.service.create(request.user.sub, create${cls}Schema.parse(request.body))); list = async (request: FastifyRequest, reply: FastifyReply) => reply.send(await this.service.list(request.user.sub)); get = async (request: FastifyRequest, reply: FastifyReply) => { const { id } = ${delegate}IdSchema.parse(request.params); return reply.send(await this.service.get(request.user.sub, id)); }; update = async (request: FastifyRequest, reply: FastifyReply) => { const { id } = ${delegate}IdSchema.parse(request.params); return reply.send(await this.service.update(request.user.sub, id, update${cls}Schema.parse(request.body))); }; remove = async (request: FastifyRequest, reply: FastifyReply) => { const { id } = ${delegate}IdSchema.parse(request.params); await this.service.remove(request.user.sub, id); return reply.code(204).send(); }; }
+export class ${cls}Controller { constructor(private readonly service = new ${cls}Service()) {} create = async (request: FastifyRequest, reply: FastifyReply) => reply.code(201).send(await this.service.create(request.user.sub, create${cls}Schema.parse(request.body))); list = async (request: FastifyRequest, reply: FastifyReply) => reply.send(await this.service.list(request.user.sub, list${cls}Schema.parse(request.query))); get = async (request: FastifyRequest, reply: FastifyReply) => { const { id } = ${delegate}IdSchema.parse(request.params); return reply.send(await this.service.get(request.user.sub, id)); }; update = async (request: FastifyRequest, reply: FastifyReply) => { const { id } = ${delegate}IdSchema.parse(request.params); return reply.send(await this.service.update(request.user.sub, id, update${cls}Schema.parse(request.body))); }; remove = async (request: FastifyRequest, reply: FastifyReply) => { const { id } = ${delegate}IdSchema.parse(request.params); await this.service.remove(request.user.sub, id); return reply.code(204).send(); }; }
 `, [`src/modules/${name}/${name}.routes.ts`]: `import type { FastifyInstance } from "fastify";
 import { ${cls}Controller } from "./${name}.controller";
 export async function ${delegate}Routes(app: FastifyInstance): Promise<void> { const controller = new ${cls}Controller(); const auth = { preHandler: [app.authenticate] }; app.post("/", auth, controller.create); app.get("/", auth, controller.list); app.get("/:id", auth, controller.get); app.patch("/:id", auth, controller.update); app.delete("/:id", auth, controller.remove); }
@@ -2591,7 +2833,7 @@ ${modelFields}
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([ownerId, createdAt])
+  @@index([ownerId, createdAt, id])
 }
 ` };
 }
@@ -2637,6 +2879,9 @@ function planModuleGeneration(input) {
 export async function registerGeneratedRoutes(app: FastifyInstance): Promise<void> { void app; }
 `;
   const names = parseRoutes(registryCurrent);
+  const routePrefix = `/api/${plural(name)}`;
+  const conflictingName = names.find((existing) => existing !== name && `/api/${plural(existing)}` === routePrefix);
+  if (conflictingName) throw new Error(`Generated route prefix ${routePrefix} conflicts with resource ${conflictingName}.`);
   if (!names.includes(name)) names.push(name);
   const nextRegistry = renderRoutes(names);
   if (nextRegistry !== registryCurrent) mutations.push({ type: "write", path: registryPath, content: nextRegistry, owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: existsSync17(registryAbsolute) ? hashFile(registryAbsolute) : null });
@@ -2704,6 +2949,7 @@ export {
   severityRank,
   parseOpenApiDocument,
   collectOperations,
+  componentTypeNames,
   schemaToType,
   responseSchema,
   requestBodySchema,
@@ -2734,4 +2980,4 @@ export {
   planModuleGeneration,
   applyModuleGeneration
 };
-//# sourceMappingURL=chunk-NI3IS4ZS.mjs.map
+//# sourceMappingURL=chunk-C4KUPDJH.mjs.map
