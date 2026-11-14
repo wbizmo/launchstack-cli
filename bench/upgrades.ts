@@ -252,7 +252,7 @@ async function runSuite(): Promise<void> {
     });
   }
   process.stdout.write(
-    `${JSON.stringify({ implementation_commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), repository, node: process.version, platform: `${process.platform} ${process.arch}`, repetitions, warmup, fixture: "v2.0.0 manifest with real tracked fixture files; drift scan and plan only, no apply", measurement: "full managed-file SHA-256 drift scan and plan wall time; parent /proc VmRSS sampled every 5ms after fixture setup", results }, null, 2)}\n`,
+    `${JSON.stringify({ implementation_commit: execFileSync("git", ["-C", repository, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), repository, node: process.version, platform: `${process.platform} ${process.arch}`, repetitions, warmup, fixture: "v2.0.0 manifest with real tracked fixture files; drift scan and plan only, no apply", measurement: "full managed-file SHA-256 drift scan and plan wall time; parent /proc VmRSS sampled every 5ms after fixture setup", results }, null, 2)}\n`,
   );
 }
 
