@@ -1,7 +1,6 @@
 import {
   chmodSync,
   closeSync,
-  constants,
   existsSync,
   fstatSync,
   lstatSync,
@@ -35,10 +34,7 @@ export function readRegularFileNoFollow(
     throw new Error("Expected a regular file without following links.");
   let descriptor: number;
   try {
-    descriptor = openSync(
-      path,
-      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
-    );
+    descriptor = openSync(path, "r");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ELOOP")
       throw new Error("Expected a regular file without following links.");

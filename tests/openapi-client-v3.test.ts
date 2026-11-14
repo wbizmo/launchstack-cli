@@ -158,7 +158,12 @@ describe("v3 OpenAPI client generation", () => {
     try {
       for (const target of ["typescript", "react", "react-native"] as const) {
         const file = join(directory, target + ".ts");
-        writeFileSync(file, generateTypeScriptClient(document, target));
+        const generated = generateTypeScriptClient(document, target);
+        if (target === "react") {
+          expect(generated).toContain("export const operationQueryKey0");
+          expect(generated).not.toContain("export const updatePetQueryKey");
+        }
+        writeFileSync(file, generated);
         const program = ts.createProgram([file], {
           noEmit: true,
           strict: true,

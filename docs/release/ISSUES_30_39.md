@@ -17,7 +17,9 @@ Status: **Draft / Unreleased**. The ledger records local implementation and evid
 
 ## Required release gates
 
-The exact final local `npm run release:check` passed on Node 24.22.3 and 26.13.1 with PostgreSQL 16: each run passed 40 root test files / 152 tests, generated-project checks (9 files / 28 tests), production audit (zero findings), CycloneDX SBOM validation (23 components), packed artifact smoke and reproducible dist. The generated production Docker image built and passed container health plus PostgreSQL readiness. Windows portability and CodeQL run in CI and remain unverified until that workflow completes. Any runner quota or external service failure is recorded as unverified, not passed.
+The exact local `npm run release:check` passed on Node 24.22.3 and 26.13.1 with PostgreSQL 16: each run passed 41 root test files / 156 tests, generated-project checks (9 files / 28 tests), production audit (zero findings), CycloneDX SBOM validation (23 components), packed artifact smoke and reproducible dist. The generated production Docker image built and passed container health plus PostgreSQL readiness. Windows portability and CodeQL run in CI and remain unverified until the current pushed workflow completes. Any runner quota or external service failure is recorded as unverified, not passed.
+
+A clean-checkout CI run exposed that the generated API runtime files were present only under the package build output and ignored beneath the template source. The compiled template runtime is now checked in under `src/templates/api/dist`, so rebuilding `dist/` reproduces the package from a fresh clone. The same follow-up hardens template copying against symlinks and generates React query-key identifiers from fixed numeric indexes.
 
 The draft PR must receive CodeRabbit review and green CI. Each material finding must be resolved or explicitly documented with evidence. The publish workflow is manually dispatched against `main`, requires its `authorize_publication` input, and uses the protected `npm-publish` environment. A tag push or ordinary main push does not publish. The package version remains exactly 3.0.4.
 

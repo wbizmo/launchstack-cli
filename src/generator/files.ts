@@ -1,14 +1,14 @@
 import {
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
-  readFileSync,
   renameSync,
-  statSync,
   unlinkSync,
 } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
+import { readRegularFileNoFollow } from "../storage";
 
 const RENAMED_TEMPLATE_FILES: Record<string, string> = {
   _gitignore: ".gitignore",
@@ -60,7 +60,13 @@ function renameTemplateFiles(
 ): void {
   for (const entry of readdirSync(directory)) {
     const currentPath = resolve(directory, entry);
-    const stats = statSync(currentPath);
+    const stats = lstatSync(currentPath);
+
+    if (stats.isSymbolicLink()) {
+      throw new Error(
+        `Template contains an unsupported symbolic link: ${currentPath}`,
+      );
+    }
 
     if (stats.isDirectory()) {
       renameTemplateFiles(currentPath, overwriteRenamedFiles);
@@ -82,8 +88,12 @@ function renameTemplateFiles(
         continue;
       }
 
-      const existingContent = readFileSync(replacementPath);
-      const sourceContent = readFileSync(currentPath);
+      const existingContent = Buffer.from(
+        readRegularFileNoFollow(replacementPath, 10_000_000).content,
+      );
+      const sourceContent = Buffer.from(
+        readRegularFileNoFollow(currentPath, 10_000_000).content,
+      );
 
       if (!existingContent.equals(sourceContent)) {
         throw new Error(

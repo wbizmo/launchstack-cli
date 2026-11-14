@@ -319,7 +319,14 @@ export function generateTypeScriptClient(
   );
   const react =
     target === "react"
-      ? `\n${boundedJoin(operations, "\n", (item) => `export const ${item.name}QueryKey = (input: unknown) => [${JSON.stringify(item.name)}, input] as const;`)}\n`
+      ? `\n${boundedJoin(
+          operations.map(
+            (item, index) =>
+              `export const operationQueryKey${index} = (input: unknown) => [${JSON.stringify(item.name)}, input] as const;`,
+          ),
+          "\n",
+          (line) => line,
+        )}\n`
       : target === "react-native"
         ? '\nexport const launchStackClientTarget = "react-native" as const;\n'
         : "";

@@ -299,8 +299,87 @@ function writeCanonicalDockerAssets(projectDirectory, options) {
 }
 
 // src/generator/files.ts
+var import_node_fs3 = require("fs");
+var import_node_path3 = require("path");
+
+// src/storage.ts
 var import_node_fs2 = require("fs");
 var import_node_path2 = require("path");
+var import_node_crypto = require("crypto");
+function readRegularFileNoFollow(path, maxBytes) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
+    throw new Error("File size limit must be a non-negative safe integer.");
+  const pathStat = (0, import_node_fs2.lstatSync)(path);
+  if (pathStat.isSymbolicLink() || !pathStat.isFile())
+    throw new Error("Expected a regular file without following links.");
+  let descriptor;
+  try {
+    descriptor = (0, import_node_fs2.openSync)(path, "r");
+  } catch (error) {
+    if (error.code === "ELOOP")
+      throw new Error("Expected a regular file without following links.");
+    throw error;
+  }
+  try {
+    const before = (0, import_node_fs2.fstatSync)(descriptor);
+    if (!before.isFile() || before.dev !== pathStat.dev || before.ino !== pathStat.ino)
+      throw new Error("Expected a regular file without following links.");
+    if (before.size > maxBytes)
+      throw new Error("File exceeds the configured size limit.");
+    const chunks = [];
+    const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+    let total = 0;
+    while (total <= maxBytes) {
+      const length = Math.min(chunk.length, maxBytes + 1 - total);
+      const bytesRead = (0, import_node_fs2.readSync)(descriptor, chunk, 0, length, null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > maxBytes)
+        throw new Error("File exceeds the configured size limit.");
+      chunks.push(Buffer.from(chunk.subarray(0, bytesRead)));
+    }
+    const after = (0, import_node_fs2.fstatSync)(descriptor);
+    if (after.dev !== before.dev || after.ino !== before.ino)
+      throw new Error("Opened file identity changed while reading.");
+    return {
+      content: Buffer.concat(chunks, total).toString("utf8"),
+      size: after.size,
+      mode: after.mode,
+      dev: after.dev,
+      ino: after.ino
+    };
+  } finally {
+    (0, import_node_fs2.closeSync)(descriptor);
+  }
+}
+function atomicWriteText(path, content, mode) {
+  const directory = (0, import_node_path2.dirname)(path);
+  (0, import_node_fs2.mkdirSync)(directory, { recursive: true });
+  const temporaryPath = (0, import_node_path2.join)(
+    directory,
+    `.${(0, import_node_path2.basename)(path)}.${process.pid}.${(0, import_node_crypto.randomUUID)()}.tmp`
+  );
+  try {
+    (0, import_node_fs2.writeFileSync)(temporaryPath, content, {
+      encoding: "utf8",
+      flag: "wx",
+      ...mode === void 0 ? {} : { mode }
+    });
+    if (mode !== void 0) {
+      (0, import_node_fs2.chmodSync)(temporaryPath, mode);
+    }
+    (0, import_node_fs2.renameSync)(temporaryPath, path);
+    if (mode !== void 0) {
+      (0, import_node_fs2.chmodSync)(path, mode);
+    }
+  } finally {
+    if ((0, import_node_fs2.existsSync)(temporaryPath)) {
+      (0, import_node_fs2.rmSync)(temporaryPath, { force: true });
+    }
+  }
+}
+
+// src/generator/files.ts
 var RENAMED_TEMPLATE_FILES = {
   _gitignore: ".gitignore",
   _dockerignore: ".dockerignore",
@@ -309,10 +388,10 @@ var RENAMED_TEMPLATE_FILES = {
   "_env.example": ".env.example"
 };
 function ensureDestinationAvailable(destinationDirectory, overwrite = false) {
-  if (!(0, import_node_fs2.existsSync)(destinationDirectory)) {
+  if (!(0, import_node_fs3.existsSync)(destinationDirectory)) {
     return;
   }
-  const contents = (0, import_node_fs2.readdirSync)(destinationDirectory);
+  const contents = (0, import_node_fs3.readdirSync)(destinationDirectory);
   if (contents.length > 0 && !overwrite) {
     throw new Error(
       `Destination is not empty: ${destinationDirectory}. Use --force to overwrite it.`
@@ -320,46 +399,55 @@ function ensureDestinationAvailable(destinationDirectory, overwrite = false) {
   }
 }
 function copyDirectory(sourceDirectory, destinationDirectory, overwriteRenamedFiles = false) {
-  if (!(0, import_node_fs2.existsSync)(sourceDirectory)) {
+  if (!(0, import_node_fs3.existsSync)(sourceDirectory)) {
     throw new Error(`Template directory not found: ${sourceDirectory}`);
   }
-  (0, import_node_fs2.mkdirSync)(destinationDirectory, { recursive: true });
-  (0, import_node_fs2.cpSync)(sourceDirectory, destinationDirectory, {
+  (0, import_node_fs3.mkdirSync)(destinationDirectory, { recursive: true });
+  (0, import_node_fs3.cpSync)(sourceDirectory, destinationDirectory, {
     recursive: true,
     force: true
   });
   renameTemplateFiles(destinationDirectory, overwriteRenamedFiles);
 }
 function renameTemplateFiles(directory, overwriteRenamedFiles) {
-  for (const entry of (0, import_node_fs2.readdirSync)(directory)) {
-    const currentPath = (0, import_node_path2.resolve)(directory, entry);
-    const stats = (0, import_node_fs2.statSync)(currentPath);
+  for (const entry of (0, import_node_fs3.readdirSync)(directory)) {
+    const currentPath = (0, import_node_path3.resolve)(directory, entry);
+    const stats = (0, import_node_fs3.lstatSync)(currentPath);
+    if (stats.isSymbolicLink()) {
+      throw new Error(
+        `Template contains an unsupported symbolic link: ${currentPath}`
+      );
+    }
     if (stats.isDirectory()) {
       renameTemplateFiles(currentPath, overwriteRenamedFiles);
       continue;
     }
-    const replacementName = RENAMED_TEMPLATE_FILES[(0, import_node_path2.basename)(currentPath)];
+    const replacementName = RENAMED_TEMPLATE_FILES[(0, import_node_path3.basename)(currentPath)];
     if (!replacementName) {
       continue;
     }
-    const replacementPath = (0, import_node_path2.resolve)((0, import_node_path2.dirname)(currentPath), replacementName);
-    if ((0, import_node_fs2.existsSync)(replacementPath)) {
+    const replacementPath = (0, import_node_path3.resolve)((0, import_node_path3.dirname)(currentPath), replacementName);
+    if ((0, import_node_fs3.existsSync)(replacementPath)) {
       if (overwriteRenamedFiles) {
-        (0, import_node_fs2.unlinkSync)(replacementPath);
-        (0, import_node_fs2.renameSync)(currentPath, replacementPath);
+        (0, import_node_fs3.unlinkSync)(replacementPath);
+        (0, import_node_fs3.renameSync)(currentPath, replacementPath);
         continue;
       }
-      const existingContent = (0, import_node_fs2.readFileSync)(replacementPath);
-      const sourceContent = (0, import_node_fs2.readFileSync)(currentPath);
+      const existingContent = Buffer.from(
+        readRegularFileNoFollow(replacementPath, 1e7).content
+      );
+      const sourceContent = Buffer.from(
+        readRegularFileNoFollow(currentPath, 1e7).content
+      );
       if (!existingContent.equals(sourceContent)) {
         throw new Error(
           `Cannot rename template file because the destination exists: ${replacementPath}`
         );
       }
-      (0, import_node_fs2.unlinkSync)(currentPath);
+      (0, import_node_fs3.unlinkSync)(currentPath);
       continue;
     }
-    (0, import_node_fs2.renameSync)(currentPath, replacementPath);
+    (0, import_node_fs3.renameSync)(currentPath, replacementPath);
   }
 }
 
@@ -380,8 +468,8 @@ function toDisplayName(projectName) {
 }
 
 // src/generator/paths.ts
-var import_node_fs3 = require("fs");
-var import_node_path3 = require("path");
+var import_node_fs4 = require("fs");
+var import_node_path4 = require("path");
 function getRuntimeDirectory() {
   if (typeof __dirname === "string") {
     return __dirname;
@@ -393,13 +481,13 @@ function getPackageRoot() {
   const candidates = [
     process.cwd(),
     runtimeDirectory,
-    (0, import_node_path3.resolve)(runtimeDirectory, ".."),
-    (0, import_node_path3.resolve)(runtimeDirectory, "../.."),
-    (0, import_node_path3.resolve)(process.cwd(), ".."),
-    (0, import_node_path3.resolve)(process.cwd(), "../..")
+    (0, import_node_path4.resolve)(runtimeDirectory, ".."),
+    (0, import_node_path4.resolve)(runtimeDirectory, "../.."),
+    (0, import_node_path4.resolve)(process.cwd(), ".."),
+    (0, import_node_path4.resolve)(process.cwd(), "../..")
   ];
   for (const candidate of candidates) {
-    if ((0, import_node_fs3.existsSync)((0, import_node_path3.resolve)(candidate, "package.json"))) {
+    if ((0, import_node_fs4.existsSync)((0, import_node_path4.resolve)(candidate, "package.json"))) {
       return candidate;
     }
   }
@@ -409,13 +497,13 @@ function getTemplateDirectory(templateName) {
   const runtimeDirectory = getRuntimeDirectory();
   const packageRoot = getPackageRoot();
   const candidates = [
-    (0, import_node_path3.resolve)(runtimeDirectory, "templates", templateName),
-    (0, import_node_path3.resolve)(packageRoot, "dist", "templates", templateName),
-    (0, import_node_path3.resolve)(packageRoot, "src", "templates", templateName),
-    (0, import_node_path3.resolve)(packageRoot, "templates", templateName)
+    (0, import_node_path4.resolve)(runtimeDirectory, "templates", templateName),
+    (0, import_node_path4.resolve)(packageRoot, "dist", "templates", templateName),
+    (0, import_node_path4.resolve)(packageRoot, "src", "templates", templateName),
+    (0, import_node_path4.resolve)(packageRoot, "templates", templateName)
   ];
   const templateDirectory = candidates.find(
-    (candidate) => (0, import_node_fs3.existsSync)(candidate)
+    (candidate) => (0, import_node_fs4.existsSync)(candidate)
   );
   if (!templateDirectory) {
     throw new Error(
@@ -428,88 +516,6 @@ function getTemplateDirectory(templateName) {
 // src/generator/template.ts
 var import_node_fs5 = require("fs");
 var import_node_path5 = require("path");
-
-// src/storage.ts
-var import_node_fs4 = require("fs");
-var import_node_path4 = require("path");
-var import_node_crypto = require("crypto");
-function readRegularFileNoFollow(path, maxBytes) {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
-    throw new Error("File size limit must be a non-negative safe integer.");
-  const pathStat = (0, import_node_fs4.lstatSync)(path);
-  if (pathStat.isSymbolicLink() || !pathStat.isFile())
-    throw new Error("Expected a regular file without following links.");
-  let descriptor;
-  try {
-    descriptor = (0, import_node_fs4.openSync)(
-      path,
-      import_node_fs4.constants.O_RDONLY | (import_node_fs4.constants.O_NOFOLLOW ?? 0)
-    );
-  } catch (error) {
-    if (error.code === "ELOOP")
-      throw new Error("Expected a regular file without following links.");
-    throw error;
-  }
-  try {
-    const before = (0, import_node_fs4.fstatSync)(descriptor);
-    if (!before.isFile() || before.dev !== pathStat.dev || before.ino !== pathStat.ino)
-      throw new Error("Expected a regular file without following links.");
-    if (before.size > maxBytes)
-      throw new Error("File exceeds the configured size limit.");
-    const chunks = [];
-    const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
-    let total = 0;
-    while (total <= maxBytes) {
-      const length = Math.min(chunk.length, maxBytes + 1 - total);
-      const bytesRead = (0, import_node_fs4.readSync)(descriptor, chunk, 0, length, null);
-      if (bytesRead === 0) break;
-      total += bytesRead;
-      if (total > maxBytes)
-        throw new Error("File exceeds the configured size limit.");
-      chunks.push(Buffer.from(chunk.subarray(0, bytesRead)));
-    }
-    const after = (0, import_node_fs4.fstatSync)(descriptor);
-    if (after.dev !== before.dev || after.ino !== before.ino)
-      throw new Error("Opened file identity changed while reading.");
-    return {
-      content: Buffer.concat(chunks, total).toString("utf8"),
-      size: after.size,
-      mode: after.mode,
-      dev: after.dev,
-      ino: after.ino
-    };
-  } finally {
-    (0, import_node_fs4.closeSync)(descriptor);
-  }
-}
-function atomicWriteText(path, content, mode) {
-  const directory = (0, import_node_path4.dirname)(path);
-  (0, import_node_fs4.mkdirSync)(directory, { recursive: true });
-  const temporaryPath = (0, import_node_path4.join)(
-    directory,
-    `.${(0, import_node_path4.basename)(path)}.${process.pid}.${(0, import_node_crypto.randomUUID)()}.tmp`
-  );
-  try {
-    (0, import_node_fs4.writeFileSync)(temporaryPath, content, {
-      encoding: "utf8",
-      flag: "wx",
-      ...mode === void 0 ? {} : { mode }
-    });
-    if (mode !== void 0) {
-      (0, import_node_fs4.chmodSync)(temporaryPath, mode);
-    }
-    (0, import_node_fs4.renameSync)(temporaryPath, path);
-    if (mode !== void 0) {
-      (0, import_node_fs4.chmodSync)(path, mode);
-    }
-  } finally {
-    if ((0, import_node_fs4.existsSync)(temporaryPath)) {
-      (0, import_node_fs4.rmSync)(temporaryPath, { force: true });
-    }
-  }
-}
-
-// src/generator/template.ts
 var TEXT_EXTENSIONS = /* @__PURE__ */ new Set([
   ".cjs",
   ".css",
@@ -3495,7 +3501,13 @@ function generateTypeScriptClient(document, target = "typescript") {
     (item) => renderMethod(item, names)
   );
   const react = target === "react" ? `
-${boundedJoin(operations, "\n", (item) => `export const ${item.name}QueryKey = (input: unknown) => [${JSON.stringify(item.name)}, input] as const;`)}
+${boundedJoin(
+    operations.map(
+      (item, index) => `export const operationQueryKey${index} = (input: unknown) => [${JSON.stringify(item.name)}, input] as const;`
+    ),
+    "\n",
+    (line) => line
+  )}
 ` : target === "react-native" ? '\nexport const launchStackClientTarget = "react-native" as const;\n' : "";
   const output = `/* eslint-disable */
 // Generated by LaunchStack CLI. Do not edit directly.
