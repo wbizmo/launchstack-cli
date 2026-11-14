@@ -3943,9 +3943,10 @@ var clientGenerateCommand = new import_commander4.Command("generate").descriptio
       (0, import_node_fs11.mkdirSync)((0, import_node_path11.dirname)(output), { recursive: true });
       (0, import_node_fs11.writeFileSync)(output, generated, "utf8");
       console.log(`Generated ${options.target} client: ${output}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(message.replace(/[\u0000-\u001f\u007f-\u009f]/g, " "));
+    } catch {
+      console.error(
+        "Client generation failed; verify the schema and output path."
+      );
       process.exitCode = 1;
     }
   }

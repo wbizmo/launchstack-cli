@@ -38,7 +38,7 @@
 - Serialize stale lock reclamation with a per-inode claim so a stale-lock contender cannot unlink a replacement lock; treat unreadable Linux process identity as unverifiable/live.
 - Reject cross-platform absolute managed paths and block remote OpenAPI access to non-public DNS answers, pinning HTTPS connections to the validated addresses.
 - Add bounded deterministic hostile-input corpus checks for paths and encodings, project/plugin manifests, journals, symlinks, oversized inputs, cyclic schemas and hostile OpenAPI URLs; results and limits are recorded in `docs/benchmarks/issue-31-security-fuzz.md`.
-- Escape HTML-sensitive characters and Unicode line separators in generated SDK operation-key literals, sanitize user-controlled control characters in CLI errors, and suppress environment-derived smoke-test errors.
+- Escape HTML-sensitive characters and Unicode line separators in generated SDK operation-key literals, use a fixed client-generation failure message, and suppress environment-derived smoke-test errors.
 - Give generated projects distinct JWT development secrets, loopback host/origin defaults, and loopback Compose port bindings. Production Compose requires explicit origin and JWT settings.
 - Extend production audit findings to cover runtime policy, npm lock consistency and production Compose requirements; `launchstack audit --advisories` adds npm registry evidence for production dependencies, with LS024 when that check cannot complete. Unsupported-runtime findings are marked heuristic.
 - Mark secret-looking tracked filenames as heuristic findings, bound Git path enumeration at 16 MiB / 10 seconds, and emit LS022 when enumeration cannot complete. Add a 1k–100k path traversal benchmark; it records that file contents are not scanned.
