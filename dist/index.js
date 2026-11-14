@@ -960,7 +960,11 @@ function detectManagedDrift(projectDirectory, state) {
         `Invalid managed file path in LaunchStack state: ${path}`
       );
     const absolute = (0, import_node_path9.join)(root, path);
-    if (!(0, import_node_fs9.existsSync)(absolute)) {
+    let actualSha256;
+    try {
+      actualSha256 = hashFile(absolute);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
       entries.push({
         path,
         kind: "missing",
@@ -969,7 +973,6 @@ function detectManagedDrift(projectDirectory, state) {
       });
       continue;
     }
-    const actualSha256 = hashFile(absolute);
     entries.push({
       path,
       kind: actualSha256 === managed.sha256 ? "clean" : "modified",

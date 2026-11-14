@@ -575,7 +575,11 @@ function detectManagedDrift(projectDirectory, state) {
         `Invalid managed file path in LaunchStack state: ${path}`
       );
     const absolute = join2(root, path);
-    if (!existsSync2(absolute)) {
+    let actualSha256;
+    try {
+      actualSha256 = hashFile(absolute);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
       entries.push({
         path,
         kind: "missing",
@@ -584,7 +588,6 @@ function detectManagedDrift(projectDirectory, state) {
       });
       continue;
     }
-    const actualSha256 = hashFile(absolute);
     entries.push({
       path,
       kind: actualSha256 === managed.sha256 ? "clean" : "modified",
@@ -5172,4 +5175,4 @@ export {
   planModuleGeneration,
   applyModuleGeneration
 };
-//# sourceMappingURL=chunk-DVANW34L.mjs.map
+//# sourceMappingURL=chunk-JLIQO3CT.mjs.map
