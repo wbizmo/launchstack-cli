@@ -31,6 +31,7 @@ const env = {
   JWT_ACCESS_SECRET: "launchstack-docker-smoke-access-secret-32-characters",
   JWT_REFRESH_SECRET: "launchstack-docker-smoke-refresh-secret-32-characters",
 };
+let phase = "initialization";
 
 async function freePort() {
   const server = createServer();
@@ -70,6 +71,7 @@ function run(command, args, options = {}) {
 
 async function main() {
   try {
+    phase = "create generated project";
     const port = await freePort();
     env.LAUNCHSTACK_API_PORT = String(port);
     run(node, [
@@ -80,13 +82,16 @@ async function main() {
       project,
       "--no-install",
     ]);
+    phase = "check Docker daemon";
     run(docker, ["info"], { stdio: "pipe", timeoutMs: 5_000 });
+    phase = "build root CLI image";
     const caFile = process.env.NODE_EXTRA_CA_CERTS;
     const cliBuildArgs = ["build", "--tag", cliImage];
     if (caFile && existsSync(caFile))
       cliBuildArgs.push("--secret", `id=npmca,src=${caFile}`);
     cliBuildArgs.push(root);
     run(docker, cliBuildArgs, { cwd: root });
+    phase = "check root CLI image";
     const expectedVersion = JSON.parse(
       readFileSync(join(root, "package.json"), "utf8"),
     ).version;
@@ -115,10 +120,12 @@ async function main() {
       );
       compose.push("-f", override);
     }
+    phase = "build and start generated production image";
     run(docker, [...compose, "up", "--detach", "--build", "--wait"], {
       cwd: project,
     });
 
+    phase = "check generated API health";
     const health = await fetch(`http://127.0.0.1:${port}/health`, {
       signal: AbortSignal.timeout(10_000),
     });
@@ -127,6 +134,7 @@ async function main() {
       200,
       "production image health endpoint must respond",
     );
+    phase = "check PostgreSQL readiness";
     const ready = await fetch(`http://127.0.0.1:${port}/ready`, {
       signal: AbortSignal.timeout(10_000),
     });
@@ -165,7 +173,7 @@ async function main() {
 main().catch(() => {
   // Child-process errors may include values inherited from the environment.
   console.error(
-    "Docker smoke failed; details are suppressed to protect secrets.",
+    `Docker smoke failed during ${phase}; details are suppressed to protect secrets.`,
   );
   process.exitCode = 1;
 });
