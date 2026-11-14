@@ -104,11 +104,25 @@ jobs:
         run: |
           set -euo pipefail
           if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
-            TAG_SHA="$(git rev-list -n 1 "$RELEASE_TAG")"
+            TAG_SHA="$(git rev-parse "${RELEASE_TAG}^{commit}")"
             if [ "$TAG_SHA" != "$GITHUB_SHA" ]; then
-              echo "::error::${RELEASE_TAG} already points to ${TAG_SHA}, not ${GITHUB_SHA}"
-              exit 1
+              if ! git merge-base --is-ancestor "$TAG_SHA" "$GITHUB_SHA"; then
+                echo "::error::${RELEASE_TAG} is not an ancestor of the dispatched main commit"
+                exit 1
+              fi
+
+              while IFS= read -r changed_path; do
+                case "$changed_path" in
+                  README.md|CHANGELOG.md|LICENSE|RELEASE_NOTES_*.md|docs/*|src/templates/api/README.md|dist/templates/api/README.md|.github/workflows/publish.yml)
+                    ;;
+                  *)
+                    echo "::error::Change after ${RELEASE_TAG} is outside release documentation: ${changed_path}"
+                    exit 1
+                    ;;
+                esac
+              done < <(git diff --no-renames --name-only -z "$TAG_SHA" "$GITHUB_SHA")
             fi
+            echo "Using existing ${RELEASE_TAG} tag at ${TAG_SHA}; no tag was changed."
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -121,7 +135,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.LAUNCHSTACK_NPM_TOKEN }}
 
-      - name: Create GitHub release
+      - name: Create or update GitHub release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -130,7 +144,13 @@ jobs:
           RELEASE_NOTES: ${{ steps.release.outputs.notes }}
         run: |
           set -euo pipefail
-          gh release create "$RELEASE_TAG" \
-            --verify-tag \
-            --title "LaunchStack CLI v${RELEASE_VERSION}" \
-            --notes-file "$RELEASE_NOTES"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "LaunchStack CLI v${RELEASE_VERSION}" \
+              --notes-file "$RELEASE_NOTES"
+          else
+            gh release create "$RELEASE_TAG" \
+              --verify-tag \
+              --title "LaunchStack CLI v${RELEASE_VERSION}" \
+              --notes-file "$RELEASE_NOTES"
+          fi
