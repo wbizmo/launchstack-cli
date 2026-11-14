@@ -1,0 +1,144 @@
+{
+  "issue": 37,
+  "implementation_commit": "6f87296b9c3b0e28f8fd3e10fd138d7372fc2326",
+  "measured_at": "2026-11-14",
+  "npm_config_cache": "/workspace/.npm-cache",
+  "workloads": {
+    "service_graph": "one root with 1,000 or 10,000 dependents; lexical queue ordering required",
+    "extension_graph": "linear dependency chains of 1,000 or 10,000 vertices",
+    "hash_files_bytes": [
+      1048576,
+      10485760,
+      52428800
+    ],
+    "hash_warmup": 1,
+    "hash_repetitions": 5,
+    "baseline_comparisons": "pre-change sort/shift scheduler, recursive path-copy resolver and whole-file hashing; same Node process version and fixture shape"
+  },
+  "node": "v24.22.3",
+  "platform": "linux x64",
+  "os_release": "6.18.57",
+  "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+  "cpu_count": 4,
+  "total_memory_bytes": 35743748096,
+  "warmups": 1,
+  "repetitions": 5,
+  "graph_queue": [
+    {
+      "vertices": 1001,
+      "edges": 1000,
+      "candidate_ms": {
+        "p50": 2.699,
+        "p95": 3.491
+      },
+      "repetitions": 5
+    },
+    {
+      "vertices": 10001,
+      "edges": 10000,
+      "candidate_ms": {
+        "p50": 19.861,
+        "p95": 28.227
+      },
+      "repetitions": 5
+    }
+  ],
+  "graph_1k_comparison": {
+    "previous_sort_and_shift_ms": {
+      "p50": 17.082,
+      "p95": 27.831
+    },
+    "min_heap_ms": {
+      "p50": 0.698,
+      "p95": 0.757
+    }
+  },
+  "extension_chains": [
+    {
+      "vertices": 1000,
+      "edges": 999,
+      "candidate_ms": {
+        "p50": 0.341,
+        "p95": 0.371
+      },
+      "repetitions": 5
+    },
+    {
+      "vertices": 10000,
+      "edges": 9999,
+      "candidate_ms": {
+        "p50": 6.605,
+        "p95": 8.035
+      },
+      "repetitions": 5
+    }
+  ],
+  "extension_1k_comparison": {
+    "previous_path_copy_ms": {
+      "p50": 7.537,
+      "p95": 19.452
+    },
+    "mutable_stack_ms": {
+      "p50": 0.885,
+      "p95": 0.966
+    }
+  },
+  "file_hashing": [
+    {
+      "bytes": 1048576,
+      "repetitions": 5,
+      "previous_read_all_ms": {
+        "p50": 3.908,
+        "p95": 4.191
+      },
+      "streaming_ms": {
+        "p50": 0.934,
+        "p95": 1.021
+      }
+    },
+    {
+      "bytes": 10485760,
+      "repetitions": 5,
+      "previous_read_all_ms": {
+        "p50": 39.977,
+        "p95": 43.078
+      },
+      "streaming_ms": {
+        "p50": 7.221,
+        "p95": 7.485
+      }
+    },
+    {
+      "bytes": 52428800,
+      "repetitions": 5,
+      "previous_read_all_ms": {
+        "p50": 103.563,
+        "p95": 198.815
+      },
+      "streaming_ms": {
+        "p50": 34.521,
+        "p95": 36.564
+      }
+    }
+  ],
+  "isolated_50MiB_hash_peak_rss_bytes": {
+    "read_all": 130125824,
+    "streaming": 77901824
+  },
+  "fd_count_after_hashes": {
+    "before": 30,
+    "after": 30
+  },
+  "cpu_microseconds": {
+    "user": 970723,
+    "system": 1470243
+  },
+  "peak_rss_bytes": 417808384,
+  "memory_bytes": {
+    "rss": 208289792,
+    "heapTotal": 19341312,
+    "heapUsed": 16058808,
+    "external": 57848495,
+    "arrayBuffers": 55260161
+  }
+}

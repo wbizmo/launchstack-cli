@@ -62,6 +62,9 @@
 - Rejects invalid Prisma/resource identifiers, duplicate generated route prefixes and unsafe field names before writing generated files.
 - Supports bounded OpenAPI 3.0/3.1 schema loading, local references, nullable/composed/enum types, parameter groups and successful response variants. TypeScript, React and React Native outputs are compiled and exercised against request fixtures.
 - Records PostgreSQL query counts, concurrent owner checks and SDK fixture verification in `docs/benchmarks/issue-36-generators.md`.
+- Orders development services with a deterministic min-heap and resolves extension dependencies with an explicit DFS stack, preserving cycle paths without recursive path copies.
+- Streams SHA-256 file hashing in fixed 64 KiB chunks and reuses the validated manifest and sorted OpenAPI operation list within a single planning/rendering operation.
+- Adds 10k-node graph, large-file digest and descriptor-leak regression checks. `npm run bench:complexity` records actual graph, resolver and hash timings, isolated hash RSS and a CPU profile in `docs/benchmarks/issue-37-complexity.md`.
 
 ## 3.0.0 - 2026-09-14
 

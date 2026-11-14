@@ -33,6 +33,9 @@
 - Validates resource names, Prisma fields and generated route-prefix collisions before applying writes.
 - Generates SDKs from bounded OpenAPI 3.0/3.1 documents with local references, nullable and composed schemas, enums, parameter groups and response variants. All three targets are compiled and exercised with a fixture request server.
 - Issue #36's observed database query counts and limits are recorded in `docs/benchmarks/issue-36-generators.md`.
+- Keeps deterministic service ordering with heap-based scheduling at O((V+E) log V), and resolves extension dependency graphs in O(V+E) using an explicit stack that retains actionable cycle paths.
+- Hashes managed files in fixed 64 KiB chunks, records the file-byte cost and drift-report sorting in the README, and reuses one operation list while rendering OpenAPI client sections.
+- Adds structural tests for 10,000 service vertices, a 12,000-node extension chain, 24 MiB file hashing and descriptor cleanup. The issue #37 benchmark records graph/hash comparisons, process resource measurements and a V8 CPU profile in `docs/benchmarks/issue-37-complexity.md`.
 
 ## Verification
 
@@ -44,6 +47,7 @@
 - The Node 24.22.3 full release check passed with PostgreSQL 16, including 36 CLI test files / 119 tests and 8 generated API test files / 26 tests.
 - Issue #36 focused checks passed on Node 24.22.3: 2 test files / 13 tests, and the generated project smoke passed 9 files / 28 tests plus PostgreSQL CRUD/pagination checks, generated project build and production audit. Full release qualification remains pending later batches.
 - After #36, Node 24.22.3 `release:check` passed: 38 root test files / 145 tests, lint, typecheck, reproducible dist, npm pack dry run, packed CLI smoke, zero-vulnerability runtime audit, and the 9-file / 28-test PostgreSQL-backed generated project smoke.
+- After #37, Node 24.22.3 `npm run check` passed: lint, typecheck, 39 root test files / 148 tests, reproducible dist and npm pack dry run. The 10k service and extension workloads completed; the 50 MiB isolated hash workers produced matching digests and reported peak RSS of 130,125,824 bytes (read-all) and 77,901,824 bytes (streaming).
 
 ## Compatibility and limitations
 
