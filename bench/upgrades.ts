@@ -210,9 +210,9 @@ function percentile(samples: number[], fraction: number): number {
 async function runSuite(): Promise<void> {
   const results = [];
   for (const size of sizes) {
-    if (!Number.isSafeInteger(size) || size <= 0 || size > 10_000)
+    if (!Number.isSafeInteger(size) || size <= 0 || size > 250_000)
       throw new Error(
-        "Upgrade benchmark sizes must be between 1 and 10,000 managed files.",
+        "Upgrade benchmark sizes must be between 1 and 250,000 managed files.",
       );
     const samples = [];
     for (let index = 0; index < warmup; index += 1) await sampleRun(size);
@@ -252,7 +252,7 @@ async function runSuite(): Promise<void> {
     });
   }
   process.stdout.write(
-    `${JSON.stringify({ repository, node: process.version, platform: `${process.platform} ${process.arch}`, repetitions, warmup, fixture: "v2.0.0 manifest with real tracked fixture files; drift scan and plan only, no apply", measurement: "full managed-file SHA-256 drift scan and plan wall time; parent /proc VmRSS sampled every 5ms after fixture setup", results }, null, 2)}\n`,
+    `${JSON.stringify({ implementation_commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), repository, node: process.version, platform: `${process.platform} ${process.arch}`, repetitions, warmup, fixture: "v2.0.0 manifest with real tracked fixture files; drift scan and plan only, no apply", measurement: "full managed-file SHA-256 drift scan and plan wall time; parent /proc VmRSS sampled every 5ms after fixture setup", results }, null, 2)}\n`,
   );
 }
 
