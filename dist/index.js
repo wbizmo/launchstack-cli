@@ -312,6 +312,7 @@ function readRegularFileNoFollow(path, maxBytes) {
   let descriptor;
   try {
     descriptor = (0, import_node_fs2.openSync)(
+      // lgtm [js/insecure-temporary-file] Read-only open; no creation or write flags are set.
       path,
       import_node_fs2.constants.O_RDONLY | (import_node_fs2.constants.O_NOFOLLOW ?? 0)
     );
