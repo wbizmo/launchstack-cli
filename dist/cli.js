@@ -575,6 +575,9 @@ var import_node_crypto2 = require("crypto");
 function readRegularFileNoFollow(path, maxBytes) {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
     throw new Error("File size limit must be a non-negative safe integer.");
+  const pathStat = (0, import_node_fs4.lstatSync)(path);
+  if (pathStat.isSymbolicLink() || !pathStat.isFile())
+    throw new Error("Expected a regular file without following links.");
   let descriptor;
   try {
     descriptor = (0, import_node_fs4.openSync)(
@@ -588,7 +591,7 @@ function readRegularFileNoFollow(path, maxBytes) {
   }
   try {
     const before = (0, import_node_fs4.fstatSync)(descriptor);
-    if (!before.isFile())
+    if (!before.isFile() || before.dev !== pathStat.dev || before.ino !== pathStat.ino)
       throw new Error("Expected a regular file without following links.");
     if (before.size > maxBytes)
       throw new Error("File exceeds the configured size limit.");

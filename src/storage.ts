@@ -4,6 +4,7 @@ import {
   constants,
   existsSync,
   fstatSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -29,6 +30,9 @@ export function readRegularFileNoFollow(
 ): SafeFileSnapshot {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
     throw new Error("File size limit must be a non-negative safe integer.");
+  const pathStat = lstatSync(path);
+  if (pathStat.isSymbolicLink() || !pathStat.isFile())
+    throw new Error("Expected a regular file without following links.");
   let descriptor: number;
   try {
     descriptor = openSync(
@@ -42,7 +46,11 @@ export function readRegularFileNoFollow(
   }
   try {
     const before = fstatSync(descriptor);
-    if (!before.isFile())
+    if (
+      !before.isFile() ||
+      before.dev !== pathStat.dev ||
+      before.ino !== pathStat.ino
+    )
       throw new Error("Expected a regular file without following links.");
     if (before.size > maxBytes)
       throw new Error("File exceeds the configured size limit.");
