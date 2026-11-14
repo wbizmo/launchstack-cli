@@ -83,7 +83,9 @@ launchstack client generate --target react-native
 launchstack client generate --check
 ```
 
-OpenAPI generation preserves optional/nullable types, produces deterministic operation names, injects authentication through a token provider rather than hard-coded browser storage, and exposes typed non-2xx `ApiError` responses.
+OpenAPI generation accepts bounded OpenAPI 3.0/3.1 JSON with local references, required/optional and nullable schemas, compositions, enums, parameters, and successful response variants. Generated TypeScript, React and React Native clients compile, use deterministic operation names, inject authentication through a token provider, and expose typed non-2xx `ApiError` responses. Remote schemas require HTTPS and are limited to 1 MiB, 10 seconds, 64 nesting levels and 2 MiB of generated output; external references are rejected.
+
+Generated resource CRUD applies the owner predicate in each database read, update and delete. Updates use a single owner-scoped `updateManyAndReturn` statement. Resource lists use an indexed `(ownerId, createdAt, id)` keyset order, a limit from 1 to 100 (default 50), and return `items`, `hasNext` and `nextCursor`. See the [issue #36 query-count and SDK checks](docs/benchmarks/issue-36-generators.md) for PostgreSQL measurements and fixture coverage.
 
 ### Architecture-aware modules and CRUD resources
 

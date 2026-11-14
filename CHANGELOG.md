@@ -58,6 +58,10 @@
 - With default API/Redis ports occupied, verified reassignment to 3001/6380 and completed a real BullMQ job through the generated worker.
 - Added regression coverage for migration/reset/seed safeguards, premature child exits, readiness retry, Docker failure cleanup and operation timeouts.
 - Full `release:check` passed on Node 24.22.3/PostgreSQL 16 and Node 26.13.1/PostgreSQL 17: each run passed 38 root test files / 137 tests and 8 generated API test files / 26 tests, with zero production audit findings.
+- Generates resource updates with the owner predicate in the database mutation, keeping the existing 404 non-disclosure behavior. Resource list endpoints now use bounded `(createdAt, id)` keyset pagination and an owner/time/id index.
+- Rejects invalid Prisma/resource identifiers, duplicate generated route prefixes and unsafe field names before writing generated files.
+- Supports bounded OpenAPI 3.0/3.1 schema loading, local references, nullable/composed/enum types, parameter groups and successful response variants. TypeScript, React and React Native outputs are compiled and exercised against request fixtures.
+- Records PostgreSQL query counts, concurrent owner checks and SDK fixture verification in `docs/benchmarks/issue-36-generators.md`.
 
 ## 3.0.0 - 2026-09-14
 

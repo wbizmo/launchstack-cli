@@ -29,6 +29,10 @@
 - Allocates Redis capability ports per environment and includes capability services throughout preview stage creation, inspection and teardown.
 - Verified two concurrent generated projects and two concurrent Docker preview stages from the packed candidate. Actual startup measurements and the comparison limits are in `docs/benchmarks/issue-35-orchestration.md`.
 - Verified that occupied API and Redis defaults reassign safely and that the queue worker completes a real job through the dynamically configured Redis port.
+- Makes generated resource updates atomic with the owner predicate at the database mutation. Read/update/delete continue to return non-disclosing not-found responses for another owner. Lists use a bounded indexed keyset and return `items`, `hasNext` and `nextCursor`; tied timestamps and deletion between pages are covered against PostgreSQL.
+- Validates resource names, Prisma fields and generated route-prefix collisions before applying writes.
+- Generates SDKs from bounded OpenAPI 3.0/3.1 documents with local references, nullable and composed schemas, enums, parameter groups and response variants. All three targets are compiled and exercised with a fixture request server.
+- Issue #36's observed database query counts and limits are recorded in `docs/benchmarks/issue-36-generators.md`.
 
 ## Verification
 
@@ -38,6 +42,8 @@
 - The generated production Docker image passed its healthcheck and `/health` request.
 - The v3.0.0-to-candidate CLI comparison is recorded in `docs/benchmarks/issue-30-runtime.md`. It shows no consistent startup speedup.
 - The Node 24.22.3 full release check passed with PostgreSQL 16, including 36 CLI test files / 119 tests and 8 generated API test files / 26 tests.
+- Issue #36 focused checks passed on Node 24.22.3: 2 test files / 13 tests, and the generated project smoke passed 9 files / 28 tests plus PostgreSQL CRUD/pagination checks, generated project build and production audit. Full release qualification remains pending later batches.
+- After #36, Node 24.22.3 `release:check` passed: 38 root test files / 145 tests, lint, typecheck, reproducible dist, npm pack dry run, packed CLI smoke, zero-vulnerability runtime audit, and the 9-file / 28-test PostgreSQL-backed generated project smoke.
 
 ## Compatibility and limitations
 
