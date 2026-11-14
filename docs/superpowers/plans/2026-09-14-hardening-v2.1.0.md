@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Do not modify `main` directly; work on `hardening/v2.1.0-release`.
+- Do not modify `main` directly; work on a dedicated v2.1.0 hardening branch.
 - Use `secrets.LAUNCHSTACK_NPM_TOKEN` only as `NODE_AUTH_TOKEN` in the npm publish step.
 - Run targeted tests during implementation and one full release gate before merge.
 - A green build alone is not sufficient; lint, tests, pack smoke, generated-project checks, and dependency audit must gate release.
