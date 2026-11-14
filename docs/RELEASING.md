@@ -1,6 +1,6 @@
 # Releasing LaunchStack CLI
 
-LaunchStack releases are produced from a reviewed, verified `main` commit. The v3.0.4 candidate supports Node.js 24.22.3 through 24.x and 26.13.1 through 26.x. Dropping Node 20 support is a breaking support change; review that semver impact before publication. Production Docker base images are pinned to the reviewed Node 24.22.3 Alpine manifest digest.
+LaunchStack releases are produced from a reviewed, verified `main` commit. v3.0.4 supports Node.js 24.22.3 through 24.x and 26.13.1 through 26.x. Dropping Node 20 support is a breaking support change. Production Docker base images are pinned to the reviewed Node 24.22.3 Alpine manifest digest.
 
 ## Candidate qualification
 
@@ -23,4 +23,4 @@ The workflow reads the repository secret `LAUNCHSTACK_NPM_TOKEN` and exposes it 
 
 ## Versioned notes
 
-`CHANGELOG.md` is cumulative. Each release from v2.1.0 onward also has a root `RELEASE_NOTES_<version>.md`; GitHub Release title format is `LaunchStack CLI v<version>`. The package version, generated-project version and project schema/migration version are maintained independently.
+`CHANGELOG.md` is cumulative. Every published release has a root `RELEASE_NOTES_<version>.md`, indexed in [`RELEASE_HISTORY.md`](RELEASE_HISTORY.md); GitHub Release title format is `LaunchStack CLI v<version>`. The package version, generated-project version and project schema/migration version are maintained independently.

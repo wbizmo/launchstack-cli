@@ -9,6 +9,8 @@ TypeScript backend scaffolding and lifecycle management. LaunchStack creates Fas
 
 **Release:** [v3.0.4](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.4) · [Release notes](RELEASE_NOTES_3.0.4.md) · [Zivora Labs project page](https://www.zivoralabs.xyz/open-source/launchstack-cli)
 
+LaunchStack CLI has evolved from deployment and configuration tooling (v1) into a backend API generator (v2), then a declarative lifecycle platform (v3). Version 3.0.4 is the current release. Browse the [complete release history](docs/RELEASE_HISTORY.md) and [cumulative changelog](CHANGELOG.md) for every published version.
+
 ## Requirements
 
 - Node.js 24.22.3 or later in the 24.x line, or Node.js 26.13.1 or later in the 26.x line. Node.js 20 is no longer supported. This runtime support change is breaking under semantic versioning, despite the 3.0.4 patch version.
@@ -33,6 +35,20 @@ launchstack dev
 Fresh v3 projects include `launchstack.json` for desired LaunchStack state and `.launchstack/state.json` for LaunchStack-owned hashes, installed capabilities and stage metadata. Business and domain code remains user-owned.
 
 ## Capabilities and lifecycle
+
+### What v3.0.4 adds and improves
+
+Version 3.0.4 hardens the CLI, generated API and release tooling across issues #30–#39. It updates supported runtimes to Node.js 24 and 26, updates security-sensitive dependencies, keeps the generated API compatible with Prisma 6, and aligns Docker images and CI with the supported Node versions. Security improvements cover managed paths, secret files, transaction journals and locks, remote OpenAPI DNS validation, bounded audit inputs and generated SDK output. Lifecycle changes add durable mutation recovery, explicit project migrations, safer concurrent capability updates, improved capability assembly, isolated local orchestration and preview stages, bounded owner-scoped resource pagination, and streaming/hash and graph complexity checks. Release qualification adds Windows portability, CodeQL, SBOM validation, generated-project and Docker checks, and reproducible benchmark reports.
+
+The Node 20 support removal is a breaking runtime-policy change despite the patch version. Prisma 7 migration is not included; generated projects remain on Prisma 6. Benchmark measurements and their limitations are summarized below and documented in full in [`docs/benchmarks`](docs/benchmarks/).
+
+### Feature history
+
+- **v1.0.0:** project configuration and validation, environment switching, deployment providers and workflows, deployment history and rollback lookup, local secrets, Git metadata, Docker scaffolding and GitHub Actions generation.
+- **v2.0.0–v2.0.2:** generated Fastify/TypeScript APIs with Prisma and PostgreSQL, JWT authentication, validation, layered architecture, health/readiness endpoints, Docker and deployment presets, `doctor`, then release and documentation consistency improvements.
+- **v2.1.0:** safer secret entry and storage, database-enforced refresh-token rotation, generated API security controls, artifact-level release checks, transactional project generation and hardened Docker output.
+- **v3.0.0:** declarative project state, drift-aware reconciliation and upgrades, capabilities and plugins, local orchestration, typed OpenAPI clients, security audit, resource/module generators and isolated preview stages.
+- **v3.0.4:** runtime/dependency modernization and the security, transaction, migration, capability, orchestration, generator, complexity and release-qualification improvements listed above.
 
 ### Add capabilities
 
@@ -147,3 +163,4 @@ LaunchStack CLI is an open-source project built and maintained by [Zivora Labs](
 - Project page: [Zivora Labs Open Source](https://www.zivoralabs.xyz/open-source/launchstack-cli)
 - Lead maintainer: [Williams Ashibuogwu](https://github.com/wbizmo)
 - License: [MIT](LICENSE)
+- Copyright: Zivora Labs
