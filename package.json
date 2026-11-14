@@ -39,6 +39,7 @@
     "release:verify-tag": "node scripts/verify-release-tag.cjs",
     "release:check": "npm run format:check && npm run check && npm run audit:runtime && npm run sbom:check && npm run pack:smoke && npm run template:smoke",
     "bench:drift": "tsx bench/drift.ts",
+    "bench:security": "tsx bench/security-audit.ts",
     "bench:api": "node bench/generated-api.cjs",
     "bench:cli": "tsx bench/cli.ts",
     "bench:qualification": "node bench/qualification.cjs",

@@ -20,17 +20,26 @@ function packageJson(root: string): Record<string, unknown> | undefined {
     return undefined;
   }
 }
-function gitTrackedFiles(root: string): string[] {
+const MAX_GIT_TRACKED_PATH_BYTES = 16 * 1024 * 1024;
+
+function gitTrackedFiles(
+  root: string,
+): { paths: string[]; complete: true } | { paths: []; complete: false } {
   try {
-    return execFileSync("git", ["ls-files", "-z"], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .split("\0")
-      .filter(Boolean);
+    return {
+      paths: execFileSync("git", ["ls-files", "-z"], {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: MAX_GIT_TRACKED_PATH_BYTES,
+        timeout: 10_000,
+        stdio: ["ignore", "pipe", "ignore"],
+      })
+        .split("\0")
+        .filter(Boolean),
+      complete: true,
+    };
   } catch {
-    return [];
+    return { paths: [], complete: false };
   }
 }
 const finding = (
@@ -112,7 +121,18 @@ export function runProductionAudit(projectDirectoryInput: string): AuditReport {
           entry.path,
         ),
       );
-  const tracked = gitTrackedFiles(root).filter(
+  const trackedResult = gitTrackedFiles(root);
+  if (!trackedResult.complete)
+    findings.push(
+      finding(
+        "LS022",
+        "high",
+        "Tracked paths could not be fully audited",
+        "Git path enumeration failed or exceeded the 16 MiB audit bound; secret-path results are incomplete.",
+        true,
+      ),
+    );
+  const tracked = trackedResult.paths.filter(
     (path) =>
       SECRET_FILE_PATTERNS.some((pattern) => pattern.test(path)) &&
       !/(^|\/)\.env\.example$/.test(path),
@@ -124,7 +144,7 @@ export function runProductionAudit(projectDirectoryInput: string): AuditReport {
         "critical",
         "Potential secret material is tracked by Git",
         `Sensitive-looking tracked paths: ${tracked.join(", ")}. Secret contents were not inspected or printed.`,
-        true,
+        false,
       ),
     );
   const dockerfile = readIfPresent(root, "Dockerfile");

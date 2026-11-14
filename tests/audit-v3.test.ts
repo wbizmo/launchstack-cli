@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -57,5 +58,29 @@ describe("v3 production audit", () => {
     expect(
       report.findings.find((item) => item.ruleId === "LS018")?.verified,
     ).toBe(false);
+  });
+
+  test("classifies tracked secret-like paths as heuristic without exposing contents", () => {
+    const root = mkdtempSync(join(tmpdir(), "launchstack-audit-secrets-"));
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(
+      join(root, ".env"),
+      "JWT_ACCESS_SECRET=actual-secret-value\n",
+    );
+    writeFileSync(join(root, "src", "private.pem"), "private-key-material");
+    writeFileSync(join(root, "README.md"), "token=actual-secret-value\n");
+    execFileSync("git", ["init", "--quiet"], { cwd: root });
+    execFileSync("git", ["add", "-f", ".env", "src/private.pem", "README.md"], {
+      cwd: root,
+    });
+
+    const report = runProductionAudit(root);
+    const finding = report.findings.find((item) => item.ruleId === "LS005");
+
+    expect(finding?.verified).toBe(false);
+    expect(finding?.detail).toContain(".env");
+    expect(finding?.detail).toContain("src/private.pem");
+    expect(finding?.detail).not.toContain("actual-secret-value");
+    expect(finding?.detail).not.toContain("private-key-material");
   });
 });
