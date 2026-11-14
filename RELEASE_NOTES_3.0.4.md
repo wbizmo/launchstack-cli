@@ -13,9 +13,12 @@
 - Keeps Prisma at 6.19.3, the latest Prisma 6 release. Prisma 7's new client and datasource configuration need a separately tested migration to preserve current generated-project compatibility.
 - Rejects malformed recovery journals before touching project or external paths, protects the secret store from symlinks and permissive POSIX modes, and gives new projects unique development JWT secrets.
 - Binds generated local services to loopback and expands audit checks for runtime policies, lockfiles and production Compose settings.
+- Marks secret-looking tracked filenames as heuristic findings, bounds Git path enumeration to 16 MiB / 10 seconds and emits LS022 when enumeration is incomplete. LS005 does not inspect file contents. The measured 1k–100k audit results are in `docs/benchmarks/issue-31-security.md`.
+- Marks secret-looking tracked filenames as heuristic findings, bounds Git path enumeration to 16 MiB / 10 seconds and emits LS022 when enumeration is incomplete. LS005 does not inspect file contents. The measured 1k–100k audit results are in `docs/benchmarks/issue-31-security.md`.
 - Uses a versioned crash-recovery journal, durable file and directory flushes, lock identity checks, compare-and-swap preconditions and one transaction for multi-capability installs.
 - Measures 100 / 1,000 / 10,000 file mutations against v3.0.0 and verifies 8 / 32 concurrent writer processes. The measured durability latency cost is documented in `docs/benchmarks/issue-32-transactions.md`.
 - Registers the explicit v2.0.0-to-v3.0.0 template upgrade, preserves unrelated TypeScript edits through AST-based integration, tracks shared-file migration bases and reports exact read-only plan diffs.
+- Orders migration chains by declared dependencies and validates manifest/state version preconditions and postconditions; synthetic multi-edge chain ordering and mismatched state versions are covered by tests.
 - Records the measured v2 upgrade-plan latency and memory comparison at 100 / 1,000 / 10,000 managed files in `docs/benchmarks/issue-33-upgrades.md`.
 - Assembles capability Compose fragments into a validated file consumed by `launchstack dev`, and resolves package and lockfile writes together before committing the transaction.
 - Generates a BullMQ worker and cron scheduler with health-checked Redis startup and graceful process shutdown; documents OAuth, storage, observability, WebSocket, email and webhook helpers as helper-only.
@@ -53,6 +56,8 @@
 - Production dependency audits reported zero vulnerabilities for both the CLI and generated API.
 - The generated production Docker image passed its healthcheck and `/health` request.
 - The v3.0.0-to-candidate CLI comparison is recorded in `docs/benchmarks/issue-30-runtime.md`. It shows no consistent startup speedup.
+- At 100k and 250k managed files, the candidate upgrade drift scan is substantially slower than the single-sample v3.0.0 baseline on this host after file/path safety checks. The direct comparison and limitations are recorded in `docs/benchmarks/issue-38-qualification.md`; no speedup is claimed.
+- At 100k and 250k managed files, the candidate upgrade drift scan is slower than the single-sample v3.0.0 baseline on this host. The direct comparison and limitations are recorded in `docs/benchmarks/issue-38-qualification.md`; no speedup is claimed.
 - The Node 24.22.3 full release check passed with PostgreSQL 16, including 36 CLI test files / 119 tests and 8 generated API test files / 26 tests.
 - Issue #36 focused checks passed on Node 24.22.3: 2 test files / 13 tests, and the generated project smoke passed 9 files / 28 tests plus PostgreSQL CRUD/pagination checks, generated project build and production audit. Full release qualification remains pending later batches.
 - After #36, Node 24.22.3 `release:check` passed: 38 root test files / 145 tests, lint, typecheck, reproducible dist, npm pack dry run, packed CLI smoke, zero-vulnerability runtime audit, and the 9-file / 28-test PostgreSQL-backed generated project smoke.

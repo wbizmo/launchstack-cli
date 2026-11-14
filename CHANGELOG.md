@@ -36,6 +36,9 @@
 - Keep malformed locks active, verify a lock token before release, and reject symlinked secret files/directories or permissive POSIX secret modes.
 - Give generated projects distinct JWT development secrets, loopback host/origin defaults, and loopback Compose port bindings. Production Compose requires explicit origin and JWT settings.
 - Extend production audit findings to cover runtime policy, npm lock consistency and production Compose requirements; unsupported-runtime findings are marked heuristic.
+- Mark secret-looking tracked filenames as heuristic findings, bound Git path enumeration at 16 MiB / 10 seconds, and emit LS022 when enumeration cannot complete. Add a 1k–100k path traversal benchmark; it records that file contents are not scanned.
+- Final v3.0.0-to-candidate upgrade scans at 100k and 250k files show higher candidate latency and sampled RSS after file/path safety checks. The one-sample comparison is in `docs/benchmarks/issue-38-qualification.md`; no performance target is claimed.
+- Mark secret-looking tracked filenames as heuristic findings, bound Git path enumeration at 16 MiB / 10 seconds, and emit LS022 when enumeration cannot complete. Add a 1k–100k path traversal benchmark; it records that file contents are not scanned.
 - Security regression checks passed: lint, strict typecheck and 4 focused files / 17 tests.
 
 ### Atomic lifecycle mutations (issue #32)
@@ -50,6 +53,7 @@
 ### Versioned project upgrades (issue #33)
 
 - Register the explicit template edge 2.0.0 → 3.0.0 and reject unsupported intermediate versions rather than skipping them.
+- Model migration dependencies and declarative manifest/state version preconditions and postconditions; topologically order chains and reject ambiguous, cyclic or unsatisfied migrations.
 - Use TypeScript syntax trees to place missing integration imports and calls while retaining user statements and comments.
 - Record LaunchStack-owned and shared integration ownership in state, including the migration base hash for shared files.
 - Make `upgrade --plan --json` read-only and include exact before/after text for every planned mutation.

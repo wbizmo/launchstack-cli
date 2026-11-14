@@ -11,6 +11,8 @@ The CLI package version, generated template version and state schema version are
 
 No migration is inferred for intermediate or unknown template versions. Legacy projects without `launchstack.json` are identified from their package version and architecture files; a legacy package version such as 2.1.3 selects the v2.0.0 template edge, because package version is not a template schema version.
 
+The migration registry topologically orders declared `dependsOn` edges, rejects duplicate IDs, cycles, ambiguous version paths and unsatisfied dependencies, and checks declared manifest/state template-version preconditions and postconditions. The current registry has one production edge. Synthetic multi-edge tests exercise ordering and dependency handling without claiming that extra template migration edges are already implemented.
+
 ## Ownership and conflict handling
 
 Project business files remain user-owned. Files under LaunchStack's generated route/capability registry paths are LaunchStack-owned. Existing route and application files are shared integration points: state records their post-migration hashes, ownership class and pre-migration hash as a migration base.

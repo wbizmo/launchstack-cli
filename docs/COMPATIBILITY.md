@@ -13,7 +13,7 @@ Dropping Node 20 is a breaking support change despite the requested package vers
 
 ## Project metadata and upgrades
 
-The npm package version (3.0.4) and generated project metadata/schema version are separate. Existing v3 projects keep schema version 1 and their generated package metadata; the CLI does not rewrite those values simply because it is updated. The currently registered project migration is the explicit `2.0.0 → 3.0.0` template edge. Unsupported migration edges stop with a conflict. Plan with `launchstack upgrade --plan --json`, review ownership and conflicts, then apply the supported migration with the CLI.
+The npm package version (3.0.4) and generated project metadata/schema version are separate. Existing v3 projects keep schema version 1 and their generated package metadata; the CLI does not rewrite those values simply because it is updated. The currently registered project migration is the explicit `2.0.0 → 3.0.0` template edge. The registry orders dependencies and validates manifest/state version preconditions and postconditions; unsupported, ambiguous or unsatisfied migration paths stop with a conflict. Plan with `launchstack upgrade --plan --json`, review ownership and conflicts, then apply the supported migration with the CLI.
 
 Lifecycle and capability changes preserve files outside LaunchStack ownership. Shared integration files use recorded base hashes and report conflicts when user edits overlap an intended transformation. Always commit or back up project changes before applying an upgrade.
 
