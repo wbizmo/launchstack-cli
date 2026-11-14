@@ -4,11 +4,7 @@ import { Command } from "commander";
 import { readConfig } from "../config";
 import { atomicWriteText } from "../storage";
 
-function writeWorkflowFile(
-  path: string,
-  content: string,
-  force: boolean
-) {
+function writeWorkflowFile(path: string, content: string, force: boolean) {
   if (existsSync(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
@@ -20,8 +16,9 @@ function writeWorkflowFile(
   console.log(`Created ${path}`);
 }
 
-export const githubCommand = new Command("github")
-  .description("Generate GitHub Actions workflows");
+export const githubCommand = new Command("github").description(
+  "Generate GitHub Actions workflows",
+);
 
 githubCommand
   .command("init")
@@ -68,6 +65,6 @@ jobs:
     writeWorkflowFile(
       ".github/workflows/ci.yml",
       workflow,
-      Boolean(options.force)
+      Boolean(options.force),
     );
   });

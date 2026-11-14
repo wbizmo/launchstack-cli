@@ -6,11 +6,7 @@
   "workloads": {
     "service_graph": "one root with 1,000 or 10,000 dependents; lexical queue ordering required",
     "extension_graph": "linear dependency chains of 1,000 or 10,000 vertices",
-    "hash_files_bytes": [
-      1048576,
-      10485760,
-      52428800
-    ],
+    "hash_files_bytes": [1048576, 10485760, 52428800],
     "hash_warmup": 1,
     "hash_repetitions": 5,
     "baseline_comparisons": "pre-change sort/shift scheduler, recursive path-copy resolver and whole-file hashing; same Node process version and fixture shape"

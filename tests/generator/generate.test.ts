@@ -4,7 +4,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
-  writeFileSync
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,9 +14,7 @@ import { generateProject } from "../../src/generator/generate";
 const temporaryDirectories: string[] = [];
 
 function createTemporaryDirectory(): string {
-  const directory = mkdtempSync(
-    join(tmpdir(), "launchstack-generator-")
-  );
+  const directory = mkdtempSync(join(tmpdir(), "launchstack-generator-"));
 
   temporaryDirectories.push(directory);
 
@@ -27,7 +25,7 @@ afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, {
       recursive: true,
-      force: true
+      force: true,
     });
   }
 });
@@ -40,7 +38,7 @@ describe("generateProject", () => {
     generateProject({
       projectName: "example-api",
       destinationDirectory: destination,
-      template: "api"
+      template: "api",
     });
 
     expect(existsSync(join(destination, "package.json"))).toBe(true);
@@ -50,7 +48,7 @@ describe("generateProject", () => {
     expect(existsSync(join(destination, "src", "server.ts"))).toBe(true);
 
     const packageJson = JSON.parse(
-      readFileSync(join(destination, "package.json"), "utf8")
+      readFileSync(join(destination, "package.json"), "utf8"),
     ) as {
       name: string;
       description: string;
@@ -61,7 +59,7 @@ describe("generateProject", () => {
 
     const serverFile = readFileSync(
       join(destination, "src", "server.ts"),
-      "utf8"
+      "utf8",
     );
 
     expect(serverFile).toContain("Example Api");
@@ -85,15 +83,15 @@ describe("generateProject", () => {
     generateProject({
       projectName: "first-api",
       destinationDirectory: temporaryRoot,
-      template: "api"
+      template: "api",
     });
 
     expect(() =>
       generateProject({
         projectName: "second-api",
         destinationDirectory: temporaryRoot,
-        template: "api"
-      })
+        template: "api",
+      }),
     ).toThrow("Destination is not empty");
   });
 
@@ -101,14 +99,26 @@ describe("generateProject", () => {
     const temporaryRoot = createTemporaryDirectory();
     const first = join(temporaryRoot, "first-api");
     const second = join(temporaryRoot, "second-api");
-    generateProject({ projectName: "first-api", destinationDirectory: first, template: "api" });
-    generateProject({ projectName: "second-api", destinationDirectory: second, template: "api" });
+    generateProject({
+      projectName: "first-api",
+      destinationDirectory: first,
+      template: "api",
+    });
+    generateProject({
+      projectName: "second-api",
+      destinationDirectory: second,
+      template: "api",
+    });
     const firstEnv = readFileSync(join(first, ".env"), "utf8");
     const secondEnv = readFileSync(join(second, ".env"), "utf8");
 
     expect(firstEnv).not.toBe(secondEnv);
-    expect(/^JWT_ACCESS_SECRET=(.+)$/m.exec(firstEnv)?.[1]).not.toBe(/^JWT_ACCESS_SECRET=(.+)$/m.exec(secondEnv)?.[1]);
-    expect(/^JWT_REFRESH_SECRET=(.+)$/m.exec(firstEnv)?.[1]).not.toBe(/^JWT_REFRESH_SECRET=(.+)$/m.exec(secondEnv)?.[1]);
+    expect(/^JWT_ACCESS_SECRET=(.+)$/m.exec(firstEnv)?.[1]).not.toBe(
+      /^JWT_ACCESS_SECRET=(.+)$/m.exec(secondEnv)?.[1],
+    );
+    expect(/^JWT_REFRESH_SECRET=(.+)$/m.exec(firstEnv)?.[1]).not.toBe(
+      /^JWT_REFRESH_SECRET=(.+)$/m.exec(secondEnv)?.[1],
+    );
   });
 
   it("preserves unrelated user files when force updates a project", () => {
@@ -118,22 +128,19 @@ describe("generateProject", () => {
     generateProject({
       projectName: "example-api",
       destinationDirectory: destination,
-      template: "api"
+      template: "api",
     });
-    writeFileSync(
-      join(destination, "USER_OWNED.txt"),
-      "keep me\n"
-    );
+    writeFileSync(join(destination, "USER_OWNED.txt"), "keep me\n");
 
     generateProject({
       projectName: "example-api",
       destinationDirectory: destination,
       template: "api",
-      overwrite: true
+      overwrite: true,
     });
 
-    expect(
-      readFileSync(join(destination, "USER_OWNED.txt"), "utf8")
-    ).toBe("keep me\n");
+    expect(readFileSync(join(destination, "USER_OWNED.txt"), "utf8")).toBe(
+      "keep me\n",
+    );
   });
 });

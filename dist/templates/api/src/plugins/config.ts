@@ -8,6 +8,6 @@ export const configPlugin = fp(
     app.decorate("config", config);
   },
   {
-    name: "config"
-  }
+    name: "config",
+  },
 );

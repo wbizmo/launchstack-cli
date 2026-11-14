@@ -1,17 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import {
-  ApplicationError
-} from "../../core/errors/application-error";
-import {
-  ErrorCode
-} from "../../core/errors/error-codes";
-import {
-  toPublicUserDto,
-  type PublicUserDto
-} from "./user.dto";
-import {
-  UserRepository
-} from "./user.repository";
+import { ApplicationError } from "../../core/errors/application-error";
+import { ErrorCode } from "../../core/errors/error-codes";
+import { toPublicUserDto, type PublicUserDto } from "./user.dto";
+import { UserRepository } from "./user.repository";
 
 export class UserService {
   private readonly repository: UserRepository;
@@ -27,7 +18,7 @@ export class UserService {
       throw new ApplicationError({
         statusCode: 404,
         code: ErrorCode.ResourceNotFound,
-        message: "User not found."
+        message: "User not found.",
       });
     }
 

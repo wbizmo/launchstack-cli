@@ -10,29 +10,40 @@ const server = http.createServer((request, response) => {
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.setHeader("cache-control", "no-store");
   if (request.method === "GET" && request.url === "/healthz") {
-    response.writeHead(200).end(JSON.stringify({ status: "ok", mode: "local-mock" }));
+    response
+      .writeHead(200)
+      .end(JSON.stringify({ status: "ok", mode: "local-mock" }));
     return;
   }
 
   const match = /^\/mock\/([a-z0-9-]{1,48})(?:\/.*)?$/i.exec(request.url || "");
-  if (match && ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(request.method || "")) {
-    response.writeHead(200).end(JSON.stringify({
-      mock: true,
-      service: match[1],
-      method: request.method,
-      path: request.url,
-      note: "Deterministic local stub; it does not reproduce a provider's behavior."
-    }));
+  if (
+    match &&
+    ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(request.method || "")
+  ) {
+    response.writeHead(200).end(
+      JSON.stringify({
+        mock: true,
+        service: match[1],
+        method: request.method,
+        path: request.url,
+        note: "Deterministic local stub; it does not reproduce a provider's behavior.",
+      }),
+    );
     return;
   }
 
-  response.writeHead(404).end(JSON.stringify({ error: "No local mock route is configured." }));
+  response
+    .writeHead(404)
+    .end(JSON.stringify({ error: "No local mock route is configured." }));
 });
 
 server.listen(port, host, () => {
   const address = server.address();
   if (address && typeof address === "object") {
-    console.log(`Local mock server listening at http://${host}:${address.port}`);
+    console.log(
+      `Local mock server listening at http://${host}:${address.port}`,
+    );
   }
 });
 

@@ -12,9 +12,7 @@ async function waitForDatabase() {
       await prisma.$disconnect();
       return;
     } catch (error) {
-      console.log(
-        `Database not ready. Attempt ${attempt}/${maxAttempts}.`
-      );
+      console.log(`Database not ready. Attempt ${attempt}/${maxAttempts}.`);
 
       if (attempt === maxAttempts) {
         await prisma.$disconnect();

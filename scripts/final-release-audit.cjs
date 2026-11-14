@@ -1,14 +1,11 @@
-const {
-  existsSync,
-  readFileSync
-} = require("node:fs");
+const { existsSync, readFileSync } = require("node:fs");
 const { resolve } = require("node:path");
 
 const projectDirectory = process.argv[2];
 
 if (!projectDirectory) {
   console.error(
-    "Usage: node scripts/final-release-audit.cjs <project-directory>"
+    "Usage: node scripts/final-release-audit.cjs <project-directory>",
   );
   process.exit(1);
 }
@@ -40,14 +37,11 @@ const requiredFiles = [
   "tests/validation.test.ts",
   "tests/openapi.test.ts",
   "tests/architecture.test.ts",
-  "tests/production.test.ts"
+  "tests/production.test.ts",
 ];
 
 const missingFiles = requiredFiles.filter(
-  (file) =>
-    !existsSync(
-      resolve(projectDirectory, file)
-    )
+  (file) => !existsSync(resolve(projectDirectory, file)),
 );
 
 if (missingFiles.length > 0) {
@@ -61,10 +55,7 @@ if (missingFiles.length > 0) {
 }
 
 const packageJson = JSON.parse(
-  readFileSync(
-    resolve(projectDirectory, "package.json"),
-    "utf8"
-  )
+  readFileSync(resolve(projectDirectory, "package.json"), "utf8"),
 );
 
 const requiredDependencies = [
@@ -74,18 +65,15 @@ const requiredDependencies = [
   "@fastify/swagger-ui",
   "@prisma/client",
   "zod",
-  "fastify-type-provider-zod"
+  "fastify-type-provider-zod",
 ];
 
 const missingDependencies = requiredDependencies.filter(
-  (dependency) =>
-    !packageJson.dependencies?.[dependency]
+  (dependency) => !packageJson.dependencies?.[dependency],
 );
 
 if (missingDependencies.length > 0) {
-  console.error(
-    `Missing dependencies: ${missingDependencies.join(", ")}`
-  );
+  console.error(`Missing dependencies: ${missingDependencies.join(", ")}`);
   process.exit(1);
 }
 

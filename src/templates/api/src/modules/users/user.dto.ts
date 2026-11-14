@@ -1,7 +1,4 @@
-import type {
-  User,
-  UserRole
-} from "@prisma/client";
+import type { User, UserRole } from "@prisma/client";
 
 export type PublicUserDto = {
   id: string;
@@ -15,13 +12,8 @@ export type PublicUserDto = {
 export function toPublicUserDto(
   user: Pick<
     User,
-    | "id"
-    | "email"
-    | "name"
-    | "role"
-    | "createdAt"
-    | "updatedAt"
-  >
+    "id" | "email" | "name" | "role" | "createdAt" | "updatedAt"
+  >,
 ): PublicUserDto {
   return {
     id: user.id,
@@ -29,6 +21,6 @@ export function toPublicUserDto(
     name: user.name,
     role: user.role,
     createdAt: user.createdAt,
-    updatedAt: user.updatedAt
+    updatedAt: user.updatedAt,
   };
 }

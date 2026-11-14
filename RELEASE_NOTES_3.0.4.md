@@ -37,6 +37,15 @@
 - Hashes managed files in fixed 64 KiB chunks, records the file-byte cost and drift-report sorting in the README, and reuses one operation list while rendering OpenAPI client sections.
 - Adds structural tests for 10,000 service vertices, a 12,000-node extension chain, 24 MiB file hashing and descriptor cleanup. The issue #37 benchmark records graph/hash comparisons, process resource measurements and a V8 CPU profile in `docs/benchmarks/issue-37-complexity.md`.
 
+## Release qualification and controls (issues #38–#39)
+
+- Adds the full release qualification harness and measured 250,000-file drift, graph, mutation, recovery, upgrade, packed CLI and generated API/PostgreSQL workloads. See [`docs/benchmarks/issue-38-qualification.md`](docs/benchmarks/issue-38-qualification.md) and the raw JSON. Measurements are single-host diagnostics; they are not performance targets or guarantees.
+- Matched CLI runs on v3.0.0 commit `f76996cc0c3d125abcb1e6f998d2cc037c02b140` and the v3.0.4 candidate show higher startup and generation times in this sample. The candidate template contains 111 files versus 71 in v3.0.0, so raw generation totals are not normalized.
+- Adds the issues #30–#39 completion ledger and compatibility policy in `docs/release/ISSUES_30_39.md` and `docs/COMPATIBILITY.md`.
+- Adds Prettier, SBOM, Windows portability and CodeQL release/CI checks. npm publishing is restricted to a manually dispatched workflow on `main` with `authorize_publication=true` and the protected `npm-publish` environment.
+- Fixes generated Compose and Render project-name placeholders and uses a Compose reset override to remove the development PostgreSQL host port from production. The local generated production image now passes its container health check and PostgreSQL readiness request.
+- Local combined `release:check` passes on Node 24.22.3 and 26.13.1. The production Docker image builds and passes health/readiness checks. GitHub PR review and CI remain to be verified on the pushed head; this release is still a draft.
+
 ## Verification
 
 - Root `release:check` passed on Node 24.22.3 and 26.13.1; generated API integration checks passed on PostgreSQL 16 and 17 respectively.

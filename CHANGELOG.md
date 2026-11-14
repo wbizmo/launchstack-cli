@@ -2,22 +2,36 @@
 
 ## [3.0.4] - Draft / Unreleased
 
+### Qualification and release controls (issues #38–#39)
+
+- Add a repeatable cross-system qualification suite for drift scanning through 250,000 files, dense capability graphs, mutation/recovery, upgrade plans, packed CLI behavior and generated PostgreSQL API workloads. Results and environment limitations are recorded in `docs/benchmarks/issue-38-qualification.md` and its JSON companion.
+- Fix generated Compose and Render YAML project-name placeholders and reset development PostgreSQL host-port mappings in production Compose; Docker smoke now builds the generated production image and checks image health plus PostgreSQL readiness.
+- The matched v3.0.0 / v3.0.4 CLI measurements show higher candidate startup and total generation times on this run; the candidate template is larger, and no general speedup is claimed.
+- Add a v3.0.4 issue ledger and compatibility/migration table, including the Node 20 support break, Prisma 6 compatibility and the explicit v2.0.0-to-v3.0.0 project migration edge.
+- Extend the release gate with Prettier, CycloneDX production SBOM validation and Windows portability CI; add CodeQL security analysis.
+- Restrict npm publication to manual workflow dispatch on `main` with the explicit authorization input and protected `npm-publish` environment. Ordinary branch/tag pushes cannot publish.
+- Local #38 qualification completed with zero benchmark errors. Combined `release:check` passes on Node 24.22.3 and 26.13.1; generated production Docker smoke passes. GitHub PR review/CI and publication remain pending.
+
 ### Changed
+
 - Set the supported Node.js lines to patched Node 24.22.3 and 26.13.1; dropping Node 20 is a breaking support-policy change despite the patch version.
 - Updated generated Docker stages and CI policy to Node 24.22.3, with generated API CI testing both supported Node lines.
 - Upgraded root and generated-template Zod dependencies to 4.6.7 for the high severity advisory affecting earlier 4.x versions.
 - Require explicit CORS origins and JWT secrets in the generated production Compose configuration.
 
 ### Fixed
+
 - Copy the generated healthcheck script into the production Docker image.
 
 ### Verification
+
 - Root `release:check` passed on Node 24.22.3 with PostgreSQL 16, including 36 test files / 110 tests, production audit, packed CLI smoke, and generated API tests (8 files / 26 tests), build, and audit.
 - The same root and generated-project checks passed on Node 26.13.1; the generated API database integration suite used PostgreSQL 17.
 - A generated production Docker image passed its non-root healthcheck and `/health` request. The image was built with a BuildKit CA secret because this environment's npm proxy certificate is not in the base image store.
 - Runtime measurements are in `docs/benchmarks/issue-30-runtime.md`; they show no consistent startup speedup.
 
 ### Security and generated defaults (issue #31)
+
 - Validate and size-limit recovery journals, reject unrecognized fields and reconstruct all staging/backup paths inside `.launchstack` before recovery.
 - Keep malformed locks active, verify a lock token before release, and reject symlinked secret files/directories or permissive POSIX secret modes.
 - Give generated projects distinct JWT development secrets, loopback host/origin defaults, and loopback Compose port bindings. Production Compose requires explicit origin and JWT settings.
@@ -25,6 +39,7 @@
 - Security regression checks passed: lint, strict typecheck and 4 focused files / 17 tests.
 
 ### Atomic lifecycle mutations (issue #32)
+
 - Add a versioned prepared/committing/committed journal, file and directory flushes, compare-and-swap preconditions, overlap rejection, process-start lock identity and bounded lock waiting.
 - Recover uncommitted plans idempotently; committed plans retain the complete new state while cleanup can resume.
 - Batch multi-capability reconciliation installs into one package, manifest, state and generated-file transaction.
@@ -33,6 +48,7 @@
 - The full `release:check` also passed on Node 24.22.3 with PostgreSQL 16: 36 files / 119 tests, production audit, packed artifact smoke and generated API PostgreSQL checks (8 files / 26 tests), build and audit.
 
 ### Versioned project upgrades (issue #33)
+
 - Register the explicit template edge 2.0.0 → 3.0.0 and reject unsupported intermediate versions rather than skipping them.
 - Use TypeScript syntax trees to place missing integration imports and calls while retaining user statements and comments.
 - Record LaunchStack-owned and shared integration ownership in state, including the migration base hash for shared files.
@@ -41,6 +57,7 @@
 - Measured clean v2-to-v3 plans with 100 / 1,000 / 10,000 tracked files against v3.0.0; timing and memory increases are recorded in `docs/benchmarks/issue-33-upgrades.md`.
 
 ### Capability wiring (issue #34)
+
 - Assemble generated Compose service fragments into `docker-compose.launchstack.yml`, validate the merged structure against the project's base Compose services, and load it for `launchstack dev` with health-aware `docker compose up --wait`.
 - Resolve package and script changes with npm in a temporary directory and commit `package.json` plus the matching `package-lock.json` in the same recoverable project transaction. `npm ci` succeeds immediately after adding capabilities.
 - Generate a runnable BullMQ worker and a scheduler with error handling and graceful signal shutdown. Redis, queue and cron are marked complete local integrations; OAuth, storage, observability, WebSocket, email and webhook entries are explicitly identified as helper-only.
@@ -48,6 +65,7 @@
 - Verified packed CLI capability addition, lockfile installation, Compose validation, Redis health/readiness and a real BullMQ job roundtrip. The scheduler emitted repeated ticks and stopped on SIGTERM.
 
 ### Local orchestration and previews (issue #35)
+
 - Use project and stage specific Compose namespaces, allocate loopback ports, and wait for Compose health checks plus API, worker and scheduler HTTP readiness.
 - Keep development migrations on loopback, add guarded local reset and seed scripts, and report structured service states.
 - Add an optional generic local HTTP mock endpoint for development adapters; it clearly identifies itself as a stub and does not claim provider fidelity.

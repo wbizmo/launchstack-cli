@@ -1,12 +1,22 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { addCommand } from "./commands/add";
-import { applyCommand, diffCommand, planCommand, reconcileCommand, upgradeCommand } from "./commands/project";
+import {
+  applyCommand,
+  diffCommand,
+  planCommand,
+  reconcileCommand,
+  upgradeCommand,
+} from "./commands/project";
 import { auditCommand } from "./commands/audit";
 import { clientCommand } from "./commands/client-generate";
 import { createCommand } from "./commands/create";
 import { deployCommand } from "./commands/deploy";
-import { destroyCommand, previewCommand, stageCommand } from "./commands/stages";
+import {
+  destroyCommand,
+  previewCommand,
+  stageCommand,
+} from "./commands/stages";
 import { devCommand } from "./commands/dev";
 import { doctorCommand } from "./commands/doctor";
 import { dockerCommand } from "./commands/docker";
@@ -26,7 +36,9 @@ import { currentLaunchStackVersion } from "./version";
 const program = new Command();
 program
   .name("launchstack")
-  .description("Backend API scaffolding and lifecycle platform for production TypeScript services")
+  .description(
+    "Backend API scaffolding and lifecycle platform for production TypeScript services",
+  )
   .version(currentLaunchStackVersion());
 
 program.addCommand(createCommand);

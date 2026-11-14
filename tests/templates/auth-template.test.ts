@@ -1,16 +1,8 @@
-import {
-  existsSync,
-  readFileSync
-} from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const templateRoot = resolve(
-  process.cwd(),
-  "src",
-  "templates",
-  "api"
-);
+const templateRoot = resolve(process.cwd(), "src", "templates", "api");
 
 describe("JWT authentication template", () => {
   it("contains authentication files", () => {
@@ -21,40 +13,33 @@ describe("JWT authentication template", () => {
       "src/modules/auth/auth.schemas.ts",
       "src/modules/auth/auth.service.ts",
       "src/modules/auth/auth.types.ts",
-      "src/types/jwt.d.ts"
+      "src/types/jwt.d.ts",
     ];
 
     for (const file of requiredFiles) {
       expect(
         existsSync(resolve(templateRoot, file)),
-        `Missing authentication file: ${file}`
+        `Missing authentication file: ${file}`,
       ).toBe(true);
     }
   });
 
   it("declares authentication dependencies", () => {
     const packageJson = JSON.parse(
-      readFileSync(
-        resolve(templateRoot, "package.json"),
-        "utf8"
-      )
+      readFileSync(resolve(templateRoot, "package.json"), "utf8"),
     ) as {
       dependencies: Record<string, string>;
     };
 
-    expect(
-      packageJson.dependencies["@fastify/jwt"]
-    ).toBeDefined();
+    expect(packageJson.dependencies["@fastify/jwt"]).toBeDefined();
 
-    expect(
-      packageJson.dependencies.bcryptjs
-    ).toBeDefined();
+    expect(packageJson.dependencies.bcryptjs).toBeDefined();
   });
 
   it("contains role and refresh-token models", () => {
     const schema = readFileSync(
       resolve(templateRoot, "prisma/schema.prisma"),
-      "utf8"
+      "utf8",
     );
 
     expect(schema).toContain("enum UserRole");
@@ -64,11 +49,8 @@ describe("JWT authentication template", () => {
 
   it("registers authentication routes", () => {
     const routes = readFileSync(
-      resolve(
-        templateRoot,
-        "src/modules/auth/auth.routes.ts"
-      ),
-      "utf8"
+      resolve(templateRoot, "src/modules/auth/auth.routes.ts"),
+      "utf8",
     );
 
     expect(routes).toContain('"/register"');

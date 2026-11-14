@@ -5,7 +5,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
-  writeFileSync
+  writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -13,21 +13,21 @@ import { randomUUID } from "node:crypto";
 export function atomicWriteText(
   path: string,
   content: string,
-  mode?: number
+  mode?: number,
 ): void {
   const directory = dirname(path);
   mkdirSync(directory, { recursive: true });
 
   const temporaryPath = join(
     directory,
-    `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`
+    `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`,
   );
 
   try {
     writeFileSync(temporaryPath, content, {
       encoding: "utf8",
       flag: "wx",
-      ...(mode === undefined ? {} : { mode })
+      ...(mode === undefined ? {} : { mode }),
     });
 
     if (mode !== undefined) {
@@ -46,10 +46,7 @@ export function atomicWriteText(
   }
 }
 
-export function readJsonFile<T>(
-  path: string,
-  fallback: T
-): T {
+export function readJsonFile<T>(path: string, fallback: T): T {
   if (!existsSync(path)) {
     return fallback;
   }

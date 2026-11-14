@@ -4,10 +4,10 @@ The CLI package version, generated template version and state schema version are
 
 ## Supported migration edges
 
-| From template | To template | Behavior |
-|---|---|---|
-| 2.0.0 | 3.0.0 | Create missing generated registries, add route/capability integrations through TypeScript syntax trees, and update project/state metadata in one transaction. |
-| 3.0.0 | 3.0.0 | No template migration; update CLI metadata only when it is stale. |
+| From template | To template | Behavior                                                                                                                                                      |
+| ------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.0.0         | 3.0.0       | Create missing generated registries, add route/capability integrations through TypeScript syntax trees, and update project/state metadata in one transaction. |
+| 3.0.0         | 3.0.0       | No template migration; update CLI metadata only when it is stale.                                                                                             |
 
 No migration is inferred for intermediate or unknown template versions. Legacy projects without `launchstack.json` are identified from their package version and architecture files; a legacy package version such as 2.1.3 selects the v2.0.0 template edge, because package version is not a template schema version.
 

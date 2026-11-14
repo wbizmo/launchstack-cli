@@ -6,6 +6,6 @@ export const sensiblePlugin = fp(
     await app.register(sensible);
   },
   {
-    name: "sensible"
-  }
+    name: "sensible",
+  },
 );

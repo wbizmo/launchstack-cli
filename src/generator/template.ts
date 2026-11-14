@@ -3,7 +3,7 @@ import {
   readFileSync,
   readdirSync,
   statSync,
-  writeFileSync
+  writeFileSync,
 } from "node:fs";
 import { basename, extname, join } from "node:path";
 
@@ -25,7 +25,7 @@ const TEXT_EXTENSIONS = new Set([
   ".tsx",
   ".txt",
   ".yaml",
-  ".yml"
+  ".yml",
 ]);
 
 const TEXT_FILENAMES = new Set([
@@ -35,30 +35,30 @@ const TEXT_FILENAMES = new Set([
   ".gitignore",
   ".npmrc",
   "Dockerfile",
-  "LICENSE"
+  "LICENSE",
 ]);
 
 export function renderTemplate(
   content: string,
-  variables: TemplateVariables
+  variables: TemplateVariables,
 ): string {
-  return content.replace(
-    /{{([A-Z0-9_]+)}}/g,
-    (token, key: string) =>
-      Object.prototype.hasOwnProperty.call(variables, key)
-        ? variables[key] ?? token
-        : token
+  return content.replace(/{{([A-Z0-9_]+)}}/g, (token, key: string) =>
+    Object.prototype.hasOwnProperty.call(variables, key)
+      ? (variables[key] ?? token)
+      : token,
   );
 }
 
 export function isTextTemplateFile(path: string): boolean {
   const name = basename(path);
-  return TEXT_FILENAMES.has(name) || TEXT_EXTENSIONS.has(extname(name).toLowerCase());
+  return (
+    TEXT_FILENAMES.has(name) || TEXT_EXTENSIONS.has(extname(name).toLowerCase())
+  );
 }
 
 export function renderDirectory(
   directory: string,
-  variables: TemplateVariables
+  variables: TemplateVariables,
 ): void {
   if (!existsSync(directory)) {
     throw new Error(`Directory not found: ${directory}`);

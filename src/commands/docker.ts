@@ -1,10 +1,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { Command } from "commander";
 import { readConfig } from "../config";
-import {
-  renderDockerfile,
-  renderDockerIgnore
-} from "../docker-assets";
+import { renderDockerfile, renderDockerIgnore } from "../docker-assets";
 
 function writeFileIfAllowed(path: string, content: string, force: boolean) {
   if (existsSync(path) && !force) {
@@ -16,12 +13,15 @@ function writeFileIfAllowed(path: string, content: string, force: boolean) {
   console.log(`Created ${path}`);
 }
 
-export const dockerCommand = new Command("docker")
-  .description("Generate Docker deployment files");
+export const dockerCommand = new Command("docker").description(
+  "Generate Docker deployment files",
+);
 
 dockerCommand
   .command("init")
-  .description("Create hardened Dockerfile, .dockerignore, and docker-compose.yml")
+  .description(
+    "Create hardened Dockerfile, .dockerignore, and docker-compose.yml",
+  )
   .option("-f, --force", "Overwrite existing Docker files")
   .action((options) => {
     const config = readConfig();
@@ -33,7 +33,7 @@ dockerCommand
       buildCommand: config.buildCommand,
       outputDirectory: config.outputDirectory,
       hasLockfile,
-      prisma
+      prisma,
     });
 
     const compose = `services:

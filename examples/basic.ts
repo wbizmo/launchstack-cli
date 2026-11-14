@@ -2,7 +2,7 @@ import { LaunchStackClient } from "../src";
 
 const client = new LaunchStackClient({
   apiKey: "ls_test_your_api_key",
-  baseUrl: "https://api.launchstack.dev/v1"
+  baseUrl: "https://api.launchstack.dev/v1",
 });
 
 async function main() {

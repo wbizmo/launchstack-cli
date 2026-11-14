@@ -1,10 +1,6 @@
 import { Command } from "commander";
 import { readConfig, writeConfig } from "../config";
-import {
-  isProviderId,
-  providerHelpText,
-  PROVIDERS
-} from "../providers";
+import { isProviderId, providerHelpText, PROVIDERS } from "../providers";
 
 export const providerCommand = new Command("provider")
   .description("View or update the LaunchStack deployment provider")
@@ -19,7 +15,7 @@ export const providerCommand = new Command("provider")
         console.log(
           definition.remoteDeploymentSupported
             ? "Remote deployment is supported by LaunchStack."
-            : "LaunchStack currently prepares artifacts/presets for this provider; it does not perform the remote deployment."
+            : "LaunchStack currently prepares artifacts/presets for this provider; it does not perform the remote deployment.",
         );
         return;
       }

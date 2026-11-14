@@ -19,7 +19,7 @@ describe("health endpoint", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: "/health"
+      url: "/health",
     });
 
     expect(response.statusCode).toBe(200);
@@ -46,14 +46,14 @@ describe("health endpoint", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: "/missing"
+      url: "/missing",
     });
 
     expect(response.statusCode).toBe(404);
 
     expect(response.json()).toMatchObject({
       statusCode: 404,
-      error: "RESOURCE_NOT_FOUND"
+      error: "RESOURCE_NOT_FOUND",
     });
   });
 });

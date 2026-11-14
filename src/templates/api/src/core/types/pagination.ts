@@ -12,15 +12,12 @@ export type PaginationMeta = {
 
 export function createPaginationMeta(
   input: PaginationInput,
-  total: number
+  total: number,
 ): PaginationMeta {
   return {
     page: input.page,
     limit: input.limit,
     total,
-    totalPages:
-      total === 0
-        ? 0
-        : Math.ceil(total / input.limit)
+    totalPages: total === 0 ? 0 : Math.ceil(total / input.limit),
   };
 }

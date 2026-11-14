@@ -8,11 +8,11 @@ The generated-project integration ran on Node.js 24.22.3 and npm 11.19.1 in Linu
 
 ## Observed database work
 
-| Operation | Observed statements | Result |
-| --- | ---: | --- |
+| Operation                                |                          Observed statements | Result                                                                                                         |
+| ---------------------------------------- | -------------------------------------------: | -------------------------------------------------------------------------------------------------------------- |
 | Owned and cross-owner concurrent updates | 2 `UPDATE` statements, 0 pre-read statements | One owned update succeeded; the cross-owner update returned no row. Both updates included the owner predicate. |
-| Each pagination request | 1 bounded `SELECT` | Uses `take = limit + 1`, then returns at most `limit` rows and computes `hasNext`. |
-| Keyset order | `(createdAt DESC, id DESC)` | Five tied timestamps paged without duplication; deleting a row between pages did not return the deleted row. |
+| Each pagination request                  |                           1 bounded `SELECT` | Uses `take = limit + 1`, then returns at most `limit` rows and computes `hasNext`.                             |
+| Keyset order                             |                  `(createdAt DESC, id DESC)` | Five tied timestamps paged without duplication; deleting a row between pages did not return the deleted row.   |
 
 The generated Prisma model adds `@@index([ownerId, createdAt, id])`. Direct owner-scoped reads use one `findFirst` query, and deletes use one `deleteMany` mutation. The list response contains `items`, `hasNext` and `nextCursor`; the default limit is 50 and the accepted range is 1–100. Cursor input is limited to 256 characters and malformed cursors return a 400 error.
 

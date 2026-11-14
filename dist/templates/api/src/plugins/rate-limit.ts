@@ -9,12 +9,12 @@ export const rateLimitPlugin = fp(
         statusCode: 429,
         error: "Too Many Requests",
         message: `Rate limit exceeded, retry in ${context.after}`,
-        requestId: request.id
-      })
+        requestId: request.id,
+      }),
     });
   },
   {
     name: "rate-limit",
-    dependencies: ["config"]
-  }
+    dependencies: ["config"],
+  },
 );

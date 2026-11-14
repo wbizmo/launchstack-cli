@@ -13,7 +13,7 @@ export type DockerAssetOptions = {
 
 function packageInstallCommand(
   hasLockfile: boolean,
-  productionOnly = false
+  productionOnly = false,
 ): string {
   if (hasLockfile) {
     return productionOnly ? "npm ci --omit=dev" : "npm ci";
@@ -109,11 +109,17 @@ export function writeCanonicalDockerAssets(
   options: Omit<DockerAssetOptions, "hasLockfile" | "prisma"> & {
     hasLockfile?: boolean;
     prisma?: boolean;
-  }
+  },
 ): void {
-  const hasLockfile = options.hasLockfile ?? existsSync(join(projectDirectory, "package-lock.json"));
-  const prisma = options.prisma ?? existsSync(join(projectDirectory, "prisma", "schema.prisma"));
-  const healthcheck = existsSync(join(projectDirectory, "scripts", "healthcheck.cjs"));
+  const hasLockfile =
+    options.hasLockfile ??
+    existsSync(join(projectDirectory, "package-lock.json"));
+  const prisma =
+    options.prisma ??
+    existsSync(join(projectDirectory, "prisma", "schema.prisma"));
+  const healthcheck = existsSync(
+    join(projectDirectory, "scripts", "healthcheck.cjs"),
+  );
 
   writeFileSync(
     join(projectDirectory, "Dockerfile"),
@@ -121,11 +127,8 @@ export function writeCanonicalDockerAssets(
       ...options,
       hasLockfile,
       prisma,
-      healthcheck
-    })
+      healthcheck,
+    }),
   );
-  writeFileSync(
-    join(projectDirectory, ".dockerignore"),
-    renderDockerIgnore()
-  );
+  writeFileSync(join(projectDirectory, ".dockerignore"), renderDockerIgnore());
 }

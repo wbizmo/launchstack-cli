@@ -198,6 +198,10 @@ Run `npm run bench:complexity` for the deterministic graph and file-hash cases. 
 
 Run `npm run check` for normal changes and `npm run release:check` for release-affecting changes. Do not merge a release PR until its exact head is green.
 
+The issue #38 qualification harness is run separately with `npm run bench:qualification`. It requires built CLI artifacts, PostgreSQL in the `launchstack-smoke-postgres` container, temporary disk space for up to 250,000 tracked files, and the configured npm cache. It emits machine-readable JSON to stdout and cleans its temporary database and project trees. To compare against the published v3.0.0 source, set `LAUNCHSTACK_BENCH_BASELINE_REPO` to a locally built v3.0.0 checkout. Recorded measurements and limitations are in [`docs/benchmarks/issue-38-qualification.md`](docs/benchmarks/issue-38-qualification.md).
+
+See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for the Node runtime, generated-project metadata, Prisma migration and public behavior policy. The complete issues #30–#39 release ledger is [`docs/release/ISSUES_30_39.md`](docs/release/ISSUES_30_39.md). Release checks include Prettier, ESLint, strict typechecking, tests, reproducible distribution files, npm audit, CycloneDX SBOM validation and packed/generated-project smoke tests. GitHub Linux CI builds and runs the generated production image, then checks its health and PostgreSQL readiness endpoints; local Docker execution requires a working Docker daemon.
+
 ## Author
 
 **Williams Ashibuogwu** — [GitHub](https://github.com/wbizmo) · [LinkedIn](https://linkedin.com/in/wbizmo) · [npm](https://www.npmjs.com/package/launchstack-cli)

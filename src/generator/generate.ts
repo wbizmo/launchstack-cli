@@ -8,15 +8,10 @@ import {
   readdirSync,
   renameSync,
   rmSync,
-  writeFileSync
+  writeFileSync,
 } from "node:fs";
 import { randomBytes, randomUUID } from "node:crypto";
-import {
-  basename,
-  dirname,
-  join,
-  resolve
-} from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { writeCanonicalDockerAssets } from "../docker-assets";
 import { copyDirectory, ensureDestinationAvailable } from "./files";
 import { toDisplayName, validateProjectName } from "./names";
@@ -27,7 +22,7 @@ import type { GenerateProjectOptions } from "./types";
 function commitStagedProject(
   stagedDirectory: string,
   destinationDirectory: string,
-  overwrite: boolean
+  overwrite: boolean,
 ): void {
   if (!existsSync(destinationDirectory)) {
     renameSync(stagedDirectory, destinationDirectory);
@@ -38,7 +33,7 @@ function commitStagedProject(
     if (readdirSync(destinationDirectory).length === 0) {
       rmSync(destinationDirectory, {
         recursive: true,
-        force: true
+        force: true,
       });
       renameSync(stagedDirectory, destinationDirectory);
       return;
@@ -49,13 +44,13 @@ function commitStagedProject(
 
   if (resolve(destinationDirectory) === resolve(process.cwd())) {
     throw new Error(
-      "Refusing to replace the current working directory with --force. Choose a parent directory instead."
+      "Refusing to replace the current working directory with --force. Choose a parent directory instead.",
     );
   }
 
   const backupDirectory = join(
     dirname(destinationDirectory),
-    `.${basename(destinationDirectory)}.launchstack-backup-${randomUUID()}`
+    `.${basename(destinationDirectory)}.launchstack-backup-${randomUUID()}`,
   );
 
   renameSync(destinationDirectory, backupDirectory);
@@ -64,13 +59,13 @@ function commitStagedProject(
     renameSync(stagedDirectory, destinationDirectory);
     rmSync(backupDirectory, {
       recursive: true,
-      force: true
+      force: true,
     });
   } catch (error) {
     if (existsSync(destinationDirectory)) {
       rmSync(destinationDirectory, {
         recursive: true,
-        force: true
+        force: true,
       });
     }
 
@@ -92,34 +87,39 @@ export function generateProject(options: GenerateProjectOptions): string {
   mkdirSync(parentDirectory, { recursive: true });
 
   const stagedDirectory = mkdtempSync(
-    join(parentDirectory, `.${basename(destinationDirectory)}.launchstack-stage-`)
+    join(
+      parentDirectory,
+      `.${basename(destinationDirectory)}.launchstack-stage-`,
+    ),
   );
 
   try {
     if (overwrite && existsSync(destinationDirectory)) {
       cpSync(destinationDirectory, stagedDirectory, {
         recursive: true,
-        force: true
+        force: true,
       });
     }
 
-    copyDirectory(
-      templateDirectory,
-      stagedDirectory,
-      overwrite
-    );
+    copyDirectory(templateDirectory, stagedDirectory, overwrite);
 
     renderDirectory(stagedDirectory, {
       PROJECT_NAME: options.projectName,
-      PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
+      PROJECT_DISPLAY_NAME: toDisplayName(options.projectName),
     });
 
     if (options.template === "api") {
       const environmentPath = join(stagedDirectory, ".env");
       const environment = readFileSync(environmentPath, "utf8");
       const securedEnvironment = environment
-        .replace(/^JWT_ACCESS_SECRET=.*$/m, `JWT_ACCESS_SECRET=${randomBytes(48).toString("base64url")}`)
-        .replace(/^JWT_REFRESH_SECRET=.*$/m, `JWT_REFRESH_SECRET=${randomBytes(48).toString("base64url")}`);
+        .replace(
+          /^JWT_ACCESS_SECRET=.*$/m,
+          `JWT_ACCESS_SECRET=${randomBytes(48).toString("base64url")}`,
+        )
+        .replace(
+          /^JWT_REFRESH_SECRET=.*$/m,
+          `JWT_REFRESH_SECRET=${randomBytes(48).toString("base64url")}`,
+        );
       writeFileSync(environmentPath, securedEnvironment, { mode: 0o600 });
       if (process.platform !== "win32") chmodSync(environmentPath, 0o600);
     }
@@ -131,20 +131,16 @@ export function generateProject(options: GenerateProjectOptions): string {
         hasLockfile: true,
         prisma: true,
         startCommand: ["node", "dist/server.js"],
-        port: 3000
+        port: 3000,
       });
     }
 
-    commitStagedProject(
-      stagedDirectory,
-      destinationDirectory,
-      overwrite
-    );
+    commitStagedProject(stagedDirectory, destinationDirectory, overwrite);
   } catch (error) {
     if (existsSync(stagedDirectory)) {
       rmSync(stagedDirectory, {
         recursive: true,
-        force: true
+        force: true,
       });
     }
 

@@ -11,20 +11,30 @@ describe("supported Node runtime policy", () => {
     for (const path of ["package.json", "src/templates/api/package.json"]) {
       expect(JSON.parse(read(path)).engines.node).toBe(policy);
     }
-    for (const path of ["package-lock.json", "src/templates/api/package-lock.json"]) {
+    for (const path of [
+      "package-lock.json",
+      "src/templates/api/package-lock.json",
+    ]) {
       expect(JSON.parse(read(path)).packages[""].engines.node).toBe(policy);
     }
   });
 
   it("tests both supported Node lines and removes Node 20 from active builds", () => {
-    for (const path of [".github/workflows/ci.yml", "src/templates/api/.github/workflows/ci.yml"]) {
+    for (const path of [
+      ".github/workflows/ci.yml",
+      "src/templates/api/.github/workflows/ci.yml",
+    ]) {
       const workflow = read(path);
       expect(workflow).toContain("24.22.3");
       expect(workflow).toContain("26.13.1");
       expect(workflow).not.toMatch(/node-version:\s*20\b/);
     }
 
-    const docker = ["Dockerfile", "src/templates/api/Dockerfile", "src/docker-assets.ts"]
+    const docker = [
+      "Dockerfile",
+      "src/templates/api/Dockerfile",
+      "src/docker-assets.ts",
+    ]
       .map(read)
       .join("\n");
     expect(docker).toContain("node:24.22.3-alpine@sha256:");

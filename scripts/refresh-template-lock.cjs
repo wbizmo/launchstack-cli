@@ -4,7 +4,7 @@ const {
   mkdtempSync,
   readFileSync,
   rmSync,
-  writeFileSync
+  writeFileSync,
 } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
@@ -19,12 +19,12 @@ function run(command, args, cwd) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
-    stdio: "pipe"
+    stdio: "pipe",
   });
 
   if (result.status !== 0) {
     throw new Error(
-      `${command} ${args.join(" ")} failed.\n${result.stdout || ""}\n${result.stderr || ""}`
+      `${command} ${args.join(" ")} failed.\n${result.stdout || ""}\n${result.stderr || ""}`,
     );
   }
 }
@@ -38,12 +38,18 @@ try {
 
   run(
     npm,
-    ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"],
-    tempTemplate
+    [
+      "install",
+      "--package-lock-only",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+    ],
+    tempTemplate,
   );
 
   const lock = JSON.parse(
-    readFileSync(join(tempTemplate, "package-lock.json"), "utf8")
+    readFileSync(join(tempTemplate, "package-lock.json"), "utf8"),
   );
   lock.name = "{{PROJECT_NAME}}";
   if (lock.packages && lock.packages[""]) {
@@ -52,7 +58,7 @@ try {
 
   writeFileSync(
     join(template, "package-lock.json"),
-    `${JSON.stringify(lock, null, 2)}\n`
+    `${JSON.stringify(lock, null, 2)}\n`,
   );
   console.log("Generated src/templates/api/package-lock.json");
 } finally {

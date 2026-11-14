@@ -59,7 +59,7 @@ import {
   toDisplayName,
   validateProjectName,
   validateStageName
-} from "./chunk-WNIN57JZ.mjs";
+} from "./chunk-G6BWCO3K.mjs";
 
 // src/errors.ts
 var LaunchStackError = class extends Error {
@@ -77,15 +77,21 @@ function validateBaseUrl(value) {
   try {
     url = new URL(value);
   } catch {
-    throw new LaunchStackError("LaunchStack base URL must be a valid absolute URL.");
+    throw new LaunchStackError(
+      "LaunchStack base URL must be a valid absolute URL."
+    );
   }
   if (url.username || url.password) {
-    throw new LaunchStackError("LaunchStack base URL must not contain embedded credentials.");
+    throw new LaunchStackError(
+      "LaunchStack base URL must not contain embedded credentials."
+    );
   }
   const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
   const loopback = host === "localhost" || host === "127.0.0.1" || host === "::1";
   if (url.protocol !== "https:" && !(loopback && url.protocol === "http:")) {
-    throw new LaunchStackError("LaunchStack API endpoints must use HTTPS. Plain HTTP is allowed only for loopback development endpoints.");
+    throw new LaunchStackError(
+      "LaunchStack API endpoints must use HTTPS. Plain HTTP is allowed only for loopback development endpoints."
+    );
   }
   url.hash = "";
   url.search = "";
@@ -97,14 +103,18 @@ var LaunchStackClient = class {
       throw new LaunchStackError("LaunchStack API key is required.");
     }
     this.apiKey = config.apiKey;
-    this.baseUrl = validateBaseUrl(config.baseUrl ?? "https://api.launchstack.dev/v1");
+    this.baseUrl = validateBaseUrl(
+      config.baseUrl ?? "https://api.launchstack.dev/v1"
+    );
   }
   async request(path, options = {}) {
     const normalizedBase = this.baseUrl.toString().endsWith("/") ? this.baseUrl.toString() : `${this.baseUrl.toString()}/`;
     const relativePath = path.replace(/^\/+/, "");
     const target = new URL(relativePath, normalizedBase);
     if (target.origin !== this.baseUrl.origin) {
-      throw new LaunchStackError("Refusing to send LaunchStack credentials to a different origin.");
+      throw new LaunchStackError(
+        "Refusing to send LaunchStack credentials to a different origin."
+      );
     }
     const response = await fetch(target, {
       ...options,
@@ -116,7 +126,10 @@ var LaunchStackClient = class {
       }
     });
     if ([301, 302, 303, 307, 308].includes(response.status)) {
-      throw new LaunchStackError("LaunchStack API redirects are refused to prevent credential forwarding across origins.", response.status);
+      throw new LaunchStackError(
+        "LaunchStack API redirects are refused to prevent credential forwarding across origins.",
+        response.status
+      );
     }
     const data = await response.json().catch(() => null);
     if (!response.ok) {

@@ -1,9 +1,11 @@
-export const MANIFEST_SCHEMA_URL = "https://launchstack.dev/schemas/project-v1.json";
+export const MANIFEST_SCHEMA_URL =
+  "https://launchstack.dev/schemas/project-v1.json";
 export const MANIFEST_SCHEMA_VERSION = 1 as const;
 export const STATE_SCHEMA_VERSION = 1 as const;
 
 export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+  JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 export type CapabilitySelection = {
   version: string;
@@ -29,7 +31,13 @@ export type ProjectManifest = {
   audit?: { suppressions: AuditSuppression[] };
 };
 
-export type ManagedFileState = { owner: string; sha256: string; version: string; ownership?: "launchstack" | "shared" | "extension"; migrationBaseSha256?: string };
+export type ManagedFileState = {
+  owner: string;
+  sha256: string;
+  version: string;
+  ownership?: "launchstack" | "shared" | "extension";
+  migrationBaseSha256?: string;
+};
 export type InstalledExtensionState = {
   id: string;
   version: string;
@@ -84,7 +92,16 @@ export type PlannedDelete = {
 export type FileMutation = PlannedWrite | PlannedDelete;
 export type LifecycleAction = {
   id: string;
-  kind: "install" | "upgrade" | "remove" | "write" | "delete" | "package" | "environment" | "compose" | "stage";
+  kind:
+    | "install"
+    | "upgrade"
+    | "remove"
+    | "write"
+    | "delete"
+    | "package"
+    | "environment"
+    | "compose"
+    | "stage";
   target: string;
   detail: string;
   destructive?: boolean;
@@ -96,6 +113,18 @@ export type LifecyclePlan = {
   conflicts: string[];
 };
 
-export function emptyProjectState(templateVersion: string, cliVersion: string, now = new Date().toISOString()): ProjectState {
-  return { stateVersion: STATE_SCHEMA_VERSION, templateVersion, cliVersion, managedFiles: {}, extensions: {}, stages: {}, updatedAt: now };
+export function emptyProjectState(
+  templateVersion: string,
+  cliVersion: string,
+  now = new Date().toISOString(),
+): ProjectState {
+  return {
+    stateVersion: STATE_SCHEMA_VERSION,
+    templateVersion,
+    cliVersion,
+    managedFiles: {},
+    extensions: {},
+    stages: {},
+    updatedAt: now,
+  };
 }

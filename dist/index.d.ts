@@ -479,7 +479,7 @@ declare function loadOpenApiSource(source: string): Promise<OpenApiDocument>;
 declare function generateTypeScriptClient(document: OpenApiDocument, target?: ClientTarget): string;
 
 declare const AUDIT_SEVERITIES: readonly ["info", "low", "medium", "high", "critical"];
-type AuditSeverity = typeof AUDIT_SEVERITIES[number];
+type AuditSeverity = (typeof AUDIT_SEVERITIES)[number];
 type AuditFinding = {
     ruleId: string;
     severity: AuditSeverity;

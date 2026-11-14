@@ -1,8 +1,4 @@
-import {
-  describe,
-  expect,
-  it
-} from "vitest";
+import { describe, expect, it } from "vitest";
 import { doctorCommand } from "../../src/commands/doctor";
 
 describe("doctor command", () => {
@@ -11,9 +7,7 @@ describe("doctor command", () => {
   });
 
   it("supports JSON output", () => {
-    const flags = doctorCommand.options.map(
-      (option) => option.flags
-    );
+    const flags = doctorCommand.options.map((option) => option.flags);
 
     expect(flags).toContain("--json");
   });

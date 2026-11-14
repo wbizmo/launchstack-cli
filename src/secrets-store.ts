@@ -1,26 +1,22 @@
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+} from "node:fs";
 import { resolve } from "node:path";
 import { atomicWriteText } from "./storage";
 
 const STORE_DIR = ".launchstack";
 const SECRETS_FILE = "secrets.json";
 const SECRET_MODE = 0o600;
-const RESERVED_KEYS = new Set([
-  "__proto__",
-  "constructor",
-  "prototype"
-]);
+const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 export type SecretStore = Record<string, string>;
 
-export function getSecretsPath(
-  projectDirectory = process.cwd()
-): string {
-  return resolve(
-    projectDirectory,
-    STORE_DIR,
-    SECRETS_FILE
-  );
+export function getSecretsPath(projectDirectory = process.cwd()): string {
+  return resolve(projectDirectory, STORE_DIR, SECRETS_FILE);
 }
 
 export function validateSecretKey(key: string): string {
@@ -31,32 +27,36 @@ export function validateSecretKey(key: string): string {
     RESERVED_KEYS.has(normalized)
   ) {
     throw new Error(
-      "Secret keys must start with a letter or underscore, contain only letters, numbers, underscores, dots, or hyphens, and must not use reserved object keys."
+      "Secret keys must start with a letter or underscore, contain only letters, numbers, underscores, dots, or hyphens, and must not use reserved object keys.",
     );
   }
 
   return normalized;
 }
 
-export function readSecrets(
-  projectDirectory = process.cwd()
-): SecretStore {
+export function readSecrets(projectDirectory = process.cwd()): SecretStore {
   const path = getSecretsPath(projectDirectory);
   const directory = resolve(projectDirectory, STORE_DIR);
   if (existsSync(directory)) {
     const directoryStat = lstatSync(directory);
     if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
-      throw new Error("LaunchStack secrets directory must be a real directory.");
+      throw new Error(
+        "LaunchStack secrets directory must be a real directory.",
+      );
     }
   }
   let parsed: unknown = {};
   if (existsSync(path)) {
     const secretStat = lstatSync(path);
     if (secretStat.isSymbolicLink() || !secretStat.isFile()) {
-      throw new Error("secrets.json must be a regular file, not a link or special file.");
+      throw new Error(
+        "secrets.json must be a regular file, not a link or special file.",
+      );
     }
     if (process.platform !== "win32" && (secretStat.mode & 0o077) !== 0) {
-      throw new Error("secrets.json permissions are too broad; expected owner-only access.");
+      throw new Error(
+        "secrets.json permissions are too broad; expected owner-only access.",
+      );
     }
     try {
       parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
@@ -65,11 +65,7 @@ export function readSecrets(
     }
   }
 
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    Array.isArray(parsed)
-  ) {
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("secrets.json must contain a JSON object.");
   }
 
@@ -90,7 +86,7 @@ export function readSecrets(
 
 export function writeSecrets(
   secrets: SecretStore,
-  projectDirectory = process.cwd()
+  projectDirectory = process.cwd(),
 ): void {
   const storeDirectory = resolve(projectDirectory, STORE_DIR);
   mkdirSync(storeDirectory, { recursive: true, mode: 0o700 });
@@ -103,14 +99,14 @@ export function writeSecrets(
   atomicWriteText(
     getSecretsPath(projectDirectory),
     `${JSON.stringify(secrets, null, 2)}\n`,
-    SECRET_MODE
+    SECRET_MODE,
   );
 }
 
 export function setSecret(
   key: string,
   value: string,
-  projectDirectory = process.cwd()
+  projectDirectory = process.cwd(),
 ): void {
   const normalizedKey = validateSecretKey(key);
 
@@ -125,7 +121,7 @@ export function setSecret(
 
 export function removeSecret(
   key: string,
-  projectDirectory = process.cwd()
+  projectDirectory = process.cwd(),
 ): boolean {
   const normalizedKey = validateSecretKey(key);
   const secrets = readSecrets(projectDirectory);
@@ -139,8 +135,6 @@ export function removeSecret(
   return true;
 }
 
-export function secretStoreExists(
-  projectDirectory = process.cwd()
-): boolean {
+export function secretStoreExists(projectDirectory = process.cwd()): boolean {
   return existsSync(getSecretsPath(projectDirectory));
 }

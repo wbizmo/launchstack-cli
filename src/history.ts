@@ -21,23 +21,14 @@ export type DeploymentRecord = {
   } | null;
 };
 
-function getHistoryPath(
-  projectDirectory = process.cwd()
-): string {
-  return resolve(
-    projectDirectory,
-    STORE_DIR,
-    HISTORY_FILE
-  );
+function getHistoryPath(projectDirectory = process.cwd()): string {
+  return resolve(projectDirectory, STORE_DIR, HISTORY_FILE);
 }
 
 export function readHistory(
-  projectDirectory = process.cwd()
+  projectDirectory = process.cwd(),
 ): DeploymentRecord[] {
-  const records = readJsonFile<unknown>(
-    getHistoryPath(projectDirectory),
-    []
-  );
+  const records = readJsonFile<unknown>(getHistoryPath(projectDirectory), []);
 
   if (!Array.isArray(records)) {
     throw new Error("history.json must contain a JSON array.");
@@ -48,17 +39,17 @@ export function readHistory(
 
 export function writeHistory(
   records: DeploymentRecord[],
-  projectDirectory = process.cwd()
+  projectDirectory = process.cwd(),
 ): void {
   atomicWriteText(
     getHistoryPath(projectDirectory),
-    `${JSON.stringify(records, null, 2)}\n`
+    `${JSON.stringify(records, null, 2)}\n`,
   );
 }
 
 export function addDeploymentRecord(
   record: DeploymentRecord,
-  projectDirectory = process.cwd()
+  projectDirectory = process.cwd(),
 ): void {
   const records = readHistory(projectDirectory);
   records.unshift(record);

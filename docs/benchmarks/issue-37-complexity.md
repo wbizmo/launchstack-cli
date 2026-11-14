@@ -16,15 +16,15 @@ The JSON report includes p50/p95 samples, process CPU time, process memory, isol
 
 ## Measured results
 
-| Workload | Prior implementation p50 / p95 | Candidate p50 / p95 |
-| --- | ---: | ---: |
-| Service scheduling, 1,001 vertices / 1,000 edges | 17.082 / 27.831 ms | 0.698 / 0.757 ms |
-| Service scheduling, 10,001 vertices / 10,000 edges | Not run for prior implementation | 19.861 / 28.227 ms |
-| Extension chain, 1,000 vertices / 999 edges | 7.537 / 19.452 ms | 0.885 / 0.966 ms |
-| Extension chain, 10,000 vertices / 9,999 edges | Not run for prior implementation | 6.605 / 8.035 ms |
-| Hash 1 MiB | 3.908 / 4.191 ms | 0.934 / 1.021 ms |
-| Hash 10 MiB | 39.977 / 43.078 ms | 7.221 / 7.485 ms |
-| Hash 50 MiB | 103.563 / 198.815 ms | 34.521 / 36.564 ms |
+| Workload                                           |   Prior implementation p50 / p95 | Candidate p50 / p95 |
+| -------------------------------------------------- | -------------------------------: | ------------------: |
+| Service scheduling, 1,001 vertices / 1,000 edges   |               17.082 / 27.831 ms |    0.698 / 0.757 ms |
+| Service scheduling, 10,001 vertices / 10,000 edges | Not run for prior implementation |  19.861 / 28.227 ms |
+| Extension chain, 1,000 vertices / 999 edges        |                7.537 / 19.452 ms |    0.885 / 0.966 ms |
+| Extension chain, 10,000 vertices / 9,999 edges     | Not run for prior implementation |    6.605 / 8.035 ms |
+| Hash 1 MiB                                         |                 3.908 / 4.191 ms |    0.934 / 1.021 ms |
+| Hash 10 MiB                                        |               39.977 / 43.078 ms |    7.221 / 7.485 ms |
+| Hash 50 MiB                                        |             103.563 / 198.815 ms |  34.521 / 36.564 ms |
 
 The isolated one-shot 50 MiB hash workers reported 130,125,824 bytes peak RSS for read-all and 77,901,824 bytes for streaming, including Node startup. Their SHA-256 digests matched. Twenty-four MiB file hashing repeated 20 times in a regression test returned the expected digest each time; Linux `/proc/self/fd` count stayed unchanged in both the test and benchmark. These measurements describe this container and these fixtures; they are not general speedup guarantees.
 

@@ -14,13 +14,13 @@ These are single-run wall-clock observations from the packed 3.0.4 candidate. Th
 
 Two separately generated projects were installed with `npm ci`, then started at the same time using the packed CLI. Both completed their local database setup and returned HTTP 200 from `/ready`. Both received SIGTERM and reported `stopped`; their LaunchStack Compose containers and networks were removed.
 
-| Observation | Result |
-| --- | ---: |
-| Time from the first infrastructure `started` event until both environments reported `ready` | 19.958 s |
-| Project A: infrastructure `started` to environment `ready` | 11.893 s |
-| Project B: infrastructure `started` to environment `ready` | 10.648 s |
-| PostgreSQL host ports | 5433, 5434 |
-| API host ports | 3000, 3001 |
+| Observation                                                                                 |     Result |
+| ------------------------------------------------------------------------------------------- | ---------: |
+| Time from the first infrastructure `started` event until both environments reported `ready` |   19.958 s |
+| Project A: infrastructure `started` to environment `ready`                                  |   11.893 s |
+| Project B: infrastructure `started` to environment `ready`                                  |   10.648 s |
+| PostgreSQL host ports                                                                       | 5433, 5434 |
+| API host ports                                                                              | 3000, 3001 |
 
 The shared port allocator serialized infrastructure startup while keeping both generated environments live at the same time. Both `/ready` probes passed.
 
@@ -28,10 +28,10 @@ The shared port allocator serialized infrastructure startup while keeping both g
 
 Two preview stages for one queue-enabled generated project were created concurrently with the packed CLI. Both Docker Compose resources reached `ready`; `launchstack stage status` reported `providerExists: true` and `providerStatus: healthy` for both, and both `/health` requests returned HTTP 200. The measured time from issuing both create commands to both results was 68.278 s. The Docker builder had cached layers from an earlier run, so this is a warm-cache observation.
 
-| Stage | Compose resource suffix | PostgreSQL host port | API host port |
-| --- | --- | ---: | ---: |
-| `preview-one` | `49b7185e` | 24017 | 46093 |
-| `preview-two` | `96ccc275` | 26278 | 42259 |
+| Stage         | Compose resource suffix | PostgreSQL host port | API host port |
+| ------------- | ----------------------- | -------------------: | ------------: |
+| `preview-one` | `49b7185e`              |                24017 |         46093 |
+| `preview-two` | `96ccc275`              |                26278 |         42259 |
 
 Redis was also healthy in both stages, published on ports 36093 and 32259 respectively.
 

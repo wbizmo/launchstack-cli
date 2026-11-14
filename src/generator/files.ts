@@ -6,21 +6,21 @@ import {
   readFileSync,
   renameSync,
   statSync,
-  unlinkSync
+  unlinkSync,
 } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 
 const RENAMED_TEMPLATE_FILES: Record<string, string> = {
-  "_gitignore": ".gitignore",
-  "_dockerignore": ".dockerignore",
-  "_npmrc": ".npmrc",
-  "_env": ".env",
-  "_env.example": ".env.example"
+  _gitignore: ".gitignore",
+  _dockerignore: ".dockerignore",
+  _npmrc: ".npmrc",
+  _env: ".env",
+  "_env.example": ".env.example",
 };
 
 export function ensureDestinationAvailable(
   destinationDirectory: string,
-  overwrite = false
+  overwrite = false,
 ): void {
   if (!existsSync(destinationDirectory)) {
     return;
@@ -30,7 +30,7 @@ export function ensureDestinationAvailable(
 
   if (contents.length > 0 && !overwrite) {
     throw new Error(
-      `Destination is not empty: ${destinationDirectory}. Use --force to overwrite it.`
+      `Destination is not empty: ${destinationDirectory}. Use --force to overwrite it.`,
     );
   }
 }
@@ -38,7 +38,7 @@ export function ensureDestinationAvailable(
 export function copyDirectory(
   sourceDirectory: string,
   destinationDirectory: string,
-  overwriteRenamedFiles = false
+  overwriteRenamedFiles = false,
 ): void {
   if (!existsSync(sourceDirectory)) {
     throw new Error(`Template directory not found: ${sourceDirectory}`);
@@ -48,7 +48,7 @@ export function copyDirectory(
 
   cpSync(sourceDirectory, destinationDirectory, {
     recursive: true,
-    force: true
+    force: true,
   });
 
   renameTemplateFiles(destinationDirectory, overwriteRenamedFiles);
@@ -56,7 +56,7 @@ export function copyDirectory(
 
 function renameTemplateFiles(
   directory: string,
-  overwriteRenamedFiles: boolean
+  overwriteRenamedFiles: boolean,
 ): void {
   for (const entry of readdirSync(directory)) {
     const currentPath = resolve(directory, entry);
@@ -87,7 +87,7 @@ function renameTemplateFiles(
 
       if (!existingContent.equals(sourceContent)) {
         throw new Error(
-          `Cannot rename template file because the destination exists: ${replacementPath}`
+          `Cannot rename template file because the destination exists: ${replacementPath}`,
         );
       }
 

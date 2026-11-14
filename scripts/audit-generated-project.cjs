@@ -1,15 +1,10 @@
-const {
-  existsSync,
-  readFileSync
-} = require("node:fs");
+const { existsSync, readFileSync } = require("node:fs");
 const { resolve } = require("node:path");
 
 const projectDirectory = process.argv[2];
 
 if (!projectDirectory) {
-  console.error(
-    "Usage: node scripts/audit-generated-project.cjs <directory>"
-  );
+  console.error("Usage: node scripts/audit-generated-project.cjs <directory>");
 
   process.exit(1);
 }
@@ -32,12 +27,11 @@ const requiredFiles = [
   "src/modules/auth/auth.service.ts",
   "src/middleware/authorize.ts",
   "tests/health.test.ts",
-  "tests/environment.test.ts"
+  "tests/environment.test.ts",
 ];
 
 const missingFiles = requiredFiles.filter(
-  (file) =>
-    !existsSync(resolve(projectDirectory, file))
+  (file) => !existsSync(resolve(projectDirectory, file)),
 );
 
 if (missingFiles.length > 0) {
@@ -51,10 +45,7 @@ if (missingFiles.length > 0) {
 }
 
 const packageJson = JSON.parse(
-  readFileSync(
-    resolve(projectDirectory, "package.json"),
-    "utf8"
-  )
+  readFileSync(resolve(projectDirectory, "package.json"), "utf8"),
 );
 
 const requiredScripts = [
@@ -66,11 +57,11 @@ const requiredScripts = [
   "check",
   "prisma:generate",
   "prisma:migrate",
-  "prisma:deploy"
+  "prisma:deploy",
 ];
 
 const missingScripts = requiredScripts.filter(
-  (script) => !packageJson.scripts?.[script]
+  (script) => !packageJson.scripts?.[script],
 );
 
 if (missingScripts.length > 0) {

@@ -1,11 +1,7 @@
-import {
-  describe,
-  expect,
-  it
-} from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   TEMPLATE_FEATURES,
-  TEMPLATE_VERSION
+  TEMPLATE_VERSION,
 } from "../../src/release/template-manifest";
 
 describe("template manifest", () => {

@@ -1,9 +1,4 @@
-import {
-  afterEach,
-  describe,
-  expect,
-  it
-} from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/app";
 
@@ -25,14 +20,12 @@ describe("Zod-powered OpenAPI output", () => {
 
     const document = app.swagger();
 
-    const registerOperation =
-      document.paths["/api/auth/register"]?.post;
+    const registerOperation = document.paths["/api/auth/register"]?.post;
 
     expect(registerOperation).toBeDefined();
     expect(registerOperation?.requestBody).toBeDefined();
 
-    const loginOperation =
-      document.paths["/api/auth/login"]?.post;
+    const loginOperation = document.paths["/api/auth/login"]?.post;
 
     expect(loginOperation).toBeDefined();
     expect(loginOperation?.requestBody).toBeDefined();
@@ -46,26 +39,18 @@ describe("Zod-powered OpenAPI output", () => {
 
     const document = app.swagger();
 
-    const registerOperation =
-      document.paths["/api/auth/register"]?.post;
+    const registerOperation = document.paths["/api/auth/register"]?.post;
 
-    expect(
-      registerOperation?.responses
-    ).toHaveProperty("201");
+    expect(registerOperation?.responses).toHaveProperty("201");
 
-    expect(
-      registerOperation?.responses
-    ).toHaveProperty("409");
+    expect(registerOperation?.responses).toHaveProperty("409");
 
-    const meOperation =
-      document.paths["/api/auth/me"]?.get;
+    const meOperation = document.paths["/api/auth/me"]?.get;
 
-    expect(
-      meOperation?.security
-    ).toEqual([
+    expect(meOperation?.security).toEqual([
       {
-        bearerAuth: []
-      }
+        bearerAuth: [],
+      },
     ]);
   });
 });
