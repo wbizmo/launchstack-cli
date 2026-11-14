@@ -1,0 +1,50 @@
+{
+  "implementation_commit": "f76996cc0c3d125abcb1e6f998d2cc037c02b140",
+  "repository": "/tmp/launchstack-v3.0.0",
+  "node": "v24.22.3",
+  "platform": "linux x64",
+  "repetitions": 1,
+  "warmup": 0,
+  "fixture": "v2.0.0 manifest with real tracked fixture files; drift scan and plan only, no apply",
+  "measurement": "full managed-file SHA-256 drift scan and plan wall time; parent /proc VmRSS sampled every 5ms after fixture setup",
+  "results": [
+    {
+      "files": 100000,
+      "state_bytes": 15700149,
+      "repetitions": 1,
+      "drift_scan_ms": {
+        "p50": 933.703,
+        "p95": 933.703
+      },
+      "drift_entries": 100000,
+      "plan_latency_ms": {
+        "p50": 760.298,
+        "p95": 760.298
+      },
+      "sampled_peak_rss_kb": 405740,
+      "planned_diffs": 4,
+      "conflicts": 0,
+      "conflict_messages": []
+    },
+    {
+      "files": 250000,
+      "state_bytes": 39250149,
+      "repetitions": 1,
+      "drift_scan_ms": {
+        "p50": 2478.002,
+        "p95": 2478.002
+      },
+      "drift_entries": 250000,
+      "plan_latency_ms": {
+        "p50": 1676.042,
+        "p95": 1676.042
+      },
+      "sampled_peak_rss_kb": 645772,
+      "planned_diffs": 4,
+      "conflicts": 0,
+      "conflict_messages": []
+    }
+  ],
+  "benchmark_harness_commit": "d0b2bad89f6aa70f061257082facd5db7ba7dbc3",
+  "source_version": "published v3.0.0 baseline"
+}

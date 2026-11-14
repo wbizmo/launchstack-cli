@@ -1,14 +1,21 @@
 {
   "name": "launchstack-cli",
-  "version": "3.0.0",
+  "version": "3.0.4",
   "description": "A TypeScript CLI for production-ready backend API scaffolding, lifecycle management, deployment preparation, configuration management, and developer workflows.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
-  "bin": { "launchstack": "./dist/cli.js" },
-  "repository": { "type": "git", "url": "git+https://github.com/wbizmo/launchstack-cli.git" },
+  "bin": {
+    "launchstack": "./dist/cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wbizmo/launchstack-cli.git"
+  },
   "homepage": "https://github.com/wbizmo/launchstack-cli#readme",
-  "bugs": { "url": "https://github.com/wbizmo/launchstack-cli/issues" },
+  "bugs": {
+    "url": "https://github.com/wbizmo/launchstack-cli/issues"
+  },
   "scripts": {
     "dev": "tsup --watch",
     "build": "tsup && npm run copy:templates",
@@ -18,6 +25,10 @@
     "format": "prettier --write .",
     "test:run": "vitest run --config vitest.config.ts",
     "bench:template": "vitest bench bench/template-render.bench.ts",
+    "bench:transactions": "tsx bench/mutations.ts",
+    "bench:upgrades": "tsx bench/upgrades.ts",
+    "bench:capabilities": "tsx bench/capabilities.ts",
+    "bench:complexity": "tsx bench/complexity.ts",
     "audit:runtime": "npm audit --omit=dev --audit-level=high",
     "verify:dist": "npm run build && git diff --exit-code -- dist",
     "check": "npm run lint && npm run typecheck && npm run test:run && npm run verify:dist && npm pack --dry-run",
@@ -26,14 +37,63 @@
     "template:smoke": "node scripts/template-smoke.cjs",
     "locks:template": "node scripts/refresh-template-lock.cjs",
     "release:verify-tag": "node scripts/verify-release-tag.cjs",
-    "release:check": "npm run check && npm run audit:runtime && npm run pack:smoke && npm run template:smoke"
+    "release:check": "npm run format:check && npm run check && npm run audit:runtime && npm run sbom:check && npm run pack:smoke && npm run template:smoke",
+    "bench:drift": "tsx bench/drift.ts",
+    "bench:security": "tsx bench/security-audit.ts",
+    "bench:api": "node bench/generated-api.cjs",
+    "bench:cli": "tsx bench/cli.ts",
+    "bench:qualification": "node bench/qualification.cjs",
+    "bench:recovery": "tsx bench/recovery.ts",
+    "format:check": "prettier --check . --ignore-path .gitignore",
+    "sbom:check": "node scripts/sbom-smoke.cjs",
+    "docker:template:smoke": "node scripts/docker-template-smoke.cjs"
   },
-  "keywords": ["launchstack", "cli", "backend", "typescript", "fastify", "prisma", "postgresql", "api-scaffolding", "lifecycle", "openapi", "deployment", "devops", "plugin-system", "code-generation"],
+  "keywords": [
+    "launchstack",
+    "cli",
+    "backend",
+    "typescript",
+    "fastify",
+    "prisma",
+    "postgresql",
+    "api-scaffolding",
+    "lifecycle",
+    "openapi",
+    "deployment",
+    "devops",
+    "plugin-system",
+    "code-generation"
+  ],
   "author": "Williams Ashibuogwu",
   "license": "MIT",
-  "files": ["dist", "README.md", "LICENSE"],
-  "publishConfig": { "access": "public", "provenance": true },
-  "dependencies": { "chalk": "^5.6.2", "commander": "^14.0.2", "ora": "^9.4.0", "zod": "^4.1.12" },
-  "devDependencies": { "@types/node": "^25.9.5", "eslint": "^10.10.0", "prettier": "^3.9.6", "tsx": "^4.20.0", "tsup": "^8.5.1", "typescript": "^6.0.3", "typescript-eslint": "^8.70.0", "vitest": "^4.1.11" },
-  "engines": { "node": ">=20" }
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "dependencies": {
+    "@babel/parser": "^8.1.2",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.2",
+    "ora": "^9.4.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.5",
+    "eslint": "^10.10.0",
+    "prettier": "^3.9.6",
+    "tsup": "^8.5.1",
+    "tsx": "^4.20.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=24.22.3 <25 || >=26.13.1 <27"
+  }
 }

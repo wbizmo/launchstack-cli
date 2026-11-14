@@ -1,0 +1,1160 @@
+{
+  "issue": 38,
+  "measured_at": "2026-11-14T01:53:54.138Z",
+  "implementation_commit": "0abacda904b0bbc4abee0b59a5b8ff0989841d54",
+  "baseline_comparison": {
+    "cli_and_template": {
+      "measured_at": "2026-11-14T01:57:03.214Z",
+      "implementation_commit": "f76996cc0c3d125abcb1e6f998d2cc037c02b140",
+      "package_version": "3.0.0",
+      "node": "v24.22.3",
+      "npm": "11.19.1",
+      "platform": "linux x64",
+      "workload": {
+        "warmup": 1,
+        "repetitions": 5,
+        "generated_template_files": 71,
+        "generated_template_bytes": 195251,
+        "package_install": "local packed tarball with npm --offline; dependency downloads excluded",
+        "cli_startup": "fresh Node process per --version invocation; first means first invocation after package install, subsequent invocations are fresh processes with warm filesystem cache, not cleared OS page cache",
+        "project_generation": "packed CLI create --no-install, isolated destination per repetition"
+      },
+      "timings": {
+        "packed_cli_offline_install_ms": 993.616,
+        "first_cli_startup_ms": 98.656,
+        "subsequent_cli_startup": {
+          "repetitions": 5,
+          "p50_ms": 103.703,
+          "p95_ms": 125.728
+        },
+        "template_staging": {
+          "repetitions": 5,
+          "p50_ms": 18.618,
+          "p95_ms": 30.036
+        },
+        "template_rendering": {
+          "repetitions": 5,
+          "p50_ms": 2.699,
+          "p95_ms": 5.719
+        },
+        "project_generation": {
+          "repetitions": 5,
+          "p50_ms": 129.195,
+          "p95_ms": 159.363
+        }
+      },
+      "network_dependency_downloads": "excluded from packed CLI install with npm --offline; generated API npm ci measured separately by bench:api",
+      "correctness": {
+        "cli_version": "3.0.0",
+        "generated_projects": 5,
+        "errors": 0
+      },
+      "process_peak_rss_bytes": 93728768
+    },
+    "generated_api": {
+      "measured_at": "2026-11-14T01:53:53.274Z",
+      "implementation_commit": "f76996cc0c3d125abcb1e6f998d2cc037c02b140",
+      "node": "v24.22.3",
+      "platform": "linux x64",
+      "setup_ms": {
+        "template_create_ms": 117.156,
+        "resource_generation_ms": 107.765,
+        "dependency_install_ms": 7395.444,
+        "database_push_ms": 1349.314,
+        "generated_api_build_ms": 3029.974
+      },
+      "workload": {
+        "generated_api": "LaunchStack Fastify template + generated owner-scoped resource",
+        "database": "fresh PostgreSQL database in the launchstack-smoke-postgres container",
+        "pagination_dataset": 100,
+        "authenticated_get_requests_per_concurrency": 1000,
+        "concurrency_levels": [50, 200, 500],
+        "auth_cycles": 10
+      },
+      "startup_ms_to_ready": 459.241,
+      "phases": [
+        {
+          "name": "login-and-refresh",
+          "requests": 20,
+          "elapsed_ms": 3367.293,
+          "latency_ms": {
+            "p50": 17.387,
+            "p95": 412.543,
+            "p99": 468.605
+          },
+          "throughput_rps": 5.94,
+          "errors": 0,
+          "http_statuses": {
+            "200": 20
+          },
+          "database_queries": 80,
+          "process_cpu_microseconds": {
+            "user": 3250803,
+            "system": 42072
+          },
+          "process_peak_rss_bytes": 125435904
+        },
+        {
+          "name": "authenticated-get-concurrency-50",
+          "requests": 1000,
+          "elapsed_ms": 397.412,
+          "latency_ms": {
+            "p50": 14.937,
+            "p95": 45.304,
+            "p99": 94.659
+          },
+          "throughput_rps": 2516.28,
+          "errors": 0,
+          "http_statuses": {
+            "200": 1000
+          },
+          "database_queries": 1000,
+          "process_cpu_microseconds": {
+            "user": 608471,
+            "system": 110641
+          },
+          "process_peak_rss_bytes": 160432128
+        },
+        {
+          "name": "authenticated-get-concurrency-200",
+          "requests": 1000,
+          "elapsed_ms": 249.037,
+          "latency_ms": {
+            "p50": 29.457,
+            "p95": 224.264,
+            "p99": 238.526
+          },
+          "throughput_rps": 4015.46,
+          "errors": 0,
+          "http_statuses": {
+            "200": 1000
+          },
+          "database_queries": 1000,
+          "process_cpu_microseconds": {
+            "user": 419564,
+            "system": 109305
+          },
+          "process_peak_rss_bytes": 162398208
+        },
+        {
+          "name": "authenticated-get-concurrency-500",
+          "requests": 1000,
+          "elapsed_ms": 291.975,
+          "latency_ms": {
+            "p50": 90.401,
+            "p95": 216.424,
+            "p99": 273.168
+          },
+          "throughput_rps": 3424.95,
+          "errors": 0,
+          "http_statuses": {
+            "200": 1000
+          },
+          "database_queries": 1000,
+          "process_cpu_microseconds": {
+            "user": 446862,
+            "system": 142186
+          },
+          "process_peak_rss_bytes": 176238592
+        },
+        {
+          "name": "resource-crud",
+          "requests": 51,
+          "elapsed_ms": 109.487,
+          "latency_ms": {
+            "p50": 2.008,
+            "p95": 3.36,
+            "p99": 4.931
+          },
+          "throughput_rps": 465.81,
+          "errors": 0,
+          "http_statuses": {
+            "200": 50,
+            "204": 1
+          },
+          "database_queries": 126,
+          "process_cpu_microseconds": {
+            "user": 60022,
+            "system": 18878
+          },
+          "process_peak_rss_bytes": 180039680
+        },
+        {
+          "name": "resource-pagination",
+          "requests": 100,
+          "elapsed_ms": 86.209,
+          "latency_ms": {
+            "p50": 13.96,
+            "p95": 22.535,
+            "p99": 26.059
+          },
+          "throughput_rps": 1159.97,
+          "errors": 0,
+          "http_statuses": {
+            "200": 100
+          },
+          "database_queries": 100,
+          "process_cpu_microseconds": {
+            "user": 146090,
+            "system": 33643
+          },
+          "process_peak_rss_bytes": 200617984
+        }
+      ],
+      "api_process_peak_rss_bytes": 200617984,
+      "note": "Baseline API measured on the same Node/PostgreSQL host with identical workload and query instrumentation; candidate changes affect generated handlers and results are diagnostic, not guarantees."
+    }
+  },
+  "node": "v24.22.3",
+  "os": "Linux 6.18.57 x64",
+  "cpu": "AMD EPYC 9V74 80-Core Processor",
+  "cpu_count": 4,
+  "total_memory_bytes": 35743748096,
+  "npm_config_cache": "/workspace/.npm-cache",
+  "suites": {
+    "cli_and_template": {
+      "measured_at": "2026-11-14T01:57:08.266Z",
+      "implementation_commit": "0abacda904b0bbc4abee0b59a5b8ff0989841d54",
+      "package_version": "3.0.4",
+      "node": "v24.22.3",
+      "npm": "11.19.1",
+      "platform": "linux x64",
+      "workload": {
+        "warmup": 1,
+        "repetitions": 5,
+        "generated_template_files": 111,
+        "generated_template_bytes": 248797,
+        "package_install": "local packed tarball with npm --offline; dependency downloads excluded",
+        "cli_startup": "fresh Node process per --version invocation; first means first invocation after package install, subsequent invocations are fresh processes with warm filesystem cache, not cleared OS page cache",
+        "project_generation": "packed CLI create --no-install, isolated destination per repetition"
+      },
+      "timings": {
+        "packed_cli_offline_install_ms": 1474.153,
+        "first_cli_startup_ms": 151.574,
+        "subsequent_cli_startup": {
+          "repetitions": 5,
+          "p50_ms": 136.797,
+          "p95_ms": 156.044
+        },
+        "template_staging": {
+          "repetitions": 5,
+          "p50_ms": 48.64,
+          "p95_ms": 201.039
+        },
+        "template_rendering": {
+          "repetitions": 5,
+          "p50_ms": 4.322,
+          "p95_ms": 20.382
+        },
+        "project_generation": {
+          "repetitions": 5,
+          "p50_ms": 194.146,
+          "p95_ms": 267.561
+        }
+      },
+      "network_dependency_downloads": "excluded from packed CLI install with npm --offline; generated API npm ci measured separately by bench:api",
+      "correctness": {
+        "cli_version": "3.0.4",
+        "generated_projects": 5,
+        "errors": 0
+      },
+      "process_peak_rss_bytes": 72458240
+    },
+    "drift_scans": {
+      "measured_at": "2026-11-14T01:47:23.654Z",
+      "node": "v24.22.3",
+      "platform": "linux x64",
+      "os_release": "6.18.57",
+      "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+      "cpu_count": 4,
+      "filesystem": "temporary directory on workspace filesystem; data uncompressed; cleanup in finally",
+      "content_bytes_per_file": 29,
+      "cpu_microseconds": {
+        "user": 572765917,
+        "system": 69299467
+      },
+      "peak_rss_bytes": 591151104,
+      "measurements": [
+        {
+          "files": 1000,
+          "state_bytes": 148149,
+          "distribution": "clean",
+          "modified_or_missing_ratio": 0,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 29000,
+          "estimated_logical_input_bytes": 177149,
+          "clean_entries": 1000,
+          "modified_entries": 0,
+          "missing_entries": 0,
+          "state_load_ms": {
+            "p50": 2.383,
+            "p95": 2.665
+          },
+          "drift_ms": {
+            "p50": 14.377,
+            "p95": 16.913
+          },
+          "cpu_microseconds": {
+            "p50_user": 23581,
+            "p50_system": 10084
+          },
+          "errors": 0
+        },
+        {
+          "files": 1000,
+          "state_bytes": 148149,
+          "distribution": "modified",
+          "modified_or_missing_ratio": 0.01,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 29000,
+          "estimated_logical_input_bytes": 177149,
+          "clean_entries": 990,
+          "modified_entries": 10,
+          "missing_entries": 0,
+          "state_load_ms": {
+            "p50": 4.337,
+            "p95": 4.641
+          },
+          "drift_ms": {
+            "p50": 24.086,
+            "p95": 131.354
+          },
+          "cpu_microseconds": {
+            "p50_user": 39309,
+            "p50_system": 20495
+          },
+          "errors": 0
+        },
+        {
+          "files": 1000,
+          "state_bytes": 148149,
+          "distribution": "missing",
+          "modified_or_missing_ratio": 0.01,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 28710,
+          "estimated_logical_input_bytes": 176859,
+          "clean_entries": 990,
+          "modified_entries": 0,
+          "missing_entries": 10,
+          "state_load_ms": {
+            "p50": 1.673,
+            "p95": 4.037
+          },
+          "drift_ms": {
+            "p50": 13.758,
+            "p95": 15.291
+          },
+          "cpu_microseconds": {
+            "p50_user": 34586,
+            "p50_system": 7522
+          },
+          "errors": 0
+        },
+        {
+          "files": 10000,
+          "state_bytes": 1480149,
+          "distribution": "clean",
+          "modified_or_missing_ratio": 0,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 290000,
+          "estimated_logical_input_bytes": 1770149,
+          "clean_entries": 10000,
+          "modified_entries": 0,
+          "missing_entries": 0,
+          "state_load_ms": {
+            "p50": 12.878,
+            "p95": 13.94
+          },
+          "drift_ms": {
+            "p50": 126.012,
+            "p95": 130.885
+          },
+          "cpu_microseconds": {
+            "p50_user": 225607,
+            "p50_system": 43100
+          },
+          "errors": 0
+        },
+        {
+          "files": 10000,
+          "state_bytes": 1480149,
+          "distribution": "modified",
+          "modified_or_missing_ratio": 0.01,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 290000,
+          "estimated_logical_input_bytes": 1770149,
+          "clean_entries": 9900,
+          "modified_entries": 100,
+          "missing_entries": 0,
+          "state_load_ms": {
+            "p50": 18.085,
+            "p95": 20.298
+          },
+          "drift_ms": {
+            "p50": 156.012,
+            "p95": 322.215
+          },
+          "cpu_microseconds": {
+            "p50_user": 326441,
+            "p50_system": 43405
+          },
+          "errors": 0
+        },
+        {
+          "files": 10000,
+          "state_bytes": 1480149,
+          "distribution": "missing",
+          "modified_or_missing_ratio": 0.01,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 287100,
+          "estimated_logical_input_bytes": 1767249,
+          "clean_entries": 9900,
+          "modified_entries": 0,
+          "missing_entries": 100,
+          "state_load_ms": {
+            "p50": 12.797,
+            "p95": 13.081
+          },
+          "drift_ms": {
+            "p50": 133.048,
+            "p95": 139.208
+          },
+          "cpu_microseconds": {
+            "p50_user": 226161,
+            "p50_system": 44932
+          },
+          "errors": 0
+        },
+        {
+          "files": 50000,
+          "state_bytes": 7400149,
+          "distribution": "clean",
+          "modified_or_missing_ratio": 0,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 1450000,
+          "estimated_logical_input_bytes": 8850149,
+          "clean_entries": 50000,
+          "modified_entries": 0,
+          "missing_entries": 0,
+          "state_load_ms": {
+            "p50": 73.657,
+            "p95": 80.601
+          },
+          "drift_ms": {
+            "p50": 1143.922,
+            "p95": 1329.375
+          },
+          "cpu_microseconds": {
+            "p50_user": 2253350,
+            "p50_system": 299067
+          },
+          "errors": 0
+        },
+        {
+          "files": 50000,
+          "state_bytes": 7400149,
+          "distribution": "modified",
+          "modified_or_missing_ratio": 0.01,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 1450000,
+          "estimated_logical_input_bytes": 8850149,
+          "clean_entries": 49500,
+          "modified_entries": 500,
+          "missing_entries": 0,
+          "state_load_ms": {
+            "p50": 71.595,
+            "p95": 72.891
+          },
+          "drift_ms": {
+            "p50": 1162.241,
+            "p95": 1270.721
+          },
+          "cpu_microseconds": {
+            "p50_user": 2312763,
+            "p50_system": 308479
+          },
+          "errors": 0
+        },
+        {
+          "files": 50000,
+          "state_bytes": 7400149,
+          "distribution": "missing",
+          "modified_or_missing_ratio": 0.01,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 1435500,
+          "estimated_logical_input_bytes": 8835649,
+          "clean_entries": 49500,
+          "modified_entries": 0,
+          "missing_entries": 500,
+          "state_load_ms": {
+            "p50": 70.41,
+            "p95": 77.722
+          },
+          "drift_ms": {
+            "p50": 1162.304,
+            "p95": 1198.723
+          },
+          "cpu_microseconds": {
+            "p50_user": 2409463,
+            "p50_system": 278917
+          },
+          "errors": 0
+        },
+        {
+          "files": 100000,
+          "state_bytes": 14800149,
+          "distribution": "clean",
+          "modified_or_missing_ratio": 0,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 2900000,
+          "estimated_logical_input_bytes": 17700149,
+          "clean_entries": 100000,
+          "modified_entries": 0,
+          "missing_entries": 0,
+          "state_load_ms": {
+            "p50": 158.165,
+            "p95": 247.927
+          },
+          "drift_ms": {
+            "p50": 3096.01,
+            "p95": 3341.604
+          },
+          "cpu_microseconds": {
+            "p50_user": 6427830,
+            "p50_system": 664496
+          },
+          "errors": 0
+        },
+        {
+          "files": 100000,
+          "state_bytes": 14800149,
+          "distribution": "modified",
+          "modified_or_missing_ratio": 0.01,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 2900000,
+          "estimated_logical_input_bytes": 17700149,
+          "clean_entries": 99000,
+          "modified_entries": 1000,
+          "missing_entries": 0,
+          "state_load_ms": {
+            "p50": 193.698,
+            "p95": 373.722
+          },
+          "drift_ms": {
+            "p50": 3512.772,
+            "p95": 3554.467
+          },
+          "cpu_microseconds": {
+            "p50_user": 7164498,
+            "p50_system": 822064
+          },
+          "errors": 0
+        },
+        {
+          "files": 100000,
+          "state_bytes": 14800149,
+          "distribution": "missing",
+          "modified_or_missing_ratio": 0.01,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 2871000,
+          "estimated_logical_input_bytes": 17671149,
+          "clean_entries": 99000,
+          "modified_entries": 0,
+          "missing_entries": 1000,
+          "state_load_ms": {
+            "p50": 159.187,
+            "p95": 196.741
+          },
+          "drift_ms": {
+            "p50": 3002.16,
+            "p95": 3203.174
+          },
+          "cpu_microseconds": {
+            "p50_user": 6278889,
+            "p50_system": 580834
+          },
+          "errors": 0
+        },
+        {
+          "files": 250000,
+          "state_bytes": 37000149,
+          "distribution": "clean",
+          "modified_or_missing_ratio": 0,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 7250000,
+          "estimated_logical_input_bytes": 44250149,
+          "clean_entries": 250000,
+          "modified_entries": 0,
+          "missing_entries": 0,
+          "state_load_ms": {
+            "p50": 898.886,
+            "p95": 1091.452
+          },
+          "drift_ms": {
+            "p50": 15201.667,
+            "p95": 16212.812
+          },
+          "cpu_microseconds": {
+            "p50_user": 38251383,
+            "p50_system": 1989979
+          },
+          "errors": 0
+        },
+        {
+          "files": 250000,
+          "state_bytes": 37000149,
+          "distribution": "modified",
+          "modified_or_missing_ratio": 0.01,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 7250000,
+          "estimated_logical_input_bytes": 44250149,
+          "clean_entries": 247500,
+          "modified_entries": 2500,
+          "missing_entries": 0,
+          "state_load_ms": {
+            "p50": 825.319,
+            "p95": 866.193
+          },
+          "drift_ms": {
+            "p50": 15088.026,
+            "p95": 16014.906
+          },
+          "cpu_microseconds": {
+            "p50_user": 38704306,
+            "p50_system": 1907691
+          },
+          "errors": 0
+        },
+        {
+          "files": 250000,
+          "state_bytes": 37000149,
+          "distribution": "missing",
+          "modified_or_missing_ratio": 0.01,
+          "repetitions": 3,
+          "warmups": 1,
+          "logical_file_bytes_hashed": 7177500,
+          "estimated_logical_input_bytes": 44177649,
+          "clean_entries": 247500,
+          "modified_entries": 0,
+          "missing_entries": 2500,
+          "state_load_ms": {
+            "p50": 850.665,
+            "p95": 937.191
+          },
+          "drift_ms": {
+            "p50": 15469.489,
+            "p95": 15703.053
+          },
+          "cpu_microseconds": {
+            "p50_user": 38684285,
+            "p50_system": 2048920
+          },
+          "errors": 0
+        }
+      ]
+    },
+    "extension_graphs": {
+      "repository": "/workspace/launchstack-cli",
+      "node": "v24.22.3",
+      "platform": "linux x64",
+      "seed": 34,
+      "warmup": 1,
+      "workloads": [
+        {
+          "nodes": 1000,
+          "edges": 999,
+          "edges_per_node_target": 1,
+          "repetitions": 5,
+          "latency_ms": {
+            "p50": 0.527,
+            "p95": 0.78
+          }
+        },
+        {
+          "nodes": 1000,
+          "edges": 9945,
+          "edges_per_node_target": 10,
+          "repetitions": 5,
+          "latency_ms": {
+            "p50": 0.662,
+            "p95": 1.682
+          }
+        },
+        {
+          "nodes": 10000,
+          "edges": 9999,
+          "edges_per_node_target": 1,
+          "repetitions": 5,
+          "latency_ms": {
+            "p50": 3.27,
+            "p95": 10.691
+          }
+        },
+        {
+          "nodes": 10000,
+          "edges": 99945,
+          "edges_per_node_target": 10,
+          "repetitions": 5,
+          "latency_ms": {
+            "p50": 8.809,
+            "p95": 10.012
+          }
+        }
+      ],
+      "memory_bytes_after": 120016896,
+      "cpu_microseconds": 1715429
+    },
+    "complexity_and_hashing": {
+      "node": "v24.22.3",
+      "platform": "linux x64",
+      "os_release": "6.18.57",
+      "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+      "cpu_count": 4,
+      "total_memory_bytes": 35743748096,
+      "warmups": 1,
+      "repetitions": 5,
+      "graph_queue": [
+        {
+          "vertices": 1001,
+          "edges": 1000,
+          "candidate_ms": {
+            "p50": 1.515,
+            "p95": 2.198
+          },
+          "repetitions": 5
+        },
+        {
+          "vertices": 10001,
+          "edges": 10000,
+          "candidate_ms": {
+            "p50": 12.151,
+            "p95": 23.397
+          },
+          "repetitions": 5
+        }
+      ],
+      "graph_1k_comparison": {
+        "previous_sort_and_shift_ms": {
+          "p50": 16.24,
+          "p95": 17.869
+        },
+        "min_heap_ms": {
+          "p50": 0.603,
+          "p95": 0.697
+        }
+      },
+      "extension_chains": [
+        {
+          "vertices": 1000,
+          "edges": 999,
+          "candidate_ms": {
+            "p50": 0.328,
+            "p95": 0.442
+          },
+          "repetitions": 5
+        },
+        {
+          "vertices": 10000,
+          "edges": 9999,
+          "candidate_ms": {
+            "p50": 2.606,
+            "p95": 3.878
+          },
+          "repetitions": 5
+        }
+      ],
+      "extension_1k_comparison": {
+        "previous_path_copy_ms": {
+          "p50": 7.145,
+          "p95": 11.709
+        },
+        "mutable_stack_ms": {
+          "p50": 0.381,
+          "p95": 0.647
+        }
+      },
+      "file_hashing": [
+        {
+          "bytes": 1048576,
+          "repetitions": 5,
+          "previous_read_all_ms": {
+            "p50": 1.979,
+            "p95": 2.569
+          },
+          "streaming_ms": {
+            "p50": 0.855,
+            "p95": 1.098
+          }
+        },
+        {
+          "bytes": 10485760,
+          "repetitions": 5,
+          "previous_read_all_ms": {
+            "p50": 20.1,
+            "p95": 25.215
+          },
+          "streaming_ms": {
+            "p50": 7.296,
+            "p95": 8.075
+          }
+        },
+        {
+          "bytes": 52428800,
+          "repetitions": 5,
+          "previous_read_all_ms": {
+            "p50": 71.068,
+            "p95": 92.885
+          },
+          "streaming_ms": {
+            "p50": 37.575,
+            "p95": 38.867
+          }
+        }
+      ],
+      "isolated_50MiB_hash_peak_rss_bytes": {
+        "read_all": 130076672,
+        "streaming": 80285696
+      },
+      "fd_count_after_hashes": {
+        "before": 21,
+        "after": 21
+      },
+      "cpu_microseconds": {
+        "user": 974328,
+        "system": 680783
+      },
+      "peak_rss_bytes": 401297408,
+      "memory_bytes": {
+        "rss": 191938560,
+        "heapTotal": 82518016,
+        "heapUsed": 15744696,
+        "external": 57912930,
+        "arrayBuffers": 55325681
+      }
+    },
+    "mutations": {
+      "repository": "/workspace/launchstack-cli",
+      "node": "v24.22.3",
+      "platform": "linux x64",
+      "worker_count": 3,
+      "warmup": 0,
+      "isolation": "one fresh process and temporary project per repetition",
+      "measurements": "parent-observed wall time; /proc VmRSS sampled every 5ms",
+      "results": [
+        {
+          "files": 100,
+          "bytes": 1090,
+          "repetitions": 3,
+          "latency_ms": {
+            "p50": 81.137,
+            "p95": 84.714
+          },
+          "sampled_peak_rss_kb": 83724,
+          "errors": 0
+        },
+        {
+          "files": 1000,
+          "bytes": 11890,
+          "repetitions": 3,
+          "latency_ms": {
+            "p50": 596.51,
+            "p95": 635.7
+          },
+          "sampled_peak_rss_kb": 93000,
+          "errors": 0
+        },
+        {
+          "files": 10000,
+          "bytes": 128890,
+          "repetitions": 3,
+          "latency_ms": {
+            "p50": 7602.534,
+            "p95": 8306.152
+          },
+          "sampled_peak_rss_kb": 103628,
+          "errors": 0
+        }
+      ]
+    },
+    "rollback_recovery": {
+      "measured_at": "2026-11-14T01:53:04.652Z",
+      "implementation_commit": "0abacda904b0bbc4abee0b59a5b8ff0989841d54",
+      "node": "v24.22.3",
+      "platform": "linux x64",
+      "fixture": "simulated committing journal with moved originals and replacement targets; recovery restores all originals and checks content",
+      "warmups": 0,
+      "measurements": [
+        {
+          "files": 100,
+          "logical_bytes_restored": 690,
+          "repetitions": 3,
+          "recovery_ms": {
+            "p50": 30.665,
+            "p95": 36.118
+          },
+          "errors": 0
+        },
+        {
+          "files": 1000,
+          "logical_bytes_restored": 7890,
+          "repetitions": 3,
+          "recovery_ms": {
+            "p50": 123.172,
+            "p95": 152.867
+          },
+          "errors": 0
+        },
+        {
+          "files": 10000,
+          "logical_bytes_restored": 88890,
+          "repetitions": 3,
+          "recovery_ms": {
+            "p50": 1148.937,
+            "p95": 1269.36
+          },
+          "errors": 0
+        }
+      ],
+      "peak_rss_bytes": 141787136,
+      "cpu_microseconds": 2812557
+    },
+    "upgrade_planning": {
+      "repository": "/workspace/launchstack-cli",
+      "node": "v24.22.3",
+      "platform": "linux x64",
+      "repetitions": 3,
+      "warmup": 1,
+      "fixture": "v2.0.0 manifest with real tracked fixture files; drift scan and plan only, no apply",
+      "measurement": "full managed-file SHA-256 drift scan and plan wall time; parent /proc VmRSS sampled every 5ms after fixture setup",
+      "results": [
+        {
+          "files": 100,
+          "state_bytes": 15849,
+          "repetitions": 3,
+          "drift_scan_ms": {
+            "p50": 7.905,
+            "p95": 9.318
+          },
+          "drift_entries": 100,
+          "plan_latency_ms": {
+            "p50": 18.038,
+            "p95": 26.057
+          },
+          "sampled_peak_rss_kb": 95356,
+          "planned_diffs": 6,
+          "conflicts": 0,
+          "conflict_messages": []
+        },
+        {
+          "files": 1000,
+          "state_bytes": 157149,
+          "repetitions": 3,
+          "drift_scan_ms": {
+            "p50": 22.341,
+            "p95": 27.621
+          },
+          "drift_entries": 1000,
+          "plan_latency_ms": {
+            "p50": 27.116,
+            "p95": 29.525
+          },
+          "sampled_peak_rss_kb": 109292,
+          "planned_diffs": 6,
+          "conflicts": 0,
+          "conflict_messages": []
+        },
+        {
+          "files": 10000,
+          "state_bytes": 1570149,
+          "repetitions": 3,
+          "drift_scan_ms": {
+            "p50": 210.092,
+            "p95": 220.887
+          },
+          "drift_entries": 10000,
+          "plan_latency_ms": {
+            "p50": 84.073,
+            "p95": 118.658
+          },
+          "sampled_peak_rss_kb": 147148,
+          "planned_diffs": 6,
+          "conflicts": 0,
+          "conflict_messages": []
+        }
+      ]
+    },
+    "generated_api": {
+      "measured_at": "2026-11-14T01:53:31.058Z",
+      "implementation_commit": "0abacda904b0bbc4abee0b59a5b8ff0989841d54",
+      "node": "v24.22.3",
+      "platform": "linux x64",
+      "setup_ms": {
+        "template_create_ms": 145.539,
+        "resource_generation_ms": 155.426,
+        "dependency_install_ms": 7744.051,
+        "database_push_ms": 1101.103,
+        "generated_api_build_ms": 2853.991
+      },
+      "workload": {
+        "generated_api": "LaunchStack Fastify template + generated owner-scoped resource",
+        "database": "fresh PostgreSQL database in the launchstack-smoke-postgres container",
+        "pagination_dataset": 100,
+        "authenticated_get_requests_per_concurrency": 1000,
+        "concurrency_levels": [50, 200, 500],
+        "auth_cycles": 10
+      },
+      "startup_ms_to_ready": 451.003,
+      "phases": [
+        {
+          "name": "login-and-refresh",
+          "requests": 20,
+          "elapsed_ms": 3327.269,
+          "latency_ms": {
+            "p50": 15.888,
+            "p95": 404.065,
+            "p99": 411.941
+          },
+          "throughput_rps": 6.01,
+          "errors": 0,
+          "http_statuses": {
+            "200": 20
+          },
+          "database_queries": 80,
+          "process_cpu_microseconds": {
+            "user": 3234039,
+            "system": 32866
+          },
+          "process_peak_rss_bytes": 125476864
+        },
+        {
+          "name": "authenticated-get-concurrency-50",
+          "requests": 1000,
+          "elapsed_ms": 405.76,
+          "latency_ms": {
+            "p50": 16.909,
+            "p95": 32.043,
+            "p99": 81.344
+          },
+          "throughput_rps": 2464.51,
+          "errors": 0,
+          "http_statuses": {
+            "200": 1000
+          },
+          "database_queries": 1000,
+          "process_cpu_microseconds": {
+            "user": 603043,
+            "system": 165626
+          },
+          "process_peak_rss_bytes": 155754496
+        },
+        {
+          "name": "authenticated-get-concurrency-200",
+          "requests": 1000,
+          "elapsed_ms": 252.411,
+          "latency_ms": {
+            "p50": 41.423,
+            "p95": 83.573,
+            "p99": 86.141
+          },
+          "throughput_rps": 3961.8,
+          "errors": 0,
+          "http_statuses": {
+            "200": 1000
+          },
+          "database_queries": 1000,
+          "process_cpu_microseconds": {
+            "user": 400673,
+            "system": 116255
+          },
+          "process_peak_rss_bytes": 159199232
+        },
+        {
+          "name": "authenticated-get-concurrency-500",
+          "requests": 1000,
+          "elapsed_ms": 332.194,
+          "latency_ms": {
+            "p50": 54.017,
+            "p95": 300.555,
+            "p99": 313.441
+          },
+          "throughput_rps": 3010.29,
+          "errors": 0,
+          "http_statuses": {
+            "200": 1000
+          },
+          "database_queries": 1000,
+          "process_cpu_microseconds": {
+            "user": 554642,
+            "system": 130792
+          },
+          "process_peak_rss_bytes": 168243200
+        },
+        {
+          "name": "resource-crud",
+          "requests": 51,
+          "elapsed_ms": 79.853,
+          "latency_ms": {
+            "p50": 1.58,
+            "p95": 2.431,
+            "p99": 2.991
+          },
+          "throughput_rps": 638.67,
+          "errors": 0,
+          "http_statuses": {
+            "200": 50,
+            "204": 1
+          },
+          "database_queries": 101,
+          "process_cpu_microseconds": {
+            "user": 36283,
+            "system": 16129
+          },
+          "process_peak_rss_bytes": 168636416
+        },
+        {
+          "name": "resource-pagination",
+          "requests": 100,
+          "elapsed_ms": 52.49,
+          "latency_ms": {
+            "p50": 10.057,
+            "p95": 14.944,
+            "p99": 15.493
+          },
+          "throughput_rps": 1905.12,
+          "errors": 0,
+          "http_statuses": {
+            "200": 100
+          },
+          "database_queries": 100,
+          "process_cpu_microseconds": {
+            "user": 106805,
+            "system": 17396
+          },
+          "process_peak_rss_bytes": 178860032
+        }
+      ],
+      "api_process_peak_rss_bytes": 178860032
+    }
+  },
+  "benchmark_limits": [
+    "CLI and API timings are single-host diagnostics; they are not service-level guarantees.",
+    "Project generation compares different template sizes (baseline 71 files/195251 bytes; candidate 111 files/248797 bytes), so total generation latency does not isolate per-file efficiency.",
+    "npm ci dependency installation depends on the shared npm cache and registry/proxy state; the reported candidate setup duration is not a cold-network install comparison.",
+    "Generated API requests were run against local PostgreSQL 16 in one container with a four-CPU quota; no external load generator or production topology was used.",
+    "Drift and mutation workloads use synthetic temporary trees; results do not predict workloads dominated by large files or slow network filesystems."
+  ]
+}

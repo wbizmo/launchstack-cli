@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 function templateFile(path: string): string {
   return readFileSync(
     resolve(process.cwd(), "src", "templates", "api", path),
-    "utf8"
+    "utf8",
   );
 }
 

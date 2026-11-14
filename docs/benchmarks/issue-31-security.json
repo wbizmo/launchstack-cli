@@ -1,0 +1,106 @@
+{
+  "implementation_commit": "eb2a6f9a7d1869f5f32aa17addc8990262d5d056",
+  "node": "v24.22.3",
+  "platform": "linux x64",
+  "os_release": "6.18.57",
+  "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+  "cpu_count": 4,
+  "peak_rss_bytes": 235491328,
+  "fixture": "synthetic Git index with exact path labels and one shared empty blob; no file contents",
+  "classifier": "LS005 matches tracked path names only; result is marked heuristic",
+  "content_fingerprint": "e80b71cd14d3cbd65f4173abcbfcf01a545dbca32a72d575108b553a648cc96f",
+  "measurements": [
+    {
+      "files": 1000,
+      "repetitions": 3,
+      "warmups": 1,
+      "tracked_path_bytes": 33886,
+      "file_content_bytes_inspected": 0,
+      "scan_ms": {
+        "p50": 3.805,
+        "p95": 6.276
+      },
+      "cpu_microseconds": {
+        "p50_user": 889,
+        "p50_system": 2026
+      },
+      "heuristic_secret_paths": 1,
+      "false_positives_in_synthetic_labels": 0,
+      "false_negatives_in_synthetic_labels": 0,
+      "descriptors": {
+        "before": 29,
+        "after": 29
+      },
+      "errors": 0
+    },
+    {
+      "files": 10000,
+      "repetitions": 3,
+      "warmups": 1,
+      "tracked_path_bytes": 348823,
+      "file_content_bytes_inspected": 0,
+      "scan_ms": {
+        "p50": 13.822,
+        "p95": 14.571
+      },
+      "cpu_microseconds": {
+        "p50_user": 2542,
+        "p50_system": 11289
+      },
+      "heuristic_secret_paths": 10,
+      "false_positives_in_synthetic_labels": 0,
+      "false_negatives_in_synthetic_labels": 0,
+      "descriptors": {
+        "before": 29,
+        "after": 29
+      },
+      "errors": 0
+    },
+    {
+      "files": 50000,
+      "repetitions": 3,
+      "warmups": 1,
+      "tracked_path_bytes": 1788503,
+      "file_content_bytes_inspected": 0,
+      "scan_ms": {
+        "p50": 63.167,
+        "p95": 69.903
+      },
+      "cpu_microseconds": {
+        "p50_user": 31917,
+        "p50_system": 5148
+      },
+      "heuristic_secret_paths": 50,
+      "false_positives_in_synthetic_labels": 0,
+      "false_negatives_in_synthetic_labels": 0,
+      "descriptors": {
+        "before": 29,
+        "after": 29
+      },
+      "errors": 0
+    },
+    {
+      "files": 100000,
+      "repetitions": 3,
+      "warmups": 1,
+      "tracked_path_bytes": 3588103,
+      "file_content_bytes_inspected": 0,
+      "scan_ms": {
+        "p50": 111.095,
+        "p95": 141.688
+      },
+      "cpu_microseconds": {
+        "p50_user": 61508,
+        "p50_system": 25600
+      },
+      "heuristic_secret_paths": 100,
+      "false_positives_in_synthetic_labels": 0,
+      "false_negatives_in_synthetic_labels": 0,
+      "descriptors": {
+        "before": 29,
+        "after": 29
+      },
+      "errors": 0
+    }
+  ]
+}

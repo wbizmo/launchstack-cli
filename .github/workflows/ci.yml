@@ -13,8 +13,34 @@ permissions:
   contents: read
 
 jobs:
+  windows-portability:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.3
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Check formatting and lint
+        run: |
+          npm run format:check
+          npm run lint
+      - name: Typecheck, test and build
+        run: |
+          npm run typecheck
+          npm run test:run
+          npm run build
+
   release-gate:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [24.22.3, 26.13.1]
 
     services:
       postgres:
@@ -38,7 +64,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ matrix.node-version }}
           cache: npm
           registry-url: https://registry.npmjs.org
 
@@ -49,3 +75,6 @@ jobs:
         run: npm run release:check
         env:
           LAUNCHSTACK_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/launchstack_smoke
+
+      - name: Build and run generated production Docker image
+        run: npm run docker:template:smoke

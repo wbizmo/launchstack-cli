@@ -136,6 +136,8 @@ type ManagedFileState = {
     owner: string;
     sha256: string;
     version: string;
+    ownership?: "launchstack" | "shared" | "extension";
+    migrationBaseSha256?: string;
 };
 type InstalledExtensionState = {
     id: string;
@@ -180,6 +182,7 @@ type PlannedWrite = {
     version: string;
     expectedSha256?: string | null;
     executable?: boolean;
+    baseSha256?: string;
 };
 type PlannedDelete = {
     type: "delete";
@@ -248,6 +251,12 @@ declare const projectStateSchema: z.ZodObject<{
         owner: z.ZodString;
         sha256: z.ZodString;
         version: z.ZodString;
+        ownership: z.ZodOptional<z.ZodEnum<{
+            launchstack: "launchstack";
+            shared: "shared";
+            extension: "extension";
+        }>>;
+        migrationBaseSha256: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>;
     extensions: z.ZodRecord<z.ZodString, z.ZodObject<{
         id: z.ZodString;
@@ -295,7 +304,7 @@ type ReconciliationPlan = LifecyclePlan & {
     removeCapabilities: string[];
     drift: DriftEntry[];
 };
-declare function planReconciliation(projectDirectoryInput: string): ReconciliationPlan;
+declare function planReconciliation(projectDirectoryInput: string, manifestInput?: ReturnType<typeof loadProjectManifest>): ReconciliationPlan;
 declare function applyReconciliation(input: {
     projectDirectory: string;
     allowRemove?: boolean;
@@ -303,6 +312,11 @@ declare function applyReconciliation(input: {
 declare function projectHasManifest(projectDirectory: string): boolean;
 
 declare const V3_TEMPLATE_VERSION = "3.0.0";
+type UpgradeDiff = {
+    path: string;
+    before: string | null;
+    after: string | null;
+};
 type UpgradePlan = {
     projectDirectory: string;
     fromVersion: string;
@@ -310,13 +324,28 @@ type UpgradePlan = {
     actions: LifecycleAction[];
     conflicts: string[];
     mutations: FileMutation[];
+    diffs: UpgradeDiff[];
     nextManifest: ProjectManifest;
     nextState: ProjectState;
 };
+type MigrationVersionCondition = {
+    target: "manifest" | "state";
+    version: "from" | "to";
+};
+type TemplateMigration = {
+    from: string;
+    to: string;
+    id: string;
+    dependsOn: readonly string[];
+    preconditions: readonly MigrationVersionCondition[];
+    postconditions: readonly MigrationVersionCondition[];
+};
+declare function resolveMigrationChain(from: string, to: string, migrations?: readonly TemplateMigration[]): TemplateMigration[];
 declare function planUpgrade(projectDirectoryInput: string): UpgradePlan;
 declare function applyUpgrade(plan: UpgradePlan): ProjectState;
 
 type ExtensionKind = "capability" | "plugin";
+type ExtensionCoverage = "complete" | "helper-only";
 type ExtensionFile = {
     path: string;
     content: string;
@@ -336,6 +365,7 @@ type ExtensionManifest = {
     kind: ExtensionKind;
     displayName: string;
     supportedLaunchStack: string;
+    coverage?: ExtensionCoverage;
     dependencies?: string[];
     conflicts?: string[];
     files?: ExtensionFile[];
@@ -343,6 +373,7 @@ type ExtensionManifest = {
         dependencies?: Record<string, string>;
         devDependencies?: Record<string, string>;
     };
+    scripts?: Record<string, string>;
     environment?: ExtensionEnvironmentVariable[];
     composeServices?: Record<string, JsonValue>;
     doctor?: Array<{
@@ -382,6 +413,7 @@ type PreparedExtensionPlan = ExtensionPlan & {
     nextState: ProjectState;
 };
 declare function resolveExtensionOrder(requested: string[], registry: Record<string, ExtensionManifest>): ExtensionManifest[];
+declare function composeMutation(projectDirectory: string, state: ProjectState, pending: FileMutation[]): FileMutation | null;
 declare function planExtensionInstall(input: {
     projectDirectory: string;
     requested: string[];
@@ -391,6 +423,7 @@ declare function applyExtensionInstall(plan: PreparedExtensionPlan): ProjectStat
 
 type OpenApiSchema = {
     type?: string | string[];
+    format?: string;
     nullable?: boolean;
     enum?: Array<string | number | boolean | null>;
     properties?: Record<string, OpenApiSchema>;
@@ -407,6 +440,12 @@ type OpenApiParameter = {
     in: "path" | "query" | "header" | "cookie";
     required?: boolean;
     schema?: OpenApiSchema;
+    content?: Record<string, {
+        schema?: OpenApiSchema;
+    }>;
+    style?: string;
+    explode?: boolean;
+    allowReserved?: boolean;
 };
 type OpenApiOperation = {
     operationId?: string;
@@ -443,7 +482,8 @@ type ParsedOperation = {
     operation: OpenApiOperation;
 };
 declare function collectOperations(document: OpenApiDocument): ParsedOperation[];
-declare function schemaToType(schema: OpenApiSchema | undefined): string;
+declare function componentTypeNames(document: OpenApiDocument): Record<string, string>;
+declare function schemaToType(schema: OpenApiSchema | undefined, names?: Record<string, string>): string;
 declare function responseSchema(operation: OpenApiOperation): OpenApiSchema | undefined;
 declare function requestBodySchema(operation: OpenApiOperation): OpenApiSchema | undefined;
 
@@ -452,7 +492,7 @@ declare function loadOpenApiSource(source: string): Promise<OpenApiDocument>;
 declare function generateTypeScriptClient(document: OpenApiDocument, target?: ClientTarget): string;
 
 declare const AUDIT_SEVERITIES: readonly ["info", "low", "medium", "high", "critical"];
-type AuditSeverity = typeof AUDIT_SEVERITIES[number];
+type AuditSeverity = (typeof AUDIT_SEVERITIES)[number];
 type AuditFinding = {
     ruleId: string;
     severity: AuditSeverity;
@@ -472,7 +512,10 @@ type AuditReport = {
 };
 declare function severityRank(severity: AuditSeverity): number;
 
-declare function runProductionAudit(projectDirectoryInput: string): AuditReport;
+declare function parseNpmAuditAdvisories(output: string): AuditFinding[];
+declare function runProductionAudit(projectDirectoryInput: string, options?: {
+    dependencyAdvisories?: boolean;
+}): AuditReport;
 
 type ResourceFieldType = "string" | "number" | "boolean" | "date";
 type ResourceField = {
@@ -518,7 +561,7 @@ type StageProviderAdapter = {
         update: boolean;
         destroy: boolean;
     };
-    create(input: StageCreateInput): StageCreateResult;
+    create(input: StageCreateInput): StageCreateResult | Promise<StageCreateResult>;
     inspect(input: {
         projectDirectory: string;
         resourceId: string;
@@ -545,7 +588,7 @@ declare function createOrUpdateStage(input: {
     projectDirectory: string;
     stage: string;
     production?: boolean;
-}): StageState;
+}): Promise<StageState>;
 declare function inspectStage(projectDirectoryInput: string, stageInput: string): StageStatus;
 declare function destroyStage(input: {
     projectDirectory: string;
@@ -553,4 +596,4 @@ declare function destroyStage(input: {
     production?: boolean;
 }): void;
 
-export { AUDIT_SEVERITIES, type AuditFinding, type AuditReport, type AuditSeverity, type AuditSuppression, type CapabilitySelection, type ChangelogEntry, type ClientTarget, type CreateChangelogInput, type CreateDeploymentInput, type CreateLaunchInput, type Deployment, type DesiredStage, type DriftEntry, type DriftKind, type ExtensionEnvironmentVariable, type ExtensionFile, type ExtensionKind, type ExtensionManifest, type ExtensionPlan, FIRST_PARTY_EXTENSIONS, type FileMutation, type GenerateProjectOptions, type InstalledExtensionState, type JsonPrimitive, type JsonValue, type Launch, LaunchStackClient, type LaunchStackConfig, LaunchStackError, type LifecycleAction, type LifecyclePlan, MANIFEST_FILENAME, MANIFEST_SCHEMA_URL, MANIFEST_SCHEMA_VERSION, type ManagedFileState, type ModuleGenerationPlan, type OpenApiDocument, type OpenApiOperation, type OpenApiParameter, type OpenApiSchema, type ParsedOperation, type PlannedDelete, type PlannedWrite, type PreparedExtensionPlan, type ProjectManifest, type ProjectState, type ProjectTemplate, type ReconciliationPlan, type ResourceField, type ResourceFieldType, STATE_DIRECTORY, STATE_FILENAME, STATE_SCHEMA_VERSION, type StageCreateInput, type StageCreateResult, type StageProviderAdapter, type StageState, type StageStatus, type TemplateFile, type TemplateName, type UpgradePlan, V3_TEMPLATE_VERSION, applyExtensionInstall, applyModuleGeneration, applyReconciliation, applyUpgrade, collectOperations, copyDirectory, createOrUpdateStage, createProjectManifest, destroyStage, detectManagedDrift, emptyProjectState, ensureDestinationAvailable, generateProject, generateTypeScriptClient, getPackageRoot, getTemplateDirectory, hashFile, inspectStage, installDependencies, listFirstPartyExtensions, loadOpenApiSource, loadProjectManifest, loadProjectState, parseFieldSpec, parseOpenApiDocument, parseProjectManifest, parseProjectState, planExtensionInstall, planModuleGeneration, planReconciliation, planUpgrade, projectHasManifest, projectManifestSchema, projectStateSchema, renderDirectory, renderTemplate, requestBodySchema, resolveExtensionOrder, responseSchema, runProductionAudit, schemaToType, serializeProjectManifest, serializeProjectState, severityRank, sha256, stageResourceId, toDisplayName, validateProjectName, validateStageName };
+export { AUDIT_SEVERITIES, type AuditFinding, type AuditReport, type AuditSeverity, type AuditSuppression, type CapabilitySelection, type ChangelogEntry, type ClientTarget, type CreateChangelogInput, type CreateDeploymentInput, type CreateLaunchInput, type Deployment, type DesiredStage, type DriftEntry, type DriftKind, type ExtensionCoverage, type ExtensionEnvironmentVariable, type ExtensionFile, type ExtensionKind, type ExtensionManifest, type ExtensionPlan, FIRST_PARTY_EXTENSIONS, type FileMutation, type GenerateProjectOptions, type InstalledExtensionState, type JsonPrimitive, type JsonValue, type Launch, LaunchStackClient, type LaunchStackConfig, LaunchStackError, type LifecycleAction, type LifecyclePlan, MANIFEST_FILENAME, MANIFEST_SCHEMA_URL, MANIFEST_SCHEMA_VERSION, type ManagedFileState, type MigrationVersionCondition, type ModuleGenerationPlan, type OpenApiDocument, type OpenApiOperation, type OpenApiParameter, type OpenApiSchema, type ParsedOperation, type PlannedDelete, type PlannedWrite, type PreparedExtensionPlan, type ProjectManifest, type ProjectState, type ProjectTemplate, type ReconciliationPlan, type ResourceField, type ResourceFieldType, STATE_DIRECTORY, STATE_FILENAME, STATE_SCHEMA_VERSION, type StageCreateInput, type StageCreateResult, type StageProviderAdapter, type StageState, type StageStatus, type TemplateFile, type TemplateMigration, type TemplateName, type UpgradeDiff, type UpgradePlan, V3_TEMPLATE_VERSION, applyExtensionInstall, applyModuleGeneration, applyReconciliation, applyUpgrade, collectOperations, componentTypeNames, composeMutation, copyDirectory, createOrUpdateStage, createProjectManifest, destroyStage, detectManagedDrift, emptyProjectState, ensureDestinationAvailable, generateProject, generateTypeScriptClient, getPackageRoot, getTemplateDirectory, hashFile, inspectStage, installDependencies, listFirstPartyExtensions, loadOpenApiSource, loadProjectManifest, loadProjectState, parseFieldSpec, parseNpmAuditAdvisories, parseOpenApiDocument, parseProjectManifest, parseProjectState, planExtensionInstall, planModuleGeneration, planReconciliation, planUpgrade, projectHasManifest, projectManifestSchema, projectStateSchema, renderDirectory, renderTemplate, requestBodySchema, resolveExtensionOrder, resolveMigrationChain, responseSchema, runProductionAudit, schemaToType, serializeProjectManifest, serializeProjectState, severityRank, sha256, stageResourceId, toDisplayName, validateProjectName, validateStageName };

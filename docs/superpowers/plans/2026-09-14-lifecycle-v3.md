@@ -26,6 +26,7 @@
 ### Task 1: Public failing CLI contract
 
 **Files:**
+
 - Create: `tests/lifecycle-v3-cli.test.ts`
 
 - [ ] Write CLI integration tests for `add --list`, `plugin list`, `plan --json`, `audit --json`, `client generate`, `generate module --dry-run`, and stage-aware status.
@@ -35,6 +36,7 @@
 ### Task 2: Manifest, state, paths and atomic mutation
 
 **Files:**
+
 - Create: `src/project/types.ts`
 - Create: `src/project/manifest.ts`
 - Create: `src/project/state.ts`
@@ -50,6 +52,7 @@
 ### Task 3: Shared extension engine and first-party capability registry
 
 **Files:**
+
 - Create: `src/extensions/types.ts`
 - Create: `src/extensions/engine.ts`
 - Create: `src/extensions/first-party.ts`
@@ -63,6 +66,7 @@
 ### Task 4: Plugin/recipe trust boundary
 
 **Files:**
+
 - Create: `src/extensions/plugins.ts`
 - Create: `src/commands/plugin.ts`
 - Test: `tests/plugins.test.ts`
@@ -74,6 +78,7 @@
 ### Task 5: Drift, upgrades and reconciliation
 
 **Files:**
+
 - Create: `src/project/reconcile.ts`
 - Create: `src/project/upgrade.ts`
 - Create: `src/commands/project.ts`
@@ -87,6 +92,7 @@
 ### Task 6: Development orchestrator
 
 **Files:**
+
 - Create: `src/dev/orchestrator.ts`
 - Create: `src/commands/dev.ts`
 - Test: `tests/dev-orchestrator.test.ts`
@@ -98,6 +104,7 @@
 ### Task 7: Typed OpenAPI clients
 
 **Files:**
+
 - Create: `src/client/openapi.ts`
 - Create: `src/client/generate.ts`
 - Create: `src/commands/client-generate.ts`
@@ -110,6 +117,7 @@
 ### Task 8: Production audit
 
 **Files:**
+
 - Create: `src/audit/types.ts`
 - Create: `src/audit/rules.ts`
 - Create: `src/audit/run.ts`
@@ -123,6 +131,7 @@
 ### Task 9: Architecture-aware resource/module generation
 
 **Files:**
+
 - Create: `src/generator/module.ts`
 - Create: `src/commands/generate.ts`
 - Modify template route registry files.
@@ -135,6 +144,7 @@
 ### Task 10: Preview/stage lifecycle
 
 **Files:**
+
 - Create: `src/stages/types.ts`
 - Create: `src/stages/docker.ts`
 - Create: `src/stages/manager.ts`
@@ -149,6 +159,7 @@
 ### Task 11: Generated project v3 metadata and route ownership boundary
 
 **Files:**
+
 - Modify: `src/generator/generate.ts`
 - Modify: `src/templates/api/*` metadata/route files/package version/docs
 - Test: template/generator tests
@@ -160,6 +171,7 @@
 ### Task 12: CLI/export wiring and release documentation
 
 **Files:**
+
 - Modify: `src/cli.ts`
 - Modify: `src/index.ts`
 - Modify: `package.json`, `package-lock.json`

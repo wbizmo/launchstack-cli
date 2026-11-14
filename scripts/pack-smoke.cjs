@@ -1,10 +1,6 @@
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
-const {
-  mkdtempSync,
-  readFileSync,
-  rmSync
-} = require("node:fs");
+const { mkdtempSync, readFileSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
 
@@ -19,7 +15,7 @@ function run(command, args, options = {}) {
     cwd: options.cwd ?? root,
     encoding: "utf8",
     env: options.env ?? process.env,
-    stdio: options.stdio ?? "pipe"
+    stdio: options.stdio ?? "pipe",
   });
 
   if (result.status !== 0) {
@@ -32,30 +28,34 @@ function run(command, args, options = {}) {
 
 try {
   const packageJson = JSON.parse(
-    readFileSync(join(root, "package.json"), "utf8")
+    readFileSync(join(root, "package.json"), "utf8"),
   );
   const packed = run(npm, ["pack", "--json", "--silent"]);
   const packResult = JSON.parse(packed.stdout);
   tarball = join(root, packResult[0].filename);
 
   run(npm, ["init", "-y"], { cwd: temp });
-  run(npm, [
-    "install",
-    "--ignore-scripts",
-    "--no-audit",
-    "--no-fund",
-    tarball
-  ], { cwd: temp });
+  run(
+    npm,
+    ["install", "--ignore-scripts", "--no-audit", "--no-fund", tarball],
+    { cwd: temp },
+  );
 
   const cliPath = join(
     temp,
     "node_modules",
     "launchstack-cli",
     "dist",
-    "cli.js"
+    "cli.js",
   );
-  const version = run(node, [cliPath, "--version"], { cwd: temp }).stdout.trim();
-  assert.equal(version, packageJson.version, "packed CLI version must match package.json");
+  const version = run(node, [cliPath, "--version"], {
+    cwd: temp,
+  }).stdout.trim();
+  assert.equal(
+    version,
+    packageJson.version,
+    "packed CLI version must match package.json",
+  );
 
   const securitySmoke = `
 const assert = require("node:assert/strict");

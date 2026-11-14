@@ -10,28 +10,39 @@ describe("Swagger and OpenAPI template", () => {
       "src/plugins/swagger.ts",
       "src/schemas/common.ts",
       "src/schemas/auth.ts",
-      "tests/openapi.test.ts"
+      "tests/openapi.test.ts",
     ];
 
     for (const file of requiredFiles) {
-      expect(existsSync(resolve(templateRoot, file)), `Missing OpenAPI template file: ${file}`).toBe(true);
+      expect(
+        existsSync(resolve(templateRoot, file)),
+        `Missing OpenAPI template file: ${file}`,
+      ).toBe(true);
     }
   });
 
   it("declares Swagger dependencies", () => {
-    const packageJson = JSON.parse(readFileSync(resolve(templateRoot, "package.json"), "utf8"));
+    const packageJson = JSON.parse(
+      readFileSync(resolve(templateRoot, "package.json"), "utf8"),
+    );
     expect(packageJson.dependencies["@fastify/swagger"]).toBeDefined();
     expect(packageJson.dependencies["@fastify/swagger-ui"]).toBeDefined();
   });
 
   it("configures bearer authentication", () => {
-    const source = readFileSync(resolve(templateRoot, "src/plugins/swagger.ts"), "utf8");
+    const source = readFileSync(
+      resolve(templateRoot, "src/plugins/swagger.ts"),
+      "utf8",
+    );
     expect(source).toContain("bearerAuth");
     expect(source).toContain('routePrefix: "/docs"');
   });
 
   it("documents authentication routes", () => {
-    const source = readFileSync(resolve(templateRoot, "src/modules/auth/auth.schemas.ts"), "utf8");
+    const source = readFileSync(
+      resolve(templateRoot, "src/modules/auth/auth.schemas.ts"),
+      "utf8",
+    );
     expect(source).toMatch(/tags:\s*\[\s*"Authentication"\s*\]/);
     expect(source).toContain("security");
   });

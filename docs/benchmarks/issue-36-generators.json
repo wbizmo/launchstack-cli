@@ -1,0 +1,51 @@
+{
+  "issue": 36,
+  "implementationCommit": "b5cf167defb475caf7d50fab79093d88df4cc66b",
+  "measuredAt": "2026-11-14",
+  "environment": {
+    "os": "Linux 6.18.57 x86_64",
+    "node": "24.22.3",
+    "npm": "11.19.1",
+    "database": "PostgreSQL 16 Alpine",
+    "prisma": "6.19.3"
+  },
+  "workload": {
+    "generatedResources": 1,
+    "ownerUpdateAttempts": 2,
+    "paginationRows": 5,
+    "pageSize": 2,
+    "timestampDistribution": "all rows share the same createdAt timestamp",
+    "runs": 1,
+    "networkDependencyInstall": "excluded from measurements; required by generated project smoke"
+  },
+  "observed": {
+    "concurrentOwnerUpdates": {
+      "sqlUpdateStatements": 2,
+      "successfulOwnedUpdates": 1,
+      "crossOwnerUpdatesReturnedNoRow": 1,
+      "preReadStatements": 0,
+      "ownerPredicatePresentInEachUpdate": true
+    },
+    "pagination": {
+      "selectStatementsPerPage": 1,
+      "rowsRequestedPerPage": "limit + 1",
+      "pageSize": 2,
+      "hasNext": true,
+      "stableTimestampTieBreak": "createdAt DESC, id DESC",
+      "deleteBetweenPagesHadNoDuplicateOrDeletedRow": true,
+      "databaseIndex": ["ownerId", "createdAt", "id"]
+    }
+  },
+  "verification": {
+    "focusedTests": "13 passed across 2 files",
+    "generatedProject": "9 test files / 28 tests passed; PostgreSQL integration included",
+    "generatedProjectTypecheck": "passed",
+    "generatedProjectBuild": "passed",
+    "productionAudit": "passed with 0 high or critical findings"
+  },
+  "limitations": [
+    "This is a functional query-count observation, not a latency or throughput benchmark.",
+    "One generated resource, five pagination rows and one run do not establish scale performance.",
+    "The generated project smoke runs npm ci; dependency download time is not included in query observations."
+  ]
+}
