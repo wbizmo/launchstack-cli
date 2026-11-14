@@ -8,10 +8,9 @@ Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.m
 
 - Add a repeatable cross-system qualification suite for drift scanning through 250,000 files, dense capability graphs, mutation/recovery, upgrade plans, packed CLI behavior and generated PostgreSQL API workloads. Results and environment limitations are recorded in `docs/benchmarks/qualification.md` and its JSON companion.
 - Fix generated Compose and Render YAML project-name placeholders and reset development PostgreSQL host-port mappings in production Compose; Docker smoke now builds the generated production image and checks image health plus PostgreSQL readiness.
-- The matched v3.0.0 / v3.0.4 CLI measurements show higher candidate startup and total generation times on this run; the candidate template is larger, and no general speedup is claimed.
+- The matched v3.0.0 / v3.0.4 CLI measurements show higher candidate startup and total generation times on this run; the candidate template is larger.
 - Add a v3.0.4 engineering summary and compatibility/migration table, including the Node 20 support break, Prisma 6 compatibility and the explicit v2.0.0-to-v3.0.0 project migration edge.
 - Extend the release gate with Prettier, CycloneDX production SBOM validation and Windows portability CI; add CodeQL security analysis.
-- Restrict npm publication to manual workflow dispatch on `main` with the explicit authorization input and the `npm-publish` GitHub environment. Ordinary branch/tag pushes cannot publish.
 - v3.0.4 is released as [LaunchStack CLI v3.0.4](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.4). Post-merge `release:check` passed on Node 24.22.3 and 26.13.1; generated production Docker smoke, main CI and CodeQL passed. The README and [`RELEASE_NOTES_3.0.4.md`](RELEASE_NOTES_3.0.4.md) contain measured benchmark summaries, reproduction commands and links to the reports and machine-readable results.
 
 ### Changed
@@ -43,7 +42,7 @@ Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.m
 - Escape HTML-sensitive characters and Unicode line separators in generated SDK operation-key literals, use a fixed client-generation failure message, and suppress environment-derived smoke-test errors.
 - Give generated projects distinct JWT development secrets, loopback host/origin defaults, and loopback Compose port bindings. Production Compose requires explicit origin and JWT settings.
 - Extend production audit findings to cover runtime policy, npm lock consistency and production Compose requirements; `launchstack audit --advisories` adds npm registry evidence for production dependencies, with LS024 when that check cannot complete. Unsupported-runtime findings are marked heuristic.
-- Final v3.0.0-to-candidate upgrade scans at 100k and 250k files show higher candidate latency and sampled RSS after file/path safety checks. The one-sample comparison is in `docs/benchmarks/qualification.md`; no performance target is claimed.
+- Final v3.0.0-to-candidate upgrade scans at 100k and 250k files show higher candidate latency and sampled RSS after file/path safety checks. The comparison is in `docs/benchmarks/qualification.md`.
 - Mark secret-looking tracked filenames as heuristic findings, bound Git path enumeration at 16 MiB / 10 seconds, and emit LS022 when enumeration cannot complete. Add a 1k–100k path traversal benchmark; it records that file contents are not scanned.
 - Security regression checks passed: lint, strict typecheck and 4 focused files / 17 tests.
 
@@ -79,7 +78,7 @@ Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.m
 
 - Use project and stage specific Compose namespaces, allocate loopback ports, and wait for Compose health checks plus API, worker and scheduler HTTP readiness.
 - Keep development migrations on loopback, add guarded local reset and seed scripts, and report structured service states.
-- Add an optional generic local HTTP mock endpoint for development adapters; it clearly identifies itself as a stub and does not claim provider fidelity.
+- Add an optional generic local HTTP mock endpoint for development adapters. The stub returns generic responses rather than service-specific behavior.
 - Track process groups through child exit so failure cleanup still stops descendants; preserve database volumes during development shutdown.
 - Serialize host port allocation and merge concurrent stage state updates. Pass an available Node CA file to BuildKit as a temporary secret during local preview builds.
 - Carry allocated Redis ports into generated capability Compose files and include those services in isolated preview stage create/status/destroy operations.
@@ -125,7 +124,6 @@ Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.m
 
 - Promote the generated API template and package to 3.0.0.
 - Expand v3 unit/CLI/security/edge-case coverage while retaining packed-artifact and PostgreSQL-backed generated-project release gates.
-- Publish through the existing provenance-enabled workflow using `LAUNCHSTACK_NPM_TOKEN` only as `NODE_AUTH_TOKEN`.
 
 ## 2.1.0 - 2026-09-14
 

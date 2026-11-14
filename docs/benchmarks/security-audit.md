@@ -15,4 +15,4 @@ The scan examines tracked path names only. LS005 does not read file contents, so
 
 The audit bounds Git path output at 16 MiB and waits at most 10 seconds. On failure or bound exhaustion it emits high-severity LS022 that says the path audit is incomplete, rather than silently returning an empty result. The 100k fixture produced 3.59 MB of path output, completed with zero errors, and left the descriptor count unchanged. Peak process RSS across this run was 235,491,328 bytes; the process includes the TypeScript runner and benchmark fixture setup, so it is not an isolated scanner-only peak.
 
-Reproduce with `NPM_CONFIG_CACHE=/workspace/.npm-cache LAUNCHSTACK_BENCH_REPETITIONS=3 LAUNCHSTACK_BENCH_WARMUPS=1 npm run bench:security`. Sizes are configurable through `LAUNCHSTACK_BENCH_SIZES` and capped at 100,000. This is a diagnostic measurement on one host, not a throughput guarantee.
+Reproduce with `NPM_CONFIG_CACHE=/workspace/.npm-cache LAUNCHSTACK_BENCH_REPETITIONS=3 LAUNCHSTACK_BENCH_WARMUPS=1 npm run bench:security`. Sizes are configurable through `LAUNCHSTACK_BENCH_SIZES` and capped at 100,000. Results were measured on one host.

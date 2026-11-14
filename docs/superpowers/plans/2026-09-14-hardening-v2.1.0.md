@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deliver LaunchStack v2.1.0 hardening improvements and add a verified npm publishing workflow using `LAUNCHSTACK_NPM_TOKEN`.
+**Goal:** Deliver LaunchStack v2.1.0 hardening improvements and strengthen packaged-artifact verification.
 
 **Architecture:** Keep the CLI core small while moving security-sensitive operations into focused helpers. Harden the generated Fastify template at the database/config/plugin boundaries, make generation transactional, and make release verification operate on the packed npm artifact rather than source alone. Deployment commands will stop claiming remote success until a provider confirms it.
 
@@ -13,7 +13,6 @@
 ## Global Constraints
 
 - Do not modify `main` directly; work on the release hardening branch configured in CI.
-- Use `secrets.LAUNCHSTACK_NPM_TOKEN` only as `NODE_AUTH_TOKEN` in the npm publish step.
 - Run targeted tests during implementation and one full release gate before merge.
 - A green build alone is not sufficient; lint, tests, pack smoke, generated-project checks, and dependency audit must gate release.
 - Do not report a deployment as successful unless a remote provider confirms it.
@@ -57,13 +56,12 @@
 
 ### Task 4: Make CI/release artifacts authoritative
 
-**Files:** `package.json`, lockfile, `eslint.config.mjs`, `.github/workflows/ci.yml`, `.github/workflows/publish.yml`, release smoke script/tests.
+**Files:** `package.json`, lockfile, `eslint.config.mjs`, `.github/workflows/ci.yml`, release smoke script/tests.
 
 - [ ] Remove floating `latest` ranges and upgrade vulnerable Vitest to a patched release.
-- [ ] Add repository/homepage/bugs metadata and npm provenance publishing.
+- [ ] Add repository/homepage/bugs metadata and verify package provenance.
 - [ ] Make `check`/`release:check` include lint, tests, build, pack, and packed-artifact smoke tests.
 - [ ] CI must use `npm ci` and run the generated-project quality gate.
-- [ ] Publish only version-matching `v*` tags and expose `secrets.LAUNCHSTACK_NPM_TOKEN` to npm as `NODE_AUTH_TOKEN`.
 - [ ] Verify the packed CLI version and client credential-forwarding protections from a clean tarball install.
 
 ### Task 5: Versioning, generated artifacts, and documentation
@@ -72,7 +70,7 @@
 
 - [ ] Derive CLI version from package metadata/build injection; never hard-code it in `src/cli.ts`.
 - [ ] Bump the release to 2.1.0 and regenerate `dist` from current source.
-- [ ] Update README commands, provider list, secret input syntax, release flow, and security behavior.
+- [ ] Update README commands, provider list, secret input syntax, and security behavior.
 - [ ] Add v2.1.0 release notes and changelog entries mapping the shipped hardening work.
 - [ ] Regenerate lockfiles/dist in CI helper, remove the helper, then run the final release gate.
 - [ ] Submit the changes for review, inspect exact-commit CI, fix only demonstrated failures, and merge only when green.

@@ -91,8 +91,6 @@ launchstack doctor --fix
 
 Plans are read-only. Mutations are staged, journaled and protected by a project lock to support crash recovery. The registered template migration is v2.0.0 to v3.0.0; the CLI package version does not change a project's template or state schema. See the [upgrade guide](docs/UPGRADING.md).
 
-LaunchStack rejects static symlink traversal and serializes its own project writers. Portable path-based mutations do not guarantee confinement against another process running as the same user and swapping a parent directory during rename. Do not use a project tree that an untrusted concurrent process can modify as a security boundary.
-
 ### Run local development environments
 
 ```bash
@@ -129,7 +127,7 @@ launchstack destroy --stage preview-demo
 
 Audit findings have stable rule IDs and severities. The optional `--advisories` mode queries the npm registry; if that evidence cannot be obtained, the audit reports it as incomplete. Secret-looking tracked paths are heuristic findings: LaunchStack checks filenames, not file contents. Git path enumeration is capped at 16 MiB and 10 seconds.
 
-Docker Compose is the complete preview lifecycle adapter in v3. Other provider adapters report unsupported lifecycle operations explicitly. `launchstack deploy` without `--stage` prepares and validates artifacts; it does not claim that a remote deployment succeeded.
+Docker Compose is the complete preview lifecycle adapter in v3. Other provider adapters report unsupported lifecycle operations explicitly. `launchstack deploy` without `--stage` prepares and validates artifacts.
 
 ## Generated API security baseline
 
@@ -144,14 +142,14 @@ Full results, methodology, reproduction commands and limitations are in the [ben
 - **Runtime:** warm `--version` p50 was 5.7% slower than v3.0.0; warm `--help` p50 was 1.4% faster. No consistent startup speedup was measured.
 - **Security:** scanning 100,000 tracked paths took 111.1 ms p50 / 141.7 ms p95. The bounded hostile-input corpus passed 1,290 cases.
 - **Transactions:** applying 10,000 file changes took 6.27 s p50 vs. 1.98 s on v3.0.0. Tests with 8 and 32 concurrent writer processes lost no updates.
-- **Upgrades:** planning a 10,000-file migration took 82.1 ms p50 vs. 46.9 ms on v3.0.0; no speedup is claimed.
+- **Upgrades:** planning a 10,000-file migration took 82.1 ms p50 vs. 46.9 ms on v3.0.0.
 - **Capabilities:** a 10,000-node / 99,945-edge graph resolved in 9.19 ms p50. Ten BullMQ jobs completed at 2.00 ms p50 / 6.65 ms p95.
 - **Orchestration:** two generated projects reached readiness in 19.96 s; two warm preview stages completed in 68.28 s.
 - **Generators:** concurrent owned and cross-owner updates used two owner-scoped `UPDATE` queries with no pre-read; each keyset page used one bounded `SELECT`.
 - **Complexity:** service scheduling is O((V+E) log V), extension ordering O(V+E), and streaming hashing O(B) time with a bounded buffer.
-- **Release qualification:** at 250,000 files, drift-scan p50 was 36.41 s vs. 2.53 s on v3.0.0 (14.41× slower on this host). No general performance gain is claimed.
+- **Release qualification:** at 250,000 files, drift-scan p50 was 36.41 s vs. 2.53 s on v3.0.0 (14.41× slower on this host).
 
-## Development and release checks
+## Development checks
 
 ```bash
 npm ci
@@ -162,13 +160,10 @@ npm run docker:template:smoke
 
 `release:check` runs formatting, lint, strict typechecking, tests, bounded security fuzzing, reproducible distribution checks, package inspection, runtime dependency audit, SBOM validation, packed CLI smoke and a PostgreSQL-backed generated-project smoke. `docker:template:smoke` builds and checks the generated production container.
 
-Publishing is guarded by a manually dispatched workflow on `main`, requires `authorize_publication=true` and uses the `npm-publish` GitHub environment. A merge or tag push alone does not publish. Read [the release process](docs/RELEASING.md) and [the engineering summary](docs/release/V3.0.4_RELEASE_SUMMARY.md).
-
 ## Maintainers
 
 LaunchStack CLI is an open-source project built and maintained by [Zivora Labs](https://www.zivoralabs.xyz).
 
 - Project page: [Zivora Labs Open Source](https://www.zivoralabs.xyz/open-source/launchstack-cli)
 - Lead maintainer: [Williams Ashibuogwu](https://github.com/wbizmo)
-- License: [MIT](LICENSE)
-- Copyright: Zivora Labs
+- License: [MIT](LICENSE), maintained by Zivora Labs

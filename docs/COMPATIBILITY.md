@@ -21,4 +21,4 @@ Lifecycle and capability changes preserve files outside LaunchStack ownership. S
 
 Existing CLI command names and JSON plan output remain available. Project mutations now reject unsafe paths, malformed journals, stale preconditions and user-owned-file overwrites. The capability registry reports complete local integrations separately from helper-only primitives; see [CAPABILITIES.md](CAPABILITIES.md). Plugin manifests are declarative by default; executable extension hooks require explicit opt-in.
 
-No v2 CLI compatibility guarantee is made for the new Node engine range. The 3.0.4 patch version contains a documented support-policy break; review this impact when planning an upgrade.
+The supported Node engine range changes in 3.0.4: Node.js 20 is no longer supported. This is a breaking runtime-policy change despite the patch version.

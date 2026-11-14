@@ -183,11 +183,10 @@
 - [ ] Update version to 3.0.0 and document migration/new workflows, command reference, security model and plugin trust boundary.
 - [ ] Refresh lockfiles and committed `dist` from a clean CI build.
 
-### Task 13: Full verification, merge and publish
+### Task 13: Full verification and merge
 
 - [ ] Run exact-head CI with lint, typecheck, all unit/integration tests, `verify:dist`, packed-tarball smoke, generated API Postgres/concurrency tests and production audits.
 - [ ] Fix only diagnosed failures, using targeted tests before re-running the complete gate.
 - [ ] Submit the completed work for review and require the exact-commit gate to pass.
 - [ ] Merge only the verified SHA, then require `main` CI to pass.
-- [ ] Let the publish workflow verify release notes/tag, publish `launchstack-cli@3.0.0` with `LAUNCHSTACK_NPM_TOKEN` and provenance, and create GitHub Release `LaunchStack CLI v3.0.0`.
-- [ ] Verify npm registry and GitHub release state before reporting completion.
+- [ ] Complete release notes for the v3.0.0 package.

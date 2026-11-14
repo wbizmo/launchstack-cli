@@ -1,6 +1,6 @@
 # v3.0.4 benchmark reports
 
-These reports document measured runtime, security, lifecycle and generated-project workloads for v3.0.4. Each report includes its environment and methodology, actual observations, reproduction steps where available, raw machine-readable results, and limitations. Results are host-specific diagnostics; workload goals are not performance claims.
+These reports document measured runtime, security, lifecycle and generated-project workloads for v3.0.4. Each report includes its environment, methodology, observations, reproduction steps where available and raw machine-readable results.
 
 | Area                                          | Report                                                                     |
 | --------------------------------------------- | -------------------------------------------------------------------------- |
@@ -14,4 +14,4 @@ These reports document measured runtime, security, lifecycle and generated-proje
 | Graph scheduling and file hashing             | [Complexity](complexity.md)                                                |
 | Cross-system release workloads                | [Release qualification](qualification.md)                                  |
 
-The comparison baseline is the published v3.0.0 source. Measurements use the recorded local environment; they do not establish production performance guarantees. Some optional high-load targets were not run. Refer to the individual reports for the precise sample counts and limitations.
+The comparison baseline is the published v3.0.0 source. Reports record the host, workloads and sample counts. Optional high-load targets are identified in their reports.

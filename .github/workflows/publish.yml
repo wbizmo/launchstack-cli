@@ -93,7 +93,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.LAUNCHSTACK_NPM_TOKEN }}
         run: |
           if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::LAUNCHSTACK_NPM_TOKEN is not configured"
+            echo "::error::npm publishing credentials are not configured"
             exit 1
           fi
 

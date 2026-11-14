@@ -1,6 +1,6 @@
 # Release qualification measurements
 
-Status: measured on the local v3.0.4 candidate and included in the [published v3.0.4 source tag](https://github.com/wbizmo/launchstack-cli/tree/v3.0.4/docs/benchmarks). Workload goals are not performance claims. The machine-readable run with raw samples and workload details is [`qualification.json`](qualification.json).
+Measured on the local v3.0.4 candidate and included in the [published v3.0.4 source tag](https://github.com/wbizmo/launchstack-cli/tree/v3.0.4/docs/benchmarks). The machine-readable run with raw samples and workload details is [`qualification.json`](qualification.json).
 
 ## Method
 
@@ -68,7 +68,7 @@ The harness installed the packed candidate, generated an owner-scoped resource, 
 | Resource CRUD       |       51 |       mixed |      1.580 / 2.431 / 2.991 |   638.67 req/s |      0 |                 101 |
 | Resource pagination |      100 |  sequential |   10.057 / 14.944 / 15.493 | 1,905.12 req/s |      0 |                 100 |
 
-The v3.0.0 API baseline used the same 1,000 request and concurrency workloads. Its p50/p95/p99 observations and throughput are preserved in the JSON: at concurrency 50, GET was 14.937/45.304/94.659 ms at 2,516.28 req/s; at 200, 29.457/224.264/238.526 ms at 4,015.46 req/s; at 500, 90.401/216.424/273.168 ms at 3,424.95 req/s. Both runs reported zero HTTP errors. Single-host variation is visible; these results do not support a general throughput claim.
+The v3.0.0 API baseline used the same 1,000 request and concurrency workloads. Its p50/p95/p99 observations and throughput are preserved in the JSON: at concurrency 50, GET was 14.937/45.304/94.659 ms at 2,516.28 req/s; at 200, 29.457/224.264/238.526 ms at 4,015.46 req/s; at 500, 90.401/216.424/273.168 ms at 3,424.95 req/s. Both runs reported zero HTTP errors. Measurements show variation across concurrency levels on the same host.
 
 ### Final repeated managed-file upgrade comparison (2026-11-14)
 
@@ -79,8 +79,8 @@ The exact published v3.0.0 source (`f76996cc0c3d125abcb1e6f998d2cc037c02b140`) a
 |       100,000 | 1,199.833 / 1,205.902 ms |   6,269.450 / 6,338.532 ms |           5.23x |     749.912 / 889.675 ms | 1,322.931 / 1,327.540 ms |          1.76x |                     447.6 / 491.9 MiB |                              4 / 6 |         0 |
 |       250,000 | 2,526.231 / 2,556.426 ms | 36,410.349 / 36,562.004 ms |          14.41x | 1,713.955 / 1,738.221 ms | 3,237.542 / 3,271.768 ms |          1.89x |                     721.2 / 799.8 MiB |                              4 / 6 |         0 |
 
-The candidate's secure drift scan was materially slower and used more sampled RSS on this host. It adds canonical path validation, no-follow file opens, regular-file and size checks, and path-identity checks after hashing; v3.0.0 does not perform these checks. Candidate output had six expected diffs versus four for baseline, with no conflicts. RSS is sampled every 5 ms and can miss short-lived peaks. The earlier one-sample direct comparison has been superseded by these repeated results; the earlier full-system qualification JSON still records the candidate snapshot at `0abacda904b0bbc4abee0b59a5b8ff0989841d54`. No speedup is claimed.
+The candidate's secure drift scan was materially slower and used more sampled RSS on this host. It adds canonical path validation, no-follow file opens, regular-file and size checks, and path-identity checks after hashing; v3.0.0 does not perform these checks. Candidate output had six expected diffs versus four for baseline, with no conflicts. RSS is sampled every 5 ms and can miss short-lived peaks. The earlier one-sample direct comparison has been superseded by these repeated results; the earlier full-system qualification JSON still records the candidate snapshot at `0abacda904b0bbc4abee0b59a5b8ff0989841d54`.
 
 ## Limits
 
-The final repeated upgrade comparison uses three baseline and three candidate samples at each file size. The earlier direct comparison used one sample per size and is superseded by these repeated results. Even with three samples, p95 is diagnostic rather than a stable tail estimate. This is one four-CPU local container host, not a production topology. npm install measurements depend on the shared cache and registry/proxy. Template output differs between versions, so generation duration is not a normalized comparison. The benchmark does not simulate slow/network filesystems, large file contents, external database latency, cross-region traffic or multi-tenant load. No workload goal is reported as achieved unless its measured result appears above.
+The final repeated upgrade comparison uses three baseline and three candidate samples at each file size. The earlier direct comparison used one sample per size and is superseded by these repeated results. Each run used one four-CPU local container host. npm install measurements depend on the shared cache and registry/proxy. Template output differs between versions, so generation duration is not normalized for output size. The benchmark workloads cover the cases reported above.

@@ -20,10 +20,10 @@ The generated Prisma model adds `@@index([ownerId, createdAt, id])`. Direct owne
 
 The OpenAPI tests cover 3.0.3 and 3.1.0 documents, local parameter/request/response/schema references, enum and composed types, optional and nullable fields, safe property emission, deterministic names, invalid inline schemas, invalid pointers, external-reference rejection, cyclic input, and the 1 MiB document limit. Generated TypeScript, React and React Native targets were compiled with strict TypeScript settings. A fixture request asserted URL path escaping, repeated query parameters, bearer auth, JSON request body, parsed response and cancellation signal.
 
-The loader enforces HTTPS for remote sources, a 10 second timeout, a 1 MiB transfer limit, a 64-level / 100,000-node document bound, at most 1,000 paths and schemas, at most 3,000 operations, and a 2 MiB generated-client bound. External `$ref` targets are rejected. These are input/output safety limits, not claims about arbitrary remote service behavior.
+The loader enforces HTTPS for remote sources, a 10 second timeout, a 1 MiB transfer limit, a 64-level / 100,000-node document bound, at most 1,000 paths and schemas, at most 3,000 operations, and a 2 MiB generated-client bound. External `$ref` targets are rejected.
 
 ## Verification result
 
 The focused suite passed 13 tests across two files. The generated project passed typecheck, its build, 28 tests across nine files and the production dependency audit (zero high or critical findings). The smoke script performs `npm ci` to build the isolated project; package download duration is excluded from the query-count observations.
 
-Machine-readable observations are in [`generators.json`](generators.json). No response-time, throughput or scale claim is made from this workload.
+Machine-readable observations are in [`generators.json`](generators.json). This workload records generated output, compilation and database query counts.
