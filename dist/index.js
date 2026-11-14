@@ -655,7 +655,19 @@ function sha256(content) {
   return (0, import_node_crypto2.createHash)("sha256").update(content).digest("hex");
 }
 function hashFile(path) {
-  return sha256((0, import_node_fs7.readFileSync)(path));
+  const descriptor = (0, import_node_fs7.openSync)(path, "r");
+  const hash = (0, import_node_crypto2.createHash)("sha256");
+  const chunk = Buffer.allocUnsafe(64 * 1024);
+  try {
+    while (true) {
+      const bytes = (0, import_node_fs7.readSync)(descriptor, chunk, 0, chunk.length, null);
+      if (bytes === 0) break;
+      hash.update(chunk.subarray(0, bytes));
+    }
+    return hash.digest("hex");
+  } finally {
+    (0, import_node_fs7.closeSync)(descriptor);
+  }
 }
 function parseProjectState(input) {
   const result = projectStateSchema.safeParse(input);
@@ -1110,18 +1122,33 @@ function resolveExtensionOrder(requested, registry) {
   const order = [];
   const visiting = /* @__PURE__ */ new Set();
   const visited = /* @__PURE__ */ new Set();
-  const visit2 = (id, chain) => {
-    if (visited.has(id)) return;
-    if (visiting.has(id)) throw new Error(`Extension dependency cycle: ${[...chain, id].join(" -> ")}`);
-    const item = registry[id];
-    if (!item) throw new Error(`Unknown extension: ${id}`);
-    visiting.add(id);
-    for (const dep of item.dependencies ?? []) visit2(dep, [...chain, id]);
-    visiting.delete(id);
-    visited.add(id);
-    order.push(item);
-  };
-  for (const id of requested) visit2(id, []);
+  for (const root of requested) {
+    if (visited.has(root)) continue;
+    const rootItem = registry[root];
+    if (!rootItem) throw new Error(`Unknown extension: ${root}`);
+    const stack = [{ id: root, dependencies: rootItem.dependencies ?? [], next: 0 }];
+    visiting.add(root);
+    while (stack.length) {
+      const frame = stack[stack.length - 1];
+      if (frame.next < frame.dependencies.length) {
+        const dependency = frame.dependencies[frame.next++];
+        if (visited.has(dependency)) continue;
+        if (visiting.has(dependency)) {
+          const start = stack.findIndex((entry) => entry.id === dependency);
+          throw new Error(`Extension dependency cycle: ${[...stack.slice(start).map((entry) => entry.id), dependency].join(" -> ")}`);
+        }
+        const item = registry[dependency];
+        if (!item) throw new Error(`Unknown extension: ${dependency}`);
+        visiting.add(dependency);
+        stack.push({ id: dependency, dependencies: item.dependencies ?? [], next: 0 });
+        continue;
+      }
+      stack.pop();
+      visiting.delete(frame.id);
+      visited.add(frame.id);
+      order.push(registry[frame.id]);
+    }
+  }
   return order;
 }
 function packageMutations(projectDirectory, extensions) {
@@ -1470,9 +1497,9 @@ function applyExtensionRemoval(plan) {
 }
 
 // src/project/reconcile.ts
-function planReconciliation(projectDirectoryInput) {
+function planReconciliation(projectDirectoryInput, manifestInput) {
   const projectDirectory = (0, import_node_path12.resolve)(projectDirectoryInput);
-  const manifest = loadProjectManifest(projectDirectory);
+  const manifest = manifestInput ?? loadProjectManifest(projectDirectory);
   const state = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
   const desiredCapabilities = Object.keys(manifest.capabilities).sort();
   const installedCapabilities = Object.values(state.extensions).filter((item) => item.kind === "capability").map((item) => item.id).sort();
@@ -1501,14 +1528,16 @@ function planReconciliation(projectDirectoryInput) {
   return { projectDirectory, desiredCapabilities, installCapabilities, removeCapabilities, drift, actions, warnings: removeCapabilities.length ? ["Capability removals are destructive and require --allow-remove during apply."] : [], conflicts };
 }
 function applyReconciliation(input) {
-  let plan = planReconciliation(input.projectDirectory);
+  const projectDirectory = (0, import_node_path12.resolve)(input.projectDirectory);
+  const manifest = loadProjectManifest(projectDirectory);
+  let plan = planReconciliation(projectDirectory, manifest);
   if (plan.conflicts.length) throw new Error(`Cannot reconcile project: ${plan.conflicts.join("; ")}`);
   if (plan.removeCapabilities.length && !input.allowRemove) throw new Error("Reconciliation includes capability removal. Re-run with --allow-remove after reviewing the plan.");
   if (plan.installCapabilities.length) {
     for (const id of plan.installCapabilities) {
       const item = FIRST_PARTY_EXTENSIONS[id];
       if (!item) throw new Error(`Unknown first-party capability: ${id}`);
-      const desiredVersion = loadProjectManifest(input.projectDirectory).capabilities[id]?.version;
+      const desiredVersion = manifest.capabilities[id]?.version;
       if (desiredVersion && desiredVersion !== item.version) throw new Error(`Requested ${id}@${desiredVersion}, but this CLI provides ${item.version}.`);
     }
     applyExtensionInstall(planExtensionInstall({ projectDirectory: input.projectDirectory, requested: plan.installCapabilities, registry: FIRST_PARTY_EXTENSIONS }));
@@ -1521,7 +1550,7 @@ function applyReconciliation(input) {
       if (fresh.removeCapabilities.includes(item.id)) applyExtensionRemoval(planExtensionRemoval({ projectDirectory: input.projectDirectory, extension: item, registry: FIRST_PARTY_EXTENSIONS }));
     }
   }
-  plan = planReconciliation(input.projectDirectory);
+  plan = planReconciliation(projectDirectory);
   return plan;
 }
 function projectHasManifest(projectDirectory) {
@@ -2027,6 +2056,18 @@ function requestBodySchema(operation) {
 
 // src/client/generate.ts
 var import_node_fs14 = require("fs");
+var MAX_GENERATED_BYTES = 2097152;
+function boundedJoin(items, separator, render) {
+  const output = [];
+  let bytes = 0;
+  for (const item of items) {
+    const chunk = render(item);
+    bytes += Buffer.byteLength(chunk, "utf8") + (output.length ? Buffer.byteLength(separator, "utf8") : 0);
+    if (bytes > MAX_GENERATED_BYTES) throw new Error("Generated OpenAPI client exceeds the 2 MiB output limit.");
+    output.push(chunk);
+  }
+  return output.join(separator);
+}
 async function readBoundedResponse(response) {
   const declared = Number(response.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > 1048576) throw new Error("OpenAPI response exceeds the 1 MiB size limit.");
@@ -2084,7 +2125,7 @@ async function loadOpenApiSource(source) {
   return parseOpenApiDocument(parsed);
 }
 function renderSchemas(document, names) {
-  return Object.keys(document.components?.schemas ?? {}).sort().map((name) => "export type " + names[name] + " = " + schemaToType(document.components?.schemas?.[name], names) + ";").join("\n");
+  return boundedJoin(Object.keys(document.components?.schemas ?? {}).sort(), "\n", (name) => "export type " + names[name] + " = " + schemaToType(document.components?.schemas?.[name], names) + ";");
 }
 function property(name) {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
@@ -2092,8 +2133,8 @@ function property(name) {
 function access(name) {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? "." + name : "[" + JSON.stringify(name) + "]";
 }
-function renderInputs(document, names) {
-  return collectOperations(document).map((item) => {
+function renderInputs(document, names, operations) {
+  return boundedJoin(operations, "\n", (item) => {
     const parameters = item.operation.parameters ?? [];
     const body = requestBodySchema(item.operation);
     if (!parameters.length && !body) return "";
@@ -2109,7 +2150,7 @@ function renderInputs(document, names) {
     }
     if (body) groups.push("body" + (item.operation.requestBody?.required ? "" : "?") + ": " + schemaToType(body, names) + ";");
     return "export type " + name + " = { " + groups.join(" ") + " };";
-  }).filter(Boolean).join("\n");
+  }).trim();
 }
 function renderMethod(item, names) {
   const parameters = item.operation.parameters ?? [];
@@ -2134,20 +2175,23 @@ function generateTypeScriptClient(document, target = "typescript") {
   const names = componentTypeNames(document);
   const operations = collectOperations(document);
   if (operations.length > 3e3) throw new Error("OpenAPI document exceeds the 3000-operation limit.");
+  const schemas = renderSchemas(document, names);
+  const inputs = renderInputs(document, names, operations);
+  const methods = boundedJoin(operations, "\n\n", (item) => renderMethod(item, names));
   const react = target === "react" ? `
-${operations.map((item) => `export const ${item.name}QueryKey = (input: unknown) => [${JSON.stringify(item.name)}, input] as const;`).join("\n")}
+${boundedJoin(operations, "\n", (item) => `export const ${item.name}QueryKey = (input: unknown) => [${JSON.stringify(item.name)}, input] as const;`)}
 ` : target === "react-native" ? '\nexport const launchStackClientTarget = "react-native" as const;\n' : "";
   const output = `/* eslint-disable */
 // Generated by LaunchStack CLI. Do not edit directly.
 export type TokenProvider = () => string | undefined | null | Promise<string | undefined | null>;
 export class ApiError extends Error { constructor(public readonly status: number, public readonly statusText: string, public readonly body: unknown) { super(\`API request failed: \${status} \${statusText}\`); this.name = "ApiError"; } }
-${renderSchemas(document, names)}
-${renderInputs(document, names)}
+${schemas}
+${inputs}
 export class LaunchStackClient { private readonly baseUrl: URL; private readonly tokenProvider?: TokenProvider; private readonly fetchImpl: typeof fetch; private readonly timeoutMs: number; constructor(options: { baseUrl: string | URL; tokenProvider?: TokenProvider; fetch?: typeof fetch; timeoutMs?: number }) { this.baseUrl = new URL(options.baseUrl); this.tokenProvider = options.tokenProvider; this.fetchImpl = options.fetch ?? globalThis.fetch; this.timeoutMs = options.timeoutMs ?? 10000; if (!Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0) throw new Error("timeoutMs must be positive"); }
-${operations.map((item) => renderMethod(item, names)).join("\n\n")}
+${methods}
 }
 ${react}`;
-  if (Buffer.byteLength(output, "utf8") > 2097152) throw new Error("Generated OpenAPI client exceeds the 2 MiB output limit.");
+  if (Buffer.byteLength(output, "utf8") > MAX_GENERATED_BYTES) throw new Error("Generated OpenAPI client exceeds the 2 MiB output limit.");
   return output;
 }
 

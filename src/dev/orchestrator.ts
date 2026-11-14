@@ -88,8 +88,14 @@ function loopbackDatabaseUrl(value: string | undefined, port: number): string {
 export function topologicalServices(services: DevService[]): DevService[] {
   const byId = new Map(services.map((item) => [item.id, item])); const indegree = new Map<string, number>(); const dependents = new Map<string, string[]>();
   for (const item of services) { indegree.set(item.id, item.dependencies.length); for (const dep of item.dependencies) { if (!byId.has(dep)) throw new Error(`Unknown dev service dependency ${dep} for ${item.id}`); const list = dependents.get(dep) ?? []; list.push(item.id); dependents.set(dep, list); } }
-  const queue = services.filter((item) => (indegree.get(item.id) ?? 0) === 0).sort((a, b) => a.id.localeCompare(b.id)); const ordered: DevService[] = [];
-  while (queue.length) { const item = queue.shift(); if (!item) break; ordered.push(item); for (const id of (dependents.get(item.id) ?? []).sort()) { const next = (indegree.get(id) ?? 0) - 1; indegree.set(id, next); if (next === 0) { const dependent = byId.get(id); if (dependent) { queue.push(dependent); queue.sort((a, b) => a.id.localeCompare(b.id)); } } } }
+  const compare = (left: DevService, right: DevService) => left.id.localeCompare(right.id);
+  const queue: DevService[] = [];
+  const push = (item: DevService) => { let index = queue.length; queue.push(item); while (index > 0) { const parent = (index - 1) >> 1; if (compare(queue[parent]!, item) <= 0) break; queue[index] = queue[parent]!; index = parent; } queue[index] = item; };
+  const pop = (): DevService | undefined => { const first = queue[0]; const last = queue.pop(); if (queue.length && last) { let index = 0; while (true) { const left = index * 2 + 1; if (left >= queue.length) break; const right = left + 1; const child = right < queue.length && compare(queue[right]!, queue[left]!) < 0 ? right : left; if (compare(queue[child]!, last) >= 0) break; queue[index] = queue[child]!; index = child; } queue[index] = last; } return first; };
+  for (const item of services) if ((indegree.get(item.id) ?? 0) === 0) push(item);
+  for (const ids of dependents.values()) ids.sort();
+  const ordered: DevService[] = [];
+  while (queue.length) { const item = pop(); if (!item) break; ordered.push(item); for (const id of dependents.get(item.id) ?? []) { const next = (indegree.get(id) ?? 0) - 1; indegree.set(id, next); if (next === 0) { const dependent = byId.get(id); if (dependent) push(dependent); } } }
   if (ordered.length !== services.length) throw new Error("Development service dependency cycle detected."); return ordered;
 }
 export function createDevPlan(projectDirectoryInput: string): DevPlan {

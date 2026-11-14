@@ -304,7 +304,7 @@ type ReconciliationPlan = LifecyclePlan & {
     removeCapabilities: string[];
     drift: DriftEntry[];
 };
-declare function planReconciliation(projectDirectoryInput: string): ReconciliationPlan;
+declare function planReconciliation(projectDirectoryInput: string, manifestInput?: ReturnType<typeof loadProjectManifest>): ReconciliationPlan;
 declare function applyReconciliation(input: {
     projectDirectory: string;
     allowRemove?: boolean;

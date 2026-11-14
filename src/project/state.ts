@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { STATE_SCHEMA_VERSION, emptyProjectState, type DriftEntry, type ProjectState } from "./types";
@@ -11,7 +11,15 @@ export const projectStateSchema = z.object({ stateVersion: z.literal(STATE_SCHEM
 export const STATE_DIRECTORY = ".launchstack";
 export const STATE_FILENAME = "state.json";
 export function sha256(content: string | Buffer): string { return createHash("sha256").update(content).digest("hex"); }
-export function hashFile(path: string): string { return sha256(readFileSync(path)); }
+export function hashFile(path: string): string {
+  const descriptor = openSync(path, "r");
+  const hash = createHash("sha256");
+  const chunk = Buffer.allocUnsafe(64 * 1024);
+  try {
+    while (true) { const bytes = readSync(descriptor, chunk, 0, chunk.length, null); if (bytes === 0) break; hash.update(chunk.subarray(0, bytes)); }
+    return hash.digest("hex");
+  } finally { closeSync(descriptor); }
+}
 export function parseProjectState(input: unknown): ProjectState {
   const result = projectStateSchema.safeParse(input);
   if (!result.success) throw new Error(`Invalid LaunchStack state: ${result.error.issues.map((issue) => `${issue.path.join(".") || "state"}: ${issue.message}`).join("; ")}`);

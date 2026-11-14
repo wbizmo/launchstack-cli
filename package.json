@@ -28,6 +28,7 @@
     "bench:transactions": "tsx bench/mutations.ts",
     "bench:upgrades": "tsx bench/upgrades.ts",
     "bench:capabilities": "tsx bench/capabilities.ts",
+    "bench:complexity": "tsx bench/complexity.ts",
     "audit:runtime": "npm audit --omit=dev --audit-level=high",
     "verify:dist": "npm run build && git diff --exit-code -- dist",
     "check": "npm run lint && npm run typecheck && npm run test:run && npm run verify:dist && npm pack --dry-run",

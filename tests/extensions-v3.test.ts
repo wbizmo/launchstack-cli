@@ -15,6 +15,14 @@ function fixture(): string { const root = mkdtempSync(join(tmpdir(), "launchstac
 describe("v3 extension engine", () => {
   test("resolves dependencies before dependents", () => { expect(resolveExtensionOrder(["queue"], FIRST_PARTY_EXTENSIONS).map((item) => item.id)).toEqual(["redis", "queue"]); });
   test("detects dependency cycles", () => { const a: ExtensionManifest = { schemaVersion: 1, id: "a", version: "1.0.0", kind: "plugin", displayName: "a", supportedLaunchStack: ">=2 <4", dependencies: ["b"] }; const b: ExtensionManifest = { ...a, id: "b", displayName: "b", dependencies: ["a"] }; expect(() => resolveExtensionOrder(["a"], { a, b })).toThrow(/cycle/i); });
+  test("resolves a 12,000-node dependency chain without recursion or path copying", () => {
+    const registry: Record<string, ExtensionManifest> = {};
+    for (let index = 0; index < 12_000; index += 1) { const id = `extension-${String(index).padStart(5, "0")}`; registry[id] = { schemaVersion: 1, id, version: "1.0.0", kind: "plugin", displayName: id, supportedLaunchStack: ">=2 <4", dependencies: index ? [`extension-${String(index - 1).padStart(5, "0")}`] : [] }; }
+    const order = resolveExtensionOrder(["extension-11999"], registry);
+    expect(order).toHaveLength(12_000);
+    expect(order[0]?.id).toBe("extension-00000");
+    expect(order.at(-1)?.id).toBe("extension-11999");
+  });
   test("is idempotent after installation and writes a lockfile in the same plan", () => { const root = fixture(); const first = planExtensionInstall({ projectDirectory: root, requested: ["queue"], registry: FIRST_PARTY_EXTENSIONS }); expect(first.noop).toBe(false); expect(first.mutations.map((item) => item.path)).toContain("package-lock.json"); applyExtensionInstall(first); expect(existsSync(join(root, "package-lock.json"))).toBe(true); expect(existsSync(join(root, "src/worker.ts"))).toBe(true); expect(readFileSync(join(root, "docker-compose.launchstack.yml"), "utf8")).toContain("redis:"); expect(readFileSync(join(root, "docker-compose.launchstack.yml"), "utf8")).toContain("${LAUNCHSTACK_REDIS_PORT:-6379}"); const plan = createDevPlan(root); expect(plan.services.find((item) => item.id === "redis")?.args).toContain("docker-compose.launchstack.yml"); const second = planExtensionInstall({ projectDirectory: root, requested: ["queue"], registry: FIRST_PARTY_EXTENSIONS }); expect(second.noop).toBe(true); expect(second.actions).toEqual([]); }, 15000);
   test("reconciles several desired capabilities in one package and state transaction", () => {
     const root = fixture();

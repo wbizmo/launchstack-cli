@@ -5,6 +5,13 @@ describe("v3 dev orchestration", () => {
   test("orders dependencies before dependents", () => { const services: DevService[] = [{ id: "api", kind: "process", dependencies: ["db"], command: "npm", args: [], required: true }, { id: "db", kind: "infrastructure", dependencies: [], command: "docker", args: [], required: true }]; expect(topologicalServices(services).map((item) => item.id)).toEqual(["db", "api"]); });
   test("selects one service with dependencies and can omit migrations", () => { const plan: DevPlan = { projectDirectory: "/tmp/x", namespace: "ls-test", services: [{ id: "db", kind: "infrastructure", dependencies: [], command: "x", args: [], required: true }, { id: "migrations", kind: "migration", dependencies: ["db"], command: "x", args: [], required: true }, { id: "api", kind: "process", dependencies: ["db", "migrations"], command: "x", args: [], required: true }, { id: "worker", kind: "process", dependencies: ["db"], command: "x", args: [], required: false }] }; expect(selectDevPlan(plan, { service: "api", noMigrate: true }).services.map((item) => item.id)).toEqual(["db", "api"]); });
   test("rejects dependency cycles", () => { const services: DevService[] = [{ id: "a", kind: "process", dependencies: ["b"], command: "x", args: [], required: true }, { id: "b", kind: "process", dependencies: ["a"], command: "x", args: [], required: true }]; expect(() => topologicalServices(services)).toThrow(/cycle/i); });
+  test("keeps deterministic order for a large ready set", () => {
+    const services: DevService[] = Array.from({ length: 10_000 }, (_, index) => ({ id: `service-${String(9_999 - index).padStart(5, "0")}`, kind: "process", dependencies: [], command: "x", args: [], required: true }));
+    const planned = topologicalServices(services);
+    expect(planned).toHaveLength(10_000);
+    expect(planned[0]?.id).toBe("service-00000");
+    expect(planned.at(-1)?.id).toBe("service-09999");
+  });
   test("waits for HTTP readiness and passes dynamically allocated ports", async () => {
     const child = new EventEmitter() as DevProcess;
     (child as DevProcess & { pid: number }).pid = 123;

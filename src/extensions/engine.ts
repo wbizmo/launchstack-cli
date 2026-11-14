@@ -15,8 +15,28 @@ export type PreparedExtensionPlan = ExtensionPlan & { projectDirectory: string; 
 function compatible(version: string, range: string): boolean { const major = Number.parseInt(version.split(".")[0] ?? "", 10); if (!Number.isInteger(major)) return false; const lower = range.match(/>=\s*(\d+)/)?.[1]; const upper = range.match(/<\s*(\d+)/)?.[1]; return !(lower && major < Number(lower)) && !(upper && major >= Number(upper)); }
 export function resolveExtensionOrder(requested: string[], registry: Record<string, ExtensionManifest>): ExtensionManifest[] {
   const order: ExtensionManifest[] = []; const visiting = new Set<string>(); const visited = new Set<string>();
-  const visit = (id: string, chain: string[]) => { if (visited.has(id)) return; if (visiting.has(id)) throw new Error(`Extension dependency cycle: ${[...chain, id].join(" -> ")}`); const item = registry[id]; if (!item) throw new Error(`Unknown extension: ${id}`); visiting.add(id); for (const dep of item.dependencies ?? []) visit(dep, [...chain, id]); visiting.delete(id); visited.add(id); order.push(item); };
-  for (const id of requested) visit(id, []); return order;
+  for (const root of requested) {
+    if (visited.has(root)) continue;
+    const rootItem = registry[root]; if (!rootItem) throw new Error(`Unknown extension: ${root}`);
+    const stack: Array<{ id: string; dependencies: string[]; next: number }> = [{ id: root, dependencies: rootItem.dependencies ?? [], next: 0 }];
+    visiting.add(root);
+    while (stack.length) {
+      const frame = stack[stack.length - 1]!;
+      if (frame.next < frame.dependencies.length) {
+        const dependency = frame.dependencies[frame.next++]!;
+        if (visited.has(dependency)) continue;
+        if (visiting.has(dependency)) {
+          const start = stack.findIndex((entry) => entry.id === dependency);
+          throw new Error(`Extension dependency cycle: ${[...stack.slice(start).map((entry) => entry.id), dependency].join(" -> ")}`);
+        }
+        const item = registry[dependency]; if (!item) throw new Error(`Unknown extension: ${dependency}`);
+        visiting.add(dependency); stack.push({ id: dependency, dependencies: item.dependencies ?? [], next: 0 });
+        continue;
+      }
+      stack.pop(); visiting.delete(frame.id); visited.add(frame.id); order.push(registry[frame.id]!);
+    }
+  }
+  return order;
 }
 function packageMutations(projectDirectory: string, extensions: ExtensionManifest[]): FileMutation[] {
   const deps: Record<string, string> = {}; const devDeps: Record<string, string> = {}; const scripts: Record<string, string> = {};
