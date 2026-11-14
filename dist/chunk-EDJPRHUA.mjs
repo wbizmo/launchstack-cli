@@ -594,6 +594,7 @@ import { dirname as dirname3, join as join4, resolve as resolve4, relative as re
 import {
   chmodSync,
   closeSync as closeSync2,
+  constants,
   existsSync as existsSync3,
   fstatSync,
   lstatSync as lstatSync2,
@@ -610,12 +611,12 @@ import { randomUUID } from "crypto";
 function readRegularFileNoFollow(path, maxBytes) {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
     throw new Error("File size limit must be a non-negative safe integer.");
-  const pathStat = lstatSync2(path);
-  if (pathStat.isSymbolicLink() || !pathStat.isFile())
-    throw new Error("Expected a regular file without following links.");
   let descriptor;
   try {
-    descriptor = openSync2(path, "r");
+    descriptor = openSync2(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
+    );
   } catch (error) {
     if (error.code === "ELOOP")
       throw new Error("Expected a regular file without following links.");
@@ -623,7 +624,8 @@ function readRegularFileNoFollow(path, maxBytes) {
   }
   try {
     const before = fstatSync(descriptor);
-    if (!before.isFile() || before.dev !== pathStat.dev || before.ino !== pathStat.ino)
+    const pathStat = lstatSync2(path);
+    if (!before.isFile() || pathStat.isSymbolicLink() || !pathStat.isFile() || before.dev !== pathStat.dev || before.ino !== pathStat.ino)
       throw new Error("Expected a regular file without following links.");
     if (before.size > maxBytes)
       throw new Error("File exceeds the configured size limit.");
@@ -3264,7 +3266,7 @@ function generateTypeScriptClient(document, target = "typescript") {
   const react = target === "react" ? `
 ${boundedJoin(
     operations.map(
-      (item, index) => `export const operationQueryKey${index} = (input: unknown) => [${JSON.stringify(item.name)}, input] as const;`
+      (_item, index) => `export const operationQueryKey${index} = (input: unknown) => ["operation-${index}", input] as const;`
     ),
     "\n",
     (line) => line
@@ -5108,4 +5110,4 @@ export {
   planModuleGeneration,
   applyModuleGeneration
 };
-//# sourceMappingURL=chunk-4BWBJESS.mjs.map
+//# sourceMappingURL=chunk-EDJPRHUA.mjs.map

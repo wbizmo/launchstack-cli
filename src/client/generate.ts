@@ -321,8 +321,8 @@ export function generateTypeScriptClient(
     target === "react"
       ? `\n${boundedJoin(
           operations.map(
-            (item, index) =>
-              `export const operationQueryKey${index} = (input: unknown) => [${JSON.stringify(item.name)}, input] as const;`,
+            (_item, index) =>
+              `export const operationQueryKey${index} = (input: unknown) => ["operation-${index}", input] as const;`,
           ),
           "\n",
           (line) => line,

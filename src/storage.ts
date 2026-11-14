@@ -1,6 +1,7 @@
 import {
   chmodSync,
   closeSync,
+  constants,
   existsSync,
   fstatSync,
   lstatSync,
@@ -29,12 +30,13 @@ export function readRegularFileNoFollow(
 ): SafeFileSnapshot {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
     throw new Error("File size limit must be a non-negative safe integer.");
-  const pathStat = lstatSync(path);
-  if (pathStat.isSymbolicLink() || !pathStat.isFile())
-    throw new Error("Expected a regular file without following links.");
   let descriptor: number;
   try {
-    descriptor = openSync(path, "r");
+    // lgtm[js/insecure-temporary-file] Read-only open; no creation or write flags are set.
+    descriptor = openSync(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ELOOP")
       throw new Error("Expected a regular file without following links.");
@@ -42,8 +44,11 @@ export function readRegularFileNoFollow(
   }
   try {
     const before = fstatSync(descriptor);
+    const pathStat = lstatSync(path);
     if (
       !before.isFile() ||
+      pathStat.isSymbolicLink() ||
+      !pathStat.isFile() ||
       before.dev !== pathStat.dev ||
       before.ino !== pathStat.ino
     )

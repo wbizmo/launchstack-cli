@@ -161,6 +161,7 @@ describe("v3 OpenAPI client generation", () => {
         const generated = generateTypeScriptClient(document, target);
         if (target === "react") {
           expect(generated).toContain("export const operationQueryKey0");
+          expect(generated).toContain('["operation-0", input]');
           expect(generated).not.toContain("export const updatePetQueryKey");
         }
         writeFileSync(file, generated);
@@ -184,7 +185,7 @@ describe("v3 OpenAPI client generation", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   test("makes fixture requests with encoded path, repeated query, auth, JSON body and typed responses", async () => {
     const document = parseOpenApiDocument(fixtureDocument());

@@ -575,12 +575,12 @@ var import_node_crypto2 = require("crypto");
 function readRegularFileNoFollow(path, maxBytes) {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
     throw new Error("File size limit must be a non-negative safe integer.");
-  const pathStat = (0, import_node_fs4.lstatSync)(path);
-  if (pathStat.isSymbolicLink() || !pathStat.isFile())
-    throw new Error("Expected a regular file without following links.");
   let descriptor;
   try {
-    descriptor = (0, import_node_fs4.openSync)(path, "r");
+    descriptor = (0, import_node_fs4.openSync)(
+      path,
+      import_node_fs4.constants.O_RDONLY | (import_node_fs4.constants.O_NOFOLLOW ?? 0)
+    );
   } catch (error) {
     if (error.code === "ELOOP")
       throw new Error("Expected a regular file without following links.");
@@ -588,7 +588,8 @@ function readRegularFileNoFollow(path, maxBytes) {
   }
   try {
     const before = (0, import_node_fs4.fstatSync)(descriptor);
-    if (!before.isFile() || before.dev !== pathStat.dev || before.ino !== pathStat.ino)
+    const pathStat = (0, import_node_fs4.lstatSync)(path);
+    if (!before.isFile() || pathStat.isSymbolicLink() || !pathStat.isFile() || before.dev !== pathStat.dev || before.ino !== pathStat.ino)
       throw new Error("Expected a regular file without following links.");
     if (before.size > maxBytes)
       throw new Error("File exceeds the configured size limit.");
@@ -3445,7 +3446,7 @@ function generateTypeScriptClient(document, target = "typescript") {
   const react = target === "react" ? `
 ${boundedJoin(
     operations.map(
-      (item, index) => `export const operationQueryKey${index} = (input: unknown) => [${JSON.stringify(item.name)}, input] as const;`
+      (_item, index) => `export const operationQueryKey${index} = (input: unknown) => ["operation-${index}", input] as const;`
     ),
     "\n",
     (line) => line
