@@ -1,6 +1,6 @@
 # LaunchStack CLI 3.0.4
 
-**Draft / Unreleased**
+**GitHub release published 2026-11-14; npm publication is pending separate approval.**
 
 ## Verified changes
 
@@ -54,23 +54,36 @@
 - Adds the issues #30–#39 completion ledger and compatibility policy in `docs/release/ISSUES_30_39.md` and `docs/COMPATIBILITY.md`.
 - Adds Prettier, SBOM, Windows portability and CodeQL release/CI checks. npm publishing is restricted to a manually dispatched workflow on `main` with `authorize_publication=true` and the protected `npm-publish` environment.
 - Fixes generated Compose and Render project-name placeholders and uses a Compose reset override to remove the development PostgreSQL host port from production. The local generated production image now passes its container health check and PostgreSQL readiness request.
-- Local combined `release:check` passes on Node 24.22.3 and 26.13.1. The production Docker image builds and passes health/readiness checks. Final-head GitHub CI, Windows portability, TypeScript analysis and CodeQL pass; CodeRabbit skips the full diff at its 100-file limit. The two documented limits below are accepted for this release. The GitHub release remains pending merge and final post-merge verification.
+- The merged release candidate passed local `release:check` on Node 24.22.3 and 26.13.1, and the production Docker image passed health/readiness checks. GitHub CI, Windows portability, TypeScript analysis and CodeQL passed. CodeRabbit skipped the full diff at its 100-file limit. The two documented limitations below are accepted for v3.0.4. GitHub release: [LaunchStack CLI v3.0.4](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.4). npm publication remains pending separate approval.
 
 ## Verification
 
-- Forensic follow-up release checks passed on Node 24.22.3/PostgreSQL 16 and Node 26.13.1/PostgreSQL 17: 42 root files / 179 tests and 9 generated-project files / 28 tests on each runtime. The 1,290-case security corpus peaked at 91.6 MiB and 95.9 MiB observed RSS respectively.
+- Post-merge `main` release checks passed on Node 24.22.3/PostgreSQL 16 and Node 26.13.1/PostgreSQL 17: 42 root test files / 179 tests and 9 generated-project test files / 28 tests on each runtime. The 1,290-case security corpus passed with observed peak RSS of 91.4 MiB and 96.0 MiB respectively.
 
 - Root `release:check` passed on Node 24.22.3 and 26.13.1; generated API integration checks passed on PostgreSQL 16 and 17 respectively.
 - After issue #35, full `release:check` passed on both runtimes with 38 root test files / 137 tests and 8 generated API test files / 26 tests; both production dependency audits reported zero vulnerabilities.
 - Production dependency audits reported zero vulnerabilities for both the CLI and generated API.
 - The generated production Docker image passed its healthcheck and `/health` request.
-- Final CodeQL and GitHub CI pass on the release branch. The v3.0.0-to-candidate CLI comparison is recorded in `docs/benchmarks/issue-30-runtime.md`. It shows no consistent startup speedup.
+- Final GitHub CI and CodeQL pass on merged `main`. The v3.0.0-to-candidate CLI comparison is recorded in `docs/benchmarks/issue-30-runtime.md`; it shows no consistent startup speedup.
 - At 100k and 250k managed files, the candidate upgrade drift scan is substantially slower than the single-sample v3.0.0 baseline on this host after file/path safety checks. The direct comparison and limitations are recorded in `docs/benchmarks/issue-38-qualification.md`; no speedup is claimed.
-- At 100k and 250k managed files, the candidate upgrade drift scan is slower than the single-sample v3.0.0 baseline on this host. The direct comparison and limitations are recorded in `docs/benchmarks/issue-38-qualification.md`; no speedup is claimed.
 - The Node 24.22.3 full release check passed with PostgreSQL 16, including 36 CLI test files / 119 tests and 8 generated API test files / 26 tests.
-- Issue #36 focused checks passed on Node 24.22.3: 2 test files / 13 tests, and the generated project smoke passed 9 files / 28 tests plus PostgreSQL CRUD/pagination checks, generated project build and production audit. Full release qualification remains pending later batches.
+- At the intermediate issue #36 checkpoint, focused checks passed on Node 24.22.3: 2 test files / 13 tests, and the generated project smoke passed 9 files / 28 tests plus PostgreSQL CRUD/pagination checks, build and production audit. The later full release qualification is recorded above.
 - After #36, Node 24.22.3 `release:check` passed: 38 root test files / 145 tests, lint, typecheck, reproducible dist, npm pack dry run, packed CLI smoke, zero-vulnerability runtime audit, and the 9-file / 28-test PostgreSQL-backed generated project smoke.
 - After #37, Node 24.22.3 `npm run check` passed: lint, typecheck, 39 root test files / 148 tests, reproducible dist and npm pack dry run. The 10k service and extension workloads completed; the 50 MiB isolated hash workers produced matching digests and reported peak RSS of 130,125,824 bytes (read-all) and 77,901,824 bytes (streaming).
+
+## Published benchmark reports
+
+The reports and machine-readable results ship in the public v3.0.4 source tag:
+
+- [Runtime](https://github.com/wbizmo/launchstack-cli/blob/v3.0.4/docs/benchmarks/issue-30-runtime.md)
+- [Security and fuzzing](https://github.com/wbizmo/launchstack-cli/blob/v3.0.4/docs/benchmarks/issue-31-security.md) · [fuzz results](https://github.com/wbizmo/launchstack-cli/blob/v3.0.4/docs/benchmarks/issue-31-security-fuzz.md)
+- [Transactions](https://github.com/wbizmo/launchstack-cli/blob/v3.0.4/docs/benchmarks/issue-32-transactions.md)
+- [Upgrades](https://github.com/wbizmo/launchstack-cli/blob/v3.0.4/docs/benchmarks/issue-33-upgrades.md)
+- [Capabilities](https://github.com/wbizmo/launchstack-cli/blob/v3.0.4/docs/benchmarks/issue-34-capabilities.md)
+- [Orchestration](https://github.com/wbizmo/launchstack-cli/blob/v3.0.4/docs/benchmarks/issue-35-orchestration.md)
+- [Generators](https://github.com/wbizmo/launchstack-cli/blob/v3.0.4/docs/benchmarks/issue-36-generators.md)
+- [Complexity](https://github.com/wbizmo/launchstack-cli/blob/v3.0.4/docs/benchmarks/issue-37-complexity.md)
+- [Release qualification](https://github.com/wbizmo/launchstack-cli/blob/v3.0.4/docs/benchmarks/issue-38-qualification.md)
 
 ## Compatibility and limitations
 
