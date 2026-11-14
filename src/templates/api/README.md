@@ -19,6 +19,8 @@ Readiness: `/ready`
 
 The template includes bounded Zod validation, auth rate limiting, explicit production CORS, bcrypt password hashing, JWT access/refresh tokens, database-enforced single-use refresh rotation, duplicate-registration race handling, authenticated profile access, non-root Docker output and PostgreSQL-backed concurrency tests.
 
+The default rate-limit store is in memory and applies per API process. When running multiple replicas, configure a shared Fastify rate-limit store so login and registration limits apply across the deployment.
+
 ## LaunchStack v3 project state
 
 `launchstack.json` declares desired LaunchStack capabilities/stages. `.launchstack/state.json` records LaunchStack-owned file hashes, extension versions and stage identities. Application business logic is not treated as LaunchStack-managed state.

@@ -18,6 +18,7 @@
 - Updated generated Docker stages and CI policy to Node 24.22.3, with generated API CI testing both supported Node lines.
 - Upgraded root and generated-template Zod dependencies to 4.6.7 for the high severity advisory affecting earlier 4.x versions.
 - Require explicit CORS origins and JWT secrets in the generated production Compose configuration.
+- Document that the generated auth rate-limit store is per process and must be shared for multi-replica deployments.
 
 ### Fixed
 
@@ -34,6 +35,9 @@
 
 - Validate and size-limit recovery journals, reject unrecognized fields and reconstruct all staging/backup paths inside `.launchstack` before recovery.
 - Keep malformed locks active, verify a lock token before release, and reject symlinked secret files/directories or permissive POSIX secret modes.
+- Serialize stale lock reclamation with a per-inode claim so a stale-lock contender cannot unlink a replacement lock; treat unreadable Linux process identity as unverifiable/live.
+- Reject cross-platform absolute managed paths and block remote OpenAPI access to non-public DNS answers, pinning HTTPS connections to the validated addresses.
+- Add bounded deterministic hostile-input corpus checks for paths and encodings, project/plugin manifests, journals, symlinks, oversized inputs, cyclic schemas and hostile OpenAPI URLs; results and limits are recorded in `docs/benchmarks/issue-31-security-fuzz.md`.
 - Give generated projects distinct JWT development secrets, loopback host/origin defaults, and loopback Compose port bindings. Production Compose requires explicit origin and JWT settings.
 - Extend production audit findings to cover runtime policy, npm lock consistency and production Compose requirements; `launchstack audit --advisories` adds npm registry evidence for production dependencies, with LS024 when that check cannot complete. Unsupported-runtime findings are marked heuristic.
 - Mark secret-looking tracked filenames as heuristic findings, bound Git path enumeration at 16 MiB / 10 seconds, and emit LS022 when enumeration cannot complete. Add a 1k–100k path traversal benchmark; it records that file contents are not scanned.

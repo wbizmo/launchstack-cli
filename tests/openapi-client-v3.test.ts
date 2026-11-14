@@ -10,7 +10,14 @@ import {
   parseOpenApiDocument,
   schemaToType,
 } from "../src/client/openapi";
-import { generateTypeScriptClient } from "../src/client/generate";
+import {
+  generateTypeScriptClient,
+  loadOpenApiSource,
+} from "../src/client/generate";
+import {
+  createPinnedLookup,
+  validateRemoteAddresses,
+} from "../src/client/remote-network";
 
 function fixtureDocument(version = "3.1.0") {
   return {
@@ -92,6 +99,43 @@ function fixtureDocument(version = "3.1.0") {
 }
 
 describe("v3 OpenAPI client generation", () => {
+  test("rejects private and loopback literal addresses for remote schemas", async () => {
+    await expect(
+      loadOpenApiSource("https://127.0.0.1/schema.json"),
+    ).rejects.toThrow(/non-public address/i);
+    await expect(
+      loadOpenApiSource("https://10.0.0.7/schema.json"),
+    ).rejects.toThrow(/non-public address/i);
+    await expect(
+      loadOpenApiSource("https://[::1]/schema.json"),
+    ).rejects.toThrow(/not allowed/i);
+  });
+
+  test("rejects every non-public DNS answer and pins the validated set", () => {
+    expect(() =>
+      validateRemoteAddresses([
+        { address: "93.184.216.34", family: 4 },
+        { address: "127.0.0.1", family: 4 },
+      ]),
+    ).toThrow(/non-public address/i);
+    expect(() => validateRemoteAddresses([])).toThrow(/non-public address/i);
+
+    const validated = validateRemoteAddresses([
+      { address: "93.184.216.34", family: 4 },
+      { address: "2606:2800:220:1:248:1893:25c8:1946", family: 6 },
+    ]);
+    const pinnedLookup = createPinnedLookup(validated);
+    pinnedLookup("schema.example", {}, (error, address, family) => {
+      expect(error).toBeNull();
+      expect(address).toBe("93.184.216.34");
+      expect(family).toBe(4);
+    });
+    pinnedLookup("schema.example", { all: true }, (error, addresses) => {
+      expect(error).toBeNull();
+      expect(addresses).toEqual(validated);
+    });
+  });
+
   test("uses own properties for schema names such as __proto__", () => {
     const names = componentTypeNames({
       openapi: "3.1.0",

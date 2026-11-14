@@ -14,7 +14,11 @@
 - Rejects malformed recovery journals before touching project or external paths, protects the secret store from symlinks and permissive POSIX modes, and gives new projects unique development JWT secrets.
 - Binds generated local services to loopback and expands audit checks for runtime policies, lockfiles and production Compose settings. `launchstack audit --advisories` adds npm registry evidence for production dependencies and reports LS024 when the check cannot complete.
 - Marks secret-looking tracked filenames as heuristic findings, bounds Git path enumeration to 16 MiB / 10 seconds and emits LS022 when enumeration is incomplete. LS005 does not inspect file contents. The measured 1k–100k audit results are in `docs/benchmarks/issue-31-security.md`.
-- Marks secret-looking tracked filenames as heuristic findings, bounds Git path enumeration to 16 MiB / 10 seconds and emits LS022 when enumeration is incomplete. LS005 does not inspect file contents. The measured 1k–100k audit results are in `docs/benchmarks/issue-31-security.md`.
+- Rejects non-public IP addresses across all remote OpenAPI DNS answers and pins HTTPS connections to the validated answers to prevent DNS rebinding.
+- Serializes stale transaction-lock reclamation by lock inode and treats unreadable Linux process identity as unverifiable/live. Cross-platform absolute path forms are rejected consistently.
+- Replaces the root Docker image with a non-root Node 24 CLI image that invokes `dist/cli.js`; the Docker smoke checks both the CLI image and generated API production health/readiness.
+- Adds bounded deterministic security corpus checks under a 128 MiB V8 heap and 15 second timeout. The recorded 1,290-case run is in `docs/benchmarks/issue-31-security-fuzz.md`; it is not coverage-guided fuzzing.
+- Documents that generated API rate limiting uses an in-memory per-process store by default; multi-replica deployments need shared storage.
 - Uses a versioned crash-recovery journal, durable file and directory flushes, lock identity checks, compare-and-swap preconditions and one transaction for multi-capability installs.
 - Retries transient lock identity changes when one writer releases and another acquires the project lock; independent 8/32 process writer tests cover the handoff.
 - Measures 100 / 1,000 / 10,000 file mutations against v3.0.0 and verifies 8 / 32 concurrent writer processes. The measured durability latency cost is documented in `docs/benchmarks/issue-32-transactions.md`.
@@ -53,6 +57,8 @@
 
 ## Verification
 
+- Forensic follow-up release checks passed on Node 24.22.3/PostgreSQL 16 and Node 26.13.1/PostgreSQL 17: 42 root files / 178 tests and 9 generated-project files / 28 tests on each runtime. The 1,290-case security corpus peaked at 91.8 MiB and 110.7 MiB observed RSS respectively.
+
 - Root `release:check` passed on Node 24.22.3 and 26.13.1; generated API integration checks passed on PostgreSQL 16 and 17 respectively.
 - After issue #35, full `release:check` passed on both runtimes with 38 root test files / 137 tests and 8 generated API test files / 26 tests; both production dependency audits reported zero vulnerabilities.
 - Production dependency audits reported zero vulnerabilities for both the CLI and generated API.
@@ -67,4 +73,4 @@
 
 ## Compatibility and limitations
 
-This release remains in development pending the remaining issue batches, full review and release qualification.
+This release remains in development pending review and exact-head release qualification. Project mutations reject static symlink traversal and serialize LaunchStack writers; the current portable path operations do not guarantee confinement against a separate same-user process actively swapping parent directories during rename. Do not treat a concurrently hostile project tree as a supported trust boundary.

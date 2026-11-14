@@ -1,7 +1,14 @@
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
+const { randomUUID } = require("node:crypto");
 const { createServer } = require("node:net");
-const { existsSync, mkdtempSync, rmSync, writeFileSync } = require("node:fs");
+const {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
 
@@ -10,6 +17,7 @@ const node = process.execPath;
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const temp = mkdtempSync(join(tmpdir(), "launchstack-docker-smoke-"));
 const project = join(temp, "api");
+const cliImage = `launchstack-cli-smoke:${randomUUID()}`;
 const compose = [
   "compose",
   "-f",
@@ -74,6 +82,21 @@ async function main() {
     ]);
     run(docker, ["info"], { stdio: "pipe", timeoutMs: 5_000 });
     const caFile = process.env.NODE_EXTRA_CA_CERTS;
+    const cliBuildArgs = ["build", "--tag", cliImage];
+    if (caFile && existsSync(caFile))
+      cliBuildArgs.push("--secret", `id=npmca,src=${caFile}`);
+    cliBuildArgs.push(root);
+    run(docker, cliBuildArgs, { cwd: root });
+    const expectedVersion = JSON.parse(
+      readFileSync(join(root, "package.json"), "utf8"),
+    ).version;
+    const actualVersion = run(docker, [
+      "run",
+      "--rm",
+      cliImage,
+      "--version",
+    ]).stdout.trim();
+    assert.equal(actualVersion, expectedVersion);
     if (caFile && existsSync(caFile)) {
       const override = join(project, "docker-compose.smoke.yml");
       writeFileSync(
@@ -118,6 +141,14 @@ async function main() {
       "Generated production Docker image passed health and PostgreSQL readiness checks.",
     );
   } finally {
+    try {
+      run(docker, ["image", "rm", "--force", cliImage], {
+        stdio: "pipe",
+        timeoutMs: 30_000,
+      });
+    } catch {
+      // Preserve the primary smoke failure when Docker image cleanup fails.
+    }
     try {
       run(docker, [...compose, "down", "--volumes", "--remove-orphans"], {
         cwd: project,

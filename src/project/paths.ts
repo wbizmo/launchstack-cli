@@ -2,7 +2,13 @@ import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 export function normalizeManagedPath(path: string): string {
-  if (!path || path.includes("\0") || isAbsolute(path))
+  if (
+    !path ||
+    path.includes("\0") ||
+    isAbsolute(path) ||
+    /^[\\/]/.test(path) ||
+    /^[A-Za-z]:[\\/]/.test(path)
+  )
     throw new Error(`Unsafe managed path: ${JSON.stringify(path)}`);
   const segments = path.split(/[\\/]+/).filter(Boolean);
   if (

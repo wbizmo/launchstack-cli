@@ -225,6 +225,19 @@ describe("v3 project lifecycle primitives", () => {
     const typesModule = resolve(process.cwd(), "src/project/types.ts");
     for (const count of [8, 32]) {
       const root = fixture();
+      if (count === 8) {
+        const metadata = join(root, ".launchstack");
+        mkdirSync(metadata, { recursive: true });
+        writeFileSync(
+          join(metadata, "mutation.lock"),
+          JSON.stringify({
+            version: 1,
+            id: "2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31",
+            pid: 2_147_483_647,
+            createdAt: Date.now(),
+          }),
+        );
+      }
       const writers = Array.from(
         { length: count },
         (_, index) =>

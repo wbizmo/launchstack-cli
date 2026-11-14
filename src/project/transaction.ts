@@ -170,8 +170,12 @@ function processIsAlive(pid: number, expectedStartToken?: string): boolean {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
-    if (expectedStartToken && processStartToken(pid) !== expectedStartToken)
-      return false;
+    if (expectedStartToken) {
+      const actualStartToken = processStartToken(pid);
+      // An inaccessible /proc entry is unverifiable, not evidence of PID reuse.
+      if (actualStartToken && actualStartToken !== expectedStartToken)
+        return false;
+    }
     return true;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code !== "ESRCH";
@@ -316,13 +320,35 @@ function acquireLock(projectDirectory: string): () => void {
           throw new Error("malformed lock");
         stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
         if (stale) {
-          const confirmed = readRegularFileNoFollow(lockPath, 4096);
-          if (
-            confirmed.content === contents &&
-            confirmed.dev === lockFile.dev &&
-            confirmed.ino === lockFile.ino
-          )
-            unlinkSync(lockPath);
+          // Reclaimers for the same inode serialize on a deterministic
+          // hard-link claim. The claim remains while unlinking the stale lock,
+          // so a second process that observed the old lock cannot unlink a
+          // replacement owner's lock after the first process acquires it.
+          const reclaimPath = join(
+            directory,
+            `.mutation-reclaim-${lockFile.dev}-${lockFile.ino}`,
+          );
+          try {
+            linkSync(lockPath, reclaimPath);
+          } catch (claimError) {
+            if ((claimError as NodeJS.ErrnoException).code === "EEXIST")
+              continue;
+            throw claimError;
+          }
+          try {
+            const confirmed = readRegularFileNoFollow(lockPath, 4096);
+            if (
+              confirmed.content === contents &&
+              confirmed.dev === lockFile.dev &&
+              confirmed.ino === lockFile.ino &&
+              !processIsAlive(lock.pid ?? -1, lock.processStartToken)
+            ) {
+              unlinkSync(lockPath);
+              syncDirectory(directory);
+            }
+          } finally {
+            unlinkSync(reclaimPath);
+          }
         }
       } catch (error) {
         if (lockChangedDuringRead(error)) continue;

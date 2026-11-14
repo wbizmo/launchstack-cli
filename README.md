@@ -15,6 +15,15 @@ npm install -g launchstack-cli
 
 The initial CLI runtime comparison records measurements and limitations in [the benchmark report](docs/benchmarks/issue-30-runtime.md); it shows no consistent startup speedup.
 
+## Run the CLI in Docker
+
+The repository `Dockerfile` builds a non-root Node 24 CLI image with dependencies installed from the committed lockfile:
+
+```bash
+docker build -t launchstack-cli .
+docker run --rm launchstack-cli --version
+```
+
 ## Create a backend
 
 ```bash
@@ -83,7 +92,7 @@ launchstack client generate --target react-native
 launchstack client generate --check
 ```
 
-OpenAPI generation accepts bounded OpenAPI 3.0/3.1 JSON with local references, required/optional and nullable schemas, compositions, enums, parameters, and successful response variants. Generated TypeScript, React and React Native clients compile, use deterministic operation names, inject authentication through a token provider, and expose typed non-2xx `ApiError` responses. Remote schemas require HTTPS and are limited to 1 MiB, 10 seconds, 64 nesting levels and 2 MiB of generated output; external references are rejected.
+OpenAPI generation accepts bounded OpenAPI 3.0/3.1 JSON with local references, required/optional and nullable schemas, compositions, enums, parameters, and successful response variants. Generated TypeScript, React and React Native clients compile, use deterministic operation names, inject authentication through a token provider, and expose typed non-2xx `ApiError` responses. Remote schemas require HTTPS, reject non-public IP addresses across all DNS answers, pin connections to the validated answers, and are limited to 1 MiB, 10 seconds, 64 nesting levels and 2 MiB of generated output; external references are rejected.
 
 Generated resource CRUD applies the owner predicate in each database read, update and delete. Updates use a single owner-scoped `updateManyAndReturn` statement. Resource lists use an indexed `(ownerId, createdAt, id)` keyset order, a limit from 1 to 100 (default 50), and return `items`, `hasNext` and `nextCursor`. See the [issue #36 query-count and SDK checks](docs/benchmarks/issue-36-generators.md) for PostgreSQL measurements and fixture coverage.
 
@@ -141,7 +150,7 @@ Third-party extensions use the same declarative mutation engine as first-party c
 
 ## Generated API security baseline
 
-Generated APIs include database-enforced single-use refresh-token rotation, duplicate-registration race handling, bounded auth payloads, auth rate limiting, explicit production CORS, startup JWT duration validation, non-root multi-stage Docker builds and PostgreSQL-backed concurrency tests.
+Generated APIs include database-enforced single-use refresh-token rotation, duplicate-registration race handling, bounded auth payloads, auth rate limiting, explicit production CORS, startup JWT duration validation, non-root multi-stage Docker builds and PostgreSQL-backed concurrency tests. The default rate-limit store is per process; multi-replica deployments need a shared Fastify rate-limit store.
 
 Swagger UI is available at `http://localhost:3000/docs`, health at `/health`, and readiness at `/ready`.
 

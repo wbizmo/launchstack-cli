@@ -1,3 +1,7 @@
+import { lookup } from "node:dns/promises";
+import { BlockList, isIP } from "node:net";
+import { Agent, request as httpsRequest } from "node:https";
+import { createPinnedLookup, validateRemoteAddresses } from "./remote-network";
 import {
   collectOperations,
   componentTypeNames,
@@ -11,6 +15,85 @@ import {
 import { readRegularFileNoFollow } from "../storage";
 export type ClientTarget = "typescript" | "react" | "react-native";
 const MAX_GENERATED_BYTES = 2_097_152;
+const MAX_REMOTE_SCHEMA_BYTES = 1_048_576;
+
+async function fetchRemoteSchema(url: URL, hostname: string): Promise<string> {
+  const resolved =
+    isIP(hostname) !== 0
+      ? [{ address: hostname, family: isIP(hostname) }]
+      : await lookup(hostname, { all: true, verbatim: true });
+  const addresses = validateRemoteAddresses(resolved);
+
+  const agent = new Agent({
+    keepAlive: false,
+    lookup: createPinnedLookup(addresses),
+  });
+
+  return await new Promise<string>((resolve, reject) => {
+    const request = httpsRequest(
+      url,
+      {
+        agent,
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(10_000),
+      },
+      (response) => {
+        const fail = (error: Error) => {
+          response.destroy();
+          agent.destroy();
+          reject(error);
+        };
+        if (response.statusCode !== 200) {
+          fail(new Error("OpenAPI request failed with " + response.statusCode));
+          return;
+        }
+        const contentType = response.headers["content-type"] ?? "";
+        if (
+          !/^(application\/json|application\/[^;]+\+json)(;|$)/i.test(
+            contentType,
+          )
+        ) {
+          fail(
+            new Error(
+              "OpenAPI endpoint returned unsupported content type: " +
+                (contentType || "unknown"),
+            ),
+          );
+          return;
+        }
+        const declared = Number(response.headers["content-length"]);
+        if (Number.isFinite(declared) && declared > MAX_REMOTE_SCHEMA_BYTES) {
+          fail(new Error("OpenAPI response exceeds the 1 MiB size limit."));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        let total = 0;
+        response.on("data", (chunk: Buffer | string) => {
+          const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          total += bytes.byteLength;
+          if (total > MAX_REMOTE_SCHEMA_BYTES) {
+            fail(new Error("OpenAPI response exceeds the 1 MiB size limit."));
+            return;
+          }
+          chunks.push(bytes);
+        });
+        response.on("end", () => {
+          agent.destroy();
+          resolve(Buffer.concat(chunks, total).toString("utf8"));
+        });
+        response.on("error", (error) => {
+          agent.destroy();
+          reject(error);
+        });
+      },
+    );
+    request.on("error", (error) => {
+      agent.destroy();
+      reject(error);
+    });
+    request.end();
+  });
+}
 function boundedJoin<T>(
   items: Iterable<T>,
   separator: string,
@@ -31,32 +114,6 @@ function boundedJoin<T>(
   }
   return output.join(separator);
 }
-async function readBoundedResponse(response: Response): Promise<string> {
-  const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > 1_048_576)
-    throw new Error("OpenAPI response exceeds the 1 MiB size limit.");
-  if (!response.body) throw new Error("OpenAPI response has no body.");
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    const result = await reader.read();
-    if (result.done) break;
-    total += result.value.byteLength;
-    if (total > 1_048_576) {
-      await reader.cancel();
-      throw new Error("OpenAPI response exceeds the 1 MiB size limit.");
-    }
-    chunks.push(result.value);
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(bytes);
-}
 export async function loadOpenApiSource(
   source: string,
 ): Promise<OpenApiDocument> {
@@ -75,24 +132,9 @@ export async function loadOpenApiSource(
       hostname === "::1"
     )
       throw new Error("Remote OpenAPI schema host is not allowed.");
-    const response = await fetch(url, {
-      headers: { accept: "application/json" },
-      redirect: "error",
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok)
-      throw new Error("OpenAPI request failed with " + response.status);
-    const contentType = response.headers.get("content-type") ?? "";
-    if (
-      !/^(application\/json|application\/[^;]+\+json)(;|$)/i.test(contentType)
-    )
-      throw new Error(
-        "OpenAPI endpoint returned unsupported content type: " +
-          (contentType || "unknown"),
-      );
     let parsed: unknown;
     try {
-      parsed = JSON.parse(await readBoundedResponse(response));
+      parsed = JSON.parse(await fetchRemoteSchema(url, hostname));
     } catch (error) {
       if (error instanceof SyntaxError)
         throw new Error("OpenAPI endpoint returned invalid JSON.");

@@ -1,0 +1,24 @@
+{
+  "result": "passed",
+  "seed": "0x31f02204",
+  "counts": {
+    "pathTraversal": 512,
+    "malformedJournals": 256,
+    "malformedManifests": 256,
+    "pluginContent": 128,
+    "symlinkAttempts": 128,
+    "encodedPaths": 4,
+    "oversizedInputs": 2,
+    "cyclicSchemas": 1,
+    "hostileOpenApi": 3
+  },
+  "totalCases": 1290,
+  "runtime": "v24.22.3",
+  "platform": "linux",
+  "limits": {
+    "heapMiB": 128,
+    "timeoutMs": 15000
+  },
+  "peakRssMiB": 91.8,
+  "outsideSentinelPreserved": true
+}

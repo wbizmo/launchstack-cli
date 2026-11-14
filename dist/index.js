@@ -812,7 +812,7 @@ var import_zod2 = require("zod");
 var import_node_fs8 = require("fs");
 var import_node_path8 = require("path");
 function normalizeManagedPath(path) {
-  if (!path || path.includes("\0") || (0, import_node_path8.isAbsolute)(path))
+  if (!path || path.includes("\0") || (0, import_node_path8.isAbsolute)(path) || /^[\\/]/.test(path) || /^[A-Za-z]:[\\/]/.test(path))
     throw new Error(`Unsafe managed path: ${JSON.stringify(path)}`);
   const segments = path.split(/[\\/]+/).filter(Boolean);
   if (segments.length === 0 || segments.some((segment) => segment === ".." || segment === "."))
@@ -1114,8 +1114,11 @@ function processIsAlive(pid, expectedStartToken) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
-    if (expectedStartToken && processStartToken(pid) !== expectedStartToken)
-      return false;
+    if (expectedStartToken) {
+      const actualStartToken = processStartToken(pid);
+      if (actualStartToken && actualStartToken !== expectedStartToken)
+        return false;
+    }
     return true;
   } catch (error) {
     return error.code !== "ESRCH";
@@ -1226,9 +1229,26 @@ function acquireLock(projectDirectory) {
           throw new Error("malformed lock");
         stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
         if (stale) {
-          const confirmed = readRegularFileNoFollow(lockPath, 4096);
-          if (confirmed.content === contents && confirmed.dev === lockFile.dev && confirmed.ino === lockFile.ino)
-            (0, import_node_fs10.unlinkSync)(lockPath);
+          const reclaimPath = (0, import_node_path10.join)(
+            directory,
+            `.mutation-reclaim-${lockFile.dev}-${lockFile.ino}`
+          );
+          try {
+            (0, import_node_fs10.linkSync)(lockPath, reclaimPath);
+          } catch (claimError) {
+            if (claimError.code === "EEXIST")
+              continue;
+            throw claimError;
+          }
+          try {
+            const confirmed = readRegularFileNoFollow(lockPath, 4096);
+            if (confirmed.content === contents && confirmed.dev === lockFile.dev && confirmed.ino === lockFile.ino && !processIsAlive(lock.pid ?? -1, lock.processStartToken)) {
+              (0, import_node_fs10.unlinkSync)(lockPath);
+              syncDirectory(directory);
+            }
+          } finally {
+            (0, import_node_fs10.unlinkSync)(reclaimPath);
+          }
         }
       } catch (error2) {
         if (lockChangedDuringRead(error2)) continue;
@@ -3504,7 +3524,143 @@ function requestBodySchema(operation) {
 }
 
 // src/client/generate.ts
+var import_promises = require("dns/promises");
+var import_node_net2 = require("net");
+var import_node_https = require("https");
+
+// src/client/remote-network.ts
+var import_node_net = require("net");
+var nonPublicIPv4 = new import_node_net.BlockList();
+for (const [network, prefix] of [
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.0.0.0", 24],
+  ["192.0.2.0", 24],
+  ["192.88.99.0", 24],
+  ["192.168.0.0", 16],
+  ["198.18.0.0", 15],
+  ["198.51.100.0", 24],
+  ["203.0.113.0", 24],
+  ["224.0.0.0", 4],
+  ["240.0.0.0", 4]
+])
+  nonPublicIPv4.addSubnet(network, prefix, "ipv4");
+var globalIPv6 = new import_node_net.BlockList();
+globalIPv6.addSubnet("2000::", 3, "ipv6");
+var nonPublicIPv6 = new import_node_net.BlockList();
+for (const [network, prefix] of [
+  ["2001::", 23],
+  ["2001:db8::", 32],
+  ["2002::", 16],
+  ["3fff::", 20],
+  ["64:ff9b::", 96],
+  ["64:ff9b:1::", 48],
+  ["fc00::", 7],
+  ["fe80::", 10],
+  ["ff00::", 8],
+  ["::", 96]
+])
+  nonPublicIPv6.addSubnet(network, prefix, "ipv6");
+function isPublicAddress(address, family) {
+  if (family === 4) return !nonPublicIPv4.check(address, "ipv4");
+  return family === 6 && globalIPv6.check(address, "ipv6") && !nonPublicIPv6.check(address, "ipv6");
+}
+function validateRemoteAddresses(addresses) {
+  if (addresses.length === 0 || addresses.some(({ address, family }) => !isPublicAddress(address, family)))
+    throw new Error(
+      "Remote OpenAPI schema host resolves to a non-public address."
+    );
+  return addresses;
+}
+function createPinnedLookup(addresses) {
+  return (_requestedHostname, options, callback) => {
+    if (options?.all) {
+      callback(null, addresses);
+    } else {
+      const selected = addresses[0];
+      if (!selected)
+        callback(new Error("Remote host has no usable address."), "", 0);
+      else callback(null, selected.address, selected.family);
+    }
+  };
+}
+
+// src/client/generate.ts
 var MAX_GENERATED_BYTES = 2097152;
+var MAX_REMOTE_SCHEMA_BYTES = 1048576;
+async function fetchRemoteSchema(url, hostname) {
+  const resolved = (0, import_node_net2.isIP)(hostname) !== 0 ? [{ address: hostname, family: (0, import_node_net2.isIP)(hostname) }] : await (0, import_promises.lookup)(hostname, { all: true, verbatim: true });
+  const addresses = validateRemoteAddresses(resolved);
+  const agent = new import_node_https.Agent({
+    keepAlive: false,
+    lookup: createPinnedLookup(addresses)
+  });
+  return await new Promise((resolve16, reject) => {
+    const request = (0, import_node_https.request)(
+      url,
+      {
+        agent,
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(1e4)
+      },
+      (response) => {
+        const fail = (error) => {
+          response.destroy();
+          agent.destroy();
+          reject(error);
+        };
+        if (response.statusCode !== 200) {
+          fail(new Error("OpenAPI request failed with " + response.statusCode));
+          return;
+        }
+        const contentType = response.headers["content-type"] ?? "";
+        if (!/^(application\/json|application\/[^;]+\+json)(;|$)/i.test(
+          contentType
+        )) {
+          fail(
+            new Error(
+              "OpenAPI endpoint returned unsupported content type: " + (contentType || "unknown")
+            )
+          );
+          return;
+        }
+        const declared = Number(response.headers["content-length"]);
+        if (Number.isFinite(declared) && declared > MAX_REMOTE_SCHEMA_BYTES) {
+          fail(new Error("OpenAPI response exceeds the 1 MiB size limit."));
+          return;
+        }
+        const chunks = [];
+        let total = 0;
+        response.on("data", (chunk) => {
+          const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          total += bytes.byteLength;
+          if (total > MAX_REMOTE_SCHEMA_BYTES) {
+            fail(new Error("OpenAPI response exceeds the 1 MiB size limit."));
+            return;
+          }
+          chunks.push(bytes);
+        });
+        response.on("end", () => {
+          agent.destroy();
+          resolve16(Buffer.concat(chunks, total).toString("utf8"));
+        });
+        response.on("error", (error) => {
+          agent.destroy();
+          reject(error);
+        });
+      }
+    );
+    request.on("error", (error) => {
+      agent.destroy();
+      reject(error);
+    });
+    request.end();
+  });
+}
 function boundedJoin(items, separator, render) {
   const output = [];
   let bytes = 0;
@@ -3519,32 +3675,6 @@ function boundedJoin(items, separator, render) {
   }
   return output.join(separator);
 }
-async function readBoundedResponse(response) {
-  const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > 1048576)
-    throw new Error("OpenAPI response exceeds the 1 MiB size limit.");
-  if (!response.body) throw new Error("OpenAPI response has no body.");
-  const reader = response.body.getReader();
-  const chunks = [];
-  let total = 0;
-  while (true) {
-    const result = await reader.read();
-    if (result.done) break;
-    total += result.value.byteLength;
-    if (total > 1048576) {
-      await reader.cancel();
-      throw new Error("OpenAPI response exceeds the 1 MiB size limit.");
-    }
-    chunks.push(result.value);
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(bytes);
-}
 async function loadOpenApiSource(source) {
   if (/^https?:\/\//i.test(source)) {
     const url = new URL(source);
@@ -3555,21 +3685,9 @@ async function loadOpenApiSource(source) {
     const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
     if (hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname === "0.0.0.0" || hostname === "::1")
       throw new Error("Remote OpenAPI schema host is not allowed.");
-    const response = await fetch(url, {
-      headers: { accept: "application/json" },
-      redirect: "error",
-      signal: AbortSignal.timeout(1e4)
-    });
-    if (!response.ok)
-      throw new Error("OpenAPI request failed with " + response.status);
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!/^(application\/json|application\/[^;]+\+json)(;|$)/i.test(contentType))
-      throw new Error(
-        "OpenAPI endpoint returned unsupported content type: " + (contentType || "unknown")
-      );
     let parsed2;
     try {
-      parsed2 = JSON.parse(await readBoundedResponse(response));
+      parsed2 = JSON.parse(await fetchRemoteSchema(url, hostname));
     } catch (error) {
       if (error instanceof SyntaxError)
         throw new Error("OpenAPI endpoint returned invalid JSON.");
@@ -4523,13 +4641,13 @@ var import_node_crypto7 = require("crypto");
 var import_node_fs18 = require("fs");
 var import_node_os3 = require("os");
 var import_node_path18 = require("path");
-var import_node_net2 = require("net");
+var import_node_net4 = require("net");
 
 // src/dev/orchestrator.ts
 var import_node_crypto6 = require("crypto");
 var import_node_child_process5 = require("child_process");
 var import_node_fs17 = require("fs");
-var import_node_net = require("net");
+var import_node_net3 = require("net");
 var import_node_path17 = require("path");
 var import_node_os2 = require("os");
 async function acquireHostPortLock() {
@@ -4605,7 +4723,7 @@ function composeArgs(projectDirectory, resourceId) {
 }
 function portAvailable(port) {
   return new Promise((resolve16) => {
-    const server = (0, import_node_net2.createServer)();
+    const server = (0, import_node_net4.createServer)();
     server.unref();
     server.once("error", () => resolve16(false));
     server.listen(
