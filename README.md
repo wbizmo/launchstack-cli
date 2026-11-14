@@ -127,7 +127,17 @@ The generated API exposes Swagger UI at `/docs`, health at `/health` and readine
 
 ## v3.0.4 benchmarks
 
-v3.0.4 includes runtime, security, transaction, upgrade, capability, orchestration, generator, complexity and release qualification benchmarks. The [benchmark documentation](docs/benchmarks/README.md) contains the reports, results, methodology, reproduction commands and limitations.
+Full results, methodology, reproduction commands and limitations are in the [benchmark documentation](docs/benchmarks/README.md). Measured v3.0.4 results include:
+
+- **Runtime:** warm `--version` p50 was 5.7% slower than v3.0.0; warm `--help` p50 was 1.4% faster. No consistent startup speedup was measured.
+- **Security:** scanning 100,000 tracked paths took 111.1 ms p50 / 141.7 ms p95. The bounded hostile-input corpus passed 1,290 cases.
+- **Transactions:** applying 10,000 file changes took 6.27 s p50 vs. 1.98 s on v3.0.0. Tests with 8 and 32 concurrent writer processes lost no updates.
+- **Upgrades:** planning a 10,000-file migration took 82.1 ms p50 vs. 46.9 ms on v3.0.0; no speedup is claimed.
+- **Capabilities:** a 10,000-node / 99,945-edge graph resolved in 9.19 ms p50. Ten BullMQ jobs completed at 2.00 ms p50 / 6.65 ms p95.
+- **Orchestration:** two generated projects reached readiness in 19.96 s; two warm preview stages completed in 68.28 s.
+- **Generators:** concurrent owned and cross-owner updates used two owner-scoped `UPDATE` queries with no pre-read; each keyset page used one bounded `SELECT`.
+- **Complexity:** service scheduling is O((V+E) log V), extension ordering O(V+E), and streaming hashing O(B) time with a bounded buffer.
+- **Release qualification:** at 250,000 files, drift-scan p50 was 36.41 s vs. 2.53 s on v3.0.0 (14.41× slower on this host). No general performance gain is claimed.
 
 ## Development and release checks
 
