@@ -614,9 +614,9 @@ function readRegularFileNoFollow(path, maxBytes) {
   let descriptor;
   try {
     descriptor = openSync2(
-      // lgtm [js/insecure-temporary-file] Read-only open; no creation or write flags are set.
       path,
-      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+      384
     );
   } catch (error) {
     if (error.code === "ELOOP")
@@ -5111,4 +5111,4 @@ export {
   planModuleGeneration,
   applyModuleGeneration
 };
-//# sourceMappingURL=chunk-KLH44IUS.mjs.map
+//# sourceMappingURL=chunk-S4V7VTT5.mjs.map

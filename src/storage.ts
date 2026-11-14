@@ -33,9 +33,9 @@ export function readRegularFileNoFollow(
   let descriptor: number;
   try {
     descriptor = openSync(
-      // lgtm [js/insecure-temporary-file] Read-only open; no creation or write flags are set.
       path,
       constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+      0o600,
     );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ELOOP")
