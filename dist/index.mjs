@@ -48,6 +48,7 @@ import {
   renderTemplate,
   requestBodySchema,
   resolveExtensionOrder,
+  resolveMigrationChain,
   responseSchema,
   runProductionAudit,
   schemaToType,
@@ -59,7 +60,7 @@ import {
   toDisplayName,
   validateProjectName,
   validateStageName
-} from "./chunk-JLIQO3CT.mjs";
+} from "./chunk-52OXMKJC.mjs";
 
 // src/errors.ts
 var LaunchStackError = class extends Error {
@@ -224,6 +225,7 @@ export {
   renderTemplate,
   requestBodySchema,
   resolveExtensionOrder,
+  resolveMigrationChain,
   responseSchema,
   runProductionAudit,
   schemaToType,

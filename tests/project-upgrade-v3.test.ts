@@ -15,7 +15,12 @@ import {
 } from "../src/project/manifest";
 import { loadProjectState, serializeProjectState } from "../src/project/state";
 import { emptyProjectState } from "../src/project/types";
-import { applyUpgrade, planUpgrade } from "../src/project/upgrade";
+import {
+  applyUpgrade,
+  planUpgrade,
+  resolveMigrationChain,
+  type TemplateMigration,
+} from "../src/project/upgrade";
 
 const roots: string[] = [];
 
@@ -159,6 +164,61 @@ describe("versioned project migrations", () => {
     const plan = planUpgrade(root);
     expect(plan.conflicts.join(" ")).toMatch(/no ordered migration/i);
     expect(plan.diffs).toEqual([]);
+  });
+
+  test("orders multi-edge migration chains by dependencies and rejects mismatched state versions", () => {
+    const condition = (
+      target: "manifest" | "state",
+      version: "from" | "to",
+    ) => ({
+      target,
+      version,
+    });
+    const migrations: TemplateMigration[] = [
+      {
+        id: "v2-to-v3",
+        from: "2.0.0",
+        to: "3.0.0",
+        dependsOn: ["v1-to-v2"],
+        preconditions: [
+          condition("manifest", "from"),
+          condition("state", "from"),
+        ],
+        postconditions: [condition("manifest", "to"), condition("state", "to")],
+      },
+      {
+        id: "v1-to-v2",
+        from: "1.0.0",
+        to: "2.0.0",
+        dependsOn: [],
+        preconditions: [
+          condition("manifest", "from"),
+          condition("state", "from"),
+        ],
+        postconditions: [condition("manifest", "to"), condition("state", "to")],
+      },
+    ];
+
+    expect(
+      resolveMigrationChain("1.0.0", "3.0.0", migrations).map(
+        (migration) => migration.id,
+      ),
+    ).toEqual(["v1-to-v2", "v2-to-v3"]);
+    expect(() =>
+      resolveMigrationChain("1.0.0", "3.0.0", [migrations[0]!]),
+    ).toThrow(/unknown migration dependency/i);
+
+    const root = legacyProject();
+    writeFileSync(
+      join(root, ".launchstack", "state.json"),
+      serializeProjectState(emptyProjectState("1.9.0", "2.1.3")),
+    );
+    const plan = planUpgrade(root);
+    expect(plan.conflicts.join(" ")).toMatch(
+      /state template version must be 2\.0\.0/i,
+    );
+    expect(plan.diffs).toEqual([]);
+    expect(plan.mutations).toEqual([]);
   });
 
   test("reports missing structural anchors as precise conflicts", () => {

@@ -63,9 +63,34 @@ type LegacyProject = {
   packageVersion: string;
   templateVersion: string;
 };
-type Migration = { from: string; to: string; id: string };
-const MIGRATIONS: readonly Migration[] = [
-  { from: LEGACY_V2_TEMPLATE_VERSION, to: V3_TEMPLATE_VERSION, id: "v2-to-v3" },
+export type MigrationVersionCondition = {
+  target: "manifest" | "state";
+  version: "from" | "to";
+};
+export type TemplateMigration = {
+  from: string;
+  to: string;
+  id: string;
+  dependsOn: readonly string[];
+  preconditions: readonly MigrationVersionCondition[];
+  postconditions: readonly MigrationVersionCondition[];
+};
+type Migration = TemplateMigration;
+const MIGRATIONS: readonly TemplateMigration[] = [
+  {
+    from: LEGACY_V2_TEMPLATE_VERSION,
+    to: V3_TEMPLATE_VERSION,
+    id: "v2-to-v3",
+    dependsOn: [],
+    preconditions: [
+      { target: "manifest", version: "from" },
+      { target: "state", version: "from" },
+    ],
+    postconditions: [
+      { target: "manifest", version: "to" },
+      { target: "state", version: "to" },
+    ],
+  },
 ];
 
 function readText(
@@ -327,23 +352,99 @@ function addIntegration(
   );
 }
 
-function migrationChain(from: string, to: string): Migration[] {
+function orderMigrations(migrations: readonly Migration[]): Migration[] {
+  const byId = new Map<string, Migration>();
+  for (const migration of migrations) {
+    if (byId.has(migration.id))
+      throw new Error(`Duplicate migration id: ${migration.id}.`);
+    if (migration.from === migration.to)
+      throw new Error(
+        `Migration ${migration.id} cannot target its source version.`,
+      );
+    byId.set(migration.id, migration);
+  }
+
+  const ordered: Migration[] = [];
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visitMigration = (id: string): void => {
+    const migration = byId.get(id);
+    if (!migration) throw new Error(`Unknown migration dependency: ${id}.`);
+    if (visited.has(id)) return;
+    if (visiting.has(id))
+      throw new Error(`Migration dependency cycle detected at ${id}.`);
+    visiting.add(id);
+    for (const dependency of [...migration.dependsOn].sort())
+      visitMigration(dependency);
+    visiting.delete(id);
+    visited.add(id);
+    ordered.push(migration);
+  };
+  for (const id of [...byId.keys()].sort()) visitMigration(id);
+  return ordered;
+}
+
+export function resolveMigrationChain(
+  from: string,
+  to: string,
+  migrations: readonly TemplateMigration[] = MIGRATIONS,
+): TemplateMigration[] {
+  const ordered = orderMigrations(migrations);
   const chain: Migration[] = [];
   const visited = new Set<string>();
+  const completed = new Set<string>();
   let version = from;
   while (version !== to) {
     if (visited.has(version))
       throw new Error(`Migration cycle detected at template ${version}.`);
     visited.add(version);
-    const migration = MIGRATIONS.find((item) => item.from === version);
+    const candidates = ordered.filter((item) => item.from === version);
+    const available = candidates.filter((item) =>
+      item.dependsOn.every((dependency) => completed.has(dependency)),
+    );
+    if (available.length > 1)
+      throw new Error(
+        `Ambiguous ordered migrations from template ${version} to ${to}.`,
+      );
+    const migration = available[0];
+    if (!migration && candidates.length)
+      throw new Error(
+        `Migration dependency is not satisfied before template ${version}.`,
+      );
     if (!migration)
       throw new Error(
         `No ordered migration is registered from template ${version} to ${to}.`,
       );
     chain.push(migration);
+    completed.add(migration.id);
     version = migration.to;
   }
   return chain;
+}
+
+function validateMigrationConditions(
+  chain: readonly Migration[],
+  manifestVersion: string,
+  stateVersion: string,
+): void {
+  let versions = { manifest: manifestVersion, state: stateVersion };
+  for (const migration of chain) {
+    for (const condition of migration.preconditions) {
+      const expected = migration[condition.version];
+      if (versions[condition.target] !== expected)
+        throw new Error(
+          `Migration ${migration.id} precondition failed: ${condition.target} template version must be ${expected}.`,
+        );
+    }
+    versions = { manifest: migration.to, state: migration.to };
+    for (const condition of migration.postconditions) {
+      const expected = migration[condition.version];
+      if (versions[condition.target] !== expected)
+        throw new Error(
+          `Migration ${migration.id} postcondition failed: ${condition.target} template version must be ${expected}.`,
+        );
+    }
+  }
 }
 
 function metadataMutation(
@@ -508,7 +609,12 @@ export function planUpgrade(projectDirectoryInput: string): UpgradePlan {
   const mutations: FileMutation[] = [];
   let chain: Migration[] = [];
   try {
-    chain = migrationChain(fromVersion, V3_TEMPLATE_VERSION);
+    chain = resolveMigrationChain(fromVersion, V3_TEMPLATE_VERSION);
+    validateMigrationConditions(
+      chain,
+      manifest.project.templateVersion,
+      state.templateVersion,
+    );
   } catch (error) {
     conflicts.push(error instanceof Error ? error.message : String(error));
   }
@@ -517,7 +623,10 @@ export function planUpgrade(projectDirectoryInput: string): UpgradePlan {
     to: V3_TEMPLATE_VERSION,
     id: "v3-ensure",
   };
-  if (chain.length || fromVersion === V3_TEMPLATE_VERSION)
+  if (
+    (chain.length || fromVersion === V3_TEMPLATE_VERSION) &&
+    !conflicts.length
+  )
     migrationFiles(projectDirectory, migration, mutations, actions, conflicts);
 
   const nextManifest = structuredClone(manifest);
@@ -544,16 +653,20 @@ export function planUpgrade(projectDirectoryInput: string): UpgradePlan {
     nextState.cliVersion = currentLaunchStackVersion();
     nextState.updatedAt = new Date().toISOString();
   }
-  const nextManifestMutation = metadataMutation(
-    projectDirectory,
-    "launchstack.json",
-    serializeProjectManifest(nextManifest),
-  );
-  const nextStateMutation = metadataMutation(
-    projectDirectory,
-    ".launchstack/state.json",
-    serializeProjectState(nextState),
-  );
+  const nextManifestMutation = conflicts.length
+    ? null
+    : metadataMutation(
+        projectDirectory,
+        "launchstack.json",
+        serializeProjectManifest(nextManifest),
+      );
+  const nextStateMutation = conflicts.length
+    ? null
+    : metadataMutation(
+        projectDirectory,
+        ".launchstack/state.json",
+        serializeProjectState(nextState),
+      );
   for (const item of [nextManifestMutation, nextStateMutation])
     if (item) mutations.push(item);
   if (nextManifestMutation || nextStateMutation)
