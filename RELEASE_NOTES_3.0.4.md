@@ -54,7 +54,7 @@
 - Adds the issues #30–#39 completion ledger and compatibility policy in `docs/release/ISSUES_30_39.md` and `docs/COMPATIBILITY.md`.
 - Adds Prettier, SBOM, Windows portability and CodeQL release/CI checks. npm publishing is restricted to a manually dispatched workflow on `main` with `authorize_publication=true` and the protected `npm-publish` environment.
 - Fixes generated Compose and Render project-name placeholders and uses a Compose reset override to remove the development PostgreSQL host port from production. The local generated production image now passes its container health check and PostgreSQL readiness request.
-- Local combined `release:check` passes on Node 24.22.3 and 26.13.1. The production Docker image builds and passes health/readiness checks. Final-head GitHub CI, Windows portability, TypeScript analysis and CodeQL pass; CodeRabbit skips the full diff at its 100-file limit. This release remains a draft.
+- Local combined `release:check` passes on Node 24.22.3 and 26.13.1. The production Docker image builds and passes health/readiness checks. Final-head GitHub CI, Windows portability, TypeScript analysis and CodeQL pass; CodeRabbit skips the full diff at its 100-file limit. The two documented limits below are accepted for this release. The GitHub release remains pending merge and final post-merge verification.
 
 ## Verification
 
@@ -74,4 +74,4 @@
 
 ## Compatibility and limitations
 
-This release remains in development pending review and exact-head release qualification. Project mutations reject static symlink traversal and serialize LaunchStack writers; the current portable path operations do not guarantee confinement against a separate same-user process actively swapping parent directories during rename. Do not treat a concurrently hostile project tree as a supported trust boundary.
+Project mutations reject static symlink traversal and serialize LaunchStack writers; portable path-based mutations do not guarantee confinement against a separate same-user process actively swapping parent directories during rename. Do not treat a concurrently hostile project tree as a supported trust boundary. Generated API rate limiting uses an in-memory per-process store by default, so multi-replica deployments need a shared Fastify rate-limit store. These two limitations are accepted for v3.0.4 and must be considered when deploying into those environments.

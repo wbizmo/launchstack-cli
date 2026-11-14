@@ -36,6 +36,8 @@ launchstack dev
 
 Fresh v3 projects contain `launchstack.json` for desired LaunchStack state and `.launchstack/state.json` for LaunchStack-owned hashes, installed extensions and stage metadata. Business/domain code remains user-owned.
 
+LaunchStack rejects static symlink traversal and serializes its own project writers. Its portable path-based mutations do not guarantee confinement against a separate process running as the same user and swapping a parent directory during a rename. Do not use a project tree that an untrusted concurrent process can modify as a security boundary.
+
 ## Lifecycle commands
 
 ### Add capabilities
