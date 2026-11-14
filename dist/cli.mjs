@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import {
   AUDIT_SEVERITIES,
+  DevOrchestrator,
   FIRST_PARTY_EXTENSIONS,
   applyExtensionInstall,
   applyExtensionRemoval,
   applyModuleGeneration,
   applyReconciliation,
   applyUpgrade,
+  createDevPlan,
   createOrUpdateStage,
   currentLaunchStackVersion,
   destroyStage,
@@ -29,8 +31,9 @@ import {
   renderDockerIgnore,
   renderDockerfile,
   runProductionAudit,
+  selectDevPlan,
   severityRank
-} from "./chunk-WDIJLAHI.mjs";
+} from "./chunk-NI3IS4ZS.mjs";
 
 // src/cli.ts
 import { Command as Command22 } from "commander";
@@ -457,12 +460,12 @@ function addDeploymentRecord(record, projectDirectory = process.cwd()) {
 }
 
 // src/commands/deploy.ts
-var deployCommand = new Command6("deploy").description("Build/prepare deployment artifacts or deploy a manifest-declared stage").option("--skip-build").option("--stage <stage>").option("--production").option("--json").action((options) => {
+var deployCommand = new Command6("deploy").description("Build/prepare deployment artifacts or deploy a manifest-declared stage").option("--skip-build").option("--stage <stage>").option("--production").option("--json").action(async (options) => {
   const createdAt = (/* @__PURE__ */ new Date()).toISOString();
   try {
     if (options.stage) {
       if (!options.skipBuild) execSync("npm run build", { stdio: "inherit", cwd: process.cwd() });
-      const stage = createOrUpdateStage({ projectDirectory: process.cwd(), stage: options.stage, production: options.production });
+      const stage = await createOrUpdateStage({ projectDirectory: process.cwd(), stage: options.stage, production: options.production });
       if (options.json) console.log(JSON.stringify(stage, null, 2));
       else {
         console.log(`Stage ${stage.name}: ${stage.status}`);
@@ -503,9 +506,9 @@ var fail2 = (error) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 };
-var previewCommand = new Command7("preview").description("Create or update a non-production preview stage").argument("[stage]", "Preview stage name", "preview").option("-d, --directory <path>").option("--json").action((stage, options) => {
+var previewCommand = new Command7("preview").description("Create or update a non-production preview stage").argument("[stage]", "Preview stage name", "preview").option("-d, --directory <path>").option("--json").action(async (stage, options) => {
   try {
-    const state = createOrUpdateStage({ projectDirectory: options.directory ?? process.cwd(), stage, production: false });
+    const state = await createOrUpdateStage({ projectDirectory: options.directory ?? process.cwd(), stage, production: false });
     if (options.json) console.log(JSON.stringify(state, null, 2));
     else console.log(`Preview ${state.name}: ${state.status}`);
   } catch (error) {
@@ -513,7 +516,7 @@ var previewCommand = new Command7("preview").description("Create or update a non
   }
 });
 var stageCommand = new Command7("stage").description("Inspect named LaunchStack stages");
-stageCommand.command("status").argument("<stage>").option("-d, --directory <path>").option("--json").action((stage, options) => {
+stageCommand.command("status").argument("<stage>").option("-d, --directory <path>").option("--json").action(async (stage, options) => {
   try {
     const status = inspectStage(options.directory ?? process.cwd(), stage);
     if (options.json) console.log(JSON.stringify(status, null, 2));
@@ -535,193 +538,37 @@ var destroyCommand = new Command7("destroy").description("Destroy a verified Lau
 
 // src/commands/dev.ts
 import { Command as Command8 } from "commander";
-
-// src/dev/orchestrator.ts
-import { spawn } from "child_process";
-import { existsSync as existsSync6 } from "fs";
-import { createServer } from "net";
-import { resolve as resolve6 } from "path";
-var defaultAdapters = { spawn(command, args, options) {
-  return spawn(command, args, { ...options, shell: false });
-}, portAvailable(port) {
-  return new Promise((done) => {
-    const server = createServer();
-    server.unref();
-    server.once("error", () => done(false));
-    server.listen({ host: "127.0.0.1", port }, () => server.close(() => done(true)));
-  });
-}, sleep(ms) {
-  return new Promise((done) => setTimeout(done, ms));
-} };
-function topologicalServices(services) {
-  const byId = new Map(services.map((item) => [item.id, item]));
-  const indegree = /* @__PURE__ */ new Map();
-  const dependents = /* @__PURE__ */ new Map();
-  for (const item of services) {
-    indegree.set(item.id, item.dependencies.length);
-    for (const dep of item.dependencies) {
-      if (!byId.has(dep)) throw new Error(`Unknown dev service dependency ${dep} for ${item.id}`);
-      const list = dependents.get(dep) ?? [];
-      list.push(item.id);
-      dependents.set(dep, list);
-    }
-  }
-  const queue = services.filter((item) => (indegree.get(item.id) ?? 0) === 0).sort((a, b) => a.id.localeCompare(b.id));
-  const ordered = [];
-  while (queue.length) {
-    const item = queue.shift();
-    if (!item) break;
-    ordered.push(item);
-    for (const id of (dependents.get(item.id) ?? []).sort()) {
-      const next = (indegree.get(id) ?? 0) - 1;
-      indegree.set(id, next);
-      if (next === 0) {
-        const dependent = byId.get(id);
-        if (dependent) {
-          queue.push(dependent);
-          queue.sort((a, b) => a.id.localeCompare(b.id));
-        }
-      }
-    }
-  }
-  if (ordered.length !== services.length) throw new Error("Development service dependency cycle detected.");
-  return ordered;
-}
-function createDevPlan(projectDirectoryInput) {
-  const projectDirectory = resolve6(projectDirectoryInput);
-  const manifest = loadProjectManifest(projectDirectory);
-  const capabilities = new Set(Object.keys(manifest.capabilities));
-  const composeArgs = ["compose", "-f", "docker-compose.yml"];
-  if (existsSync6(resolve6(projectDirectory, "docker-compose.launchstack.yml"))) composeArgs.push("-f", "docker-compose.launchstack.yml");
-  const services = [{ id: "postgres", kind: "infrastructure", dependencies: [], command: "docker", args: [...composeArgs, "up", "-d", "--wait", "postgres"], port: 5432, required: true }];
-  if (capabilities.has("redis") || capabilities.has("queue")) services.push({ id: "redis", kind: "infrastructure", dependencies: [], command: "docker", args: [...composeArgs, "up", "-d", "--wait", "redis"], port: 6379, required: true });
-  services.push({ id: "migrations", kind: "migration", dependencies: ["postgres"], command: "npm", args: ["run", "prisma:deploy"], required: true }, { id: "api", kind: "process", dependencies: ["postgres", ...services.some((item) => item.id === "redis") ? ["redis"] : [], "migrations"], command: "npm", args: ["run", "dev"], port: 3e3, required: true });
-  if (capabilities.has("queue")) services.push({ id: "worker", kind: "process", dependencies: ["redis", "migrations"], command: "npm", args: ["run", "worker"], required: false });
-  if (capabilities.has("cron")) services.push({ id: "scheduler", kind: "process", dependencies: ["migrations"], command: "npm", args: ["run", "scheduler"], required: false });
-  return { projectDirectory, services: topologicalServices(services) };
-}
-function selectDevPlan(plan, options) {
-  let services = plan.services;
-  if (options.noMigrate) {
-    services = services.filter((item) => item.id !== "migrations").map((item) => ({ ...item, dependencies: item.dependencies.filter((dep) => dep !== "migrations") }));
-  }
-  if (options.service) {
-    const byId = new Map(services.map((item) => [item.id, item]));
-    if (!byId.has(options.service)) throw new Error(`Unknown dev service: ${options.service}`);
-    const selected = /* @__PURE__ */ new Set();
-    const visit = (id) => {
-      if (selected.has(id)) return;
-      const item = byId.get(id);
-      if (!item) throw new Error(`Missing selected dependency: ${id}`);
-      selected.add(id);
-      for (const dep of item.dependencies) visit(dep);
-    };
-    visit(options.service);
-    services = services.filter((item) => selected.has(item.id));
-  }
-  return { ...plan, services: topologicalServices(services) };
-}
-function waitForExit(child, timeoutMs) {
-  return new Promise((done, reject) => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        reject(new Error(`Process ${child.pid ?? "unknown"} did not exit within ${timeoutMs}ms`));
-      }
-    }, timeoutMs);
-    child.once("exit", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      done(code);
-    });
-  });
-}
-async function waitUntilPortOccupied(port, adapters, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (!await adapters.portAvailable(port)) return;
-    await adapters.sleep(100);
-  }
-  throw new Error(`Timed out waiting for service on port ${port}`);
-}
-var DevOrchestrator = class {
-  constructor(plan, adapters = defaultAdapters) {
-    this.plan = plan;
-    this.adapters = adapters;
-    this.children = /* @__PURE__ */ new Set();
-    this.stopped = false;
-  }
-  async start(options = {}) {
-    const timeoutMs = options.readinessTimeoutMs ?? 3e4;
-    const ports = /* @__PURE__ */ new Set();
-    for (const service of this.plan.services) if (service.port) {
-      if (ports.has(service.port)) throw new Error(`Duplicate configured dev port: ${service.port}`);
-      ports.add(service.port);
-      if (!await this.adapters.portAvailable(service.port)) throw new Error(`Port ${service.port} required by ${service.id} is already occupied.`);
-    }
-    try {
-      for (const service of this.plan.services) {
-        const child = this.adapters.spawn(service.command, service.args, { cwd: this.plan.projectDirectory, stdio: "inherit" });
-        this.children.add(child);
-        child.once("exit", () => this.children.delete(child));
-        if (service.kind !== "process") {
-          const code = await waitForExit(child, timeoutMs);
-          if (code !== 0 && service.required) throw new Error(`${service.id} failed with exit code ${String(code)}`);
-        } else if (service.port) await waitUntilPortOccupied(service.port, this.adapters, timeoutMs);
-      }
-    } catch (error) {
-      await this.stop();
-      throw error;
-    }
-  }
-  async stop() {
-    if (this.stopped) return;
-    this.stopped = true;
-    const children = [...this.children];
-    for (const child of children) try {
-      child.kill("SIGTERM");
-    } catch {
-    }
-    await Promise.race([Promise.allSettled(children.map((child) => waitForExit(child, 5e3))), this.adapters.sleep(5100)]);
-    for (const child of [...this.children]) {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-      }
-      this.children.delete(child);
-    }
-  }
-};
-
-// src/commands/dev.ts
-var devCommand = new Command8("dev").description("Start LaunchStack-managed local development services").option("-d, --directory <path>").option("--service <id>", "Start one service plus its dependencies").option("--no-migrate", "Skip the migration process").option("--json").option("--readiness-timeout <ms>", "Readiness timeout", "30000").action(async (options) => {
+var devCommand = new Command8("dev").description("Start LaunchStack-managed local development services").option("-d, --directory <path>").option("--service <id>", "Start one service plus its dependencies").option("--no-migrate", "Skip the development migration process").option("--plan", "Print the resolved service plan and exit").option("--json", "Emit structured service status events").option("--readiness-timeout <ms>", "Readiness timeout", "30000").action(async (options) => {
   try {
     const plan = selectDevPlan(createDevPlan(options.directory ?? process.cwd()), { service: options.service, noMigrate: options.migrate === false });
-    if (options.json) {
-      console.log(JSON.stringify(plan, null, 2));
+    if (options.plan) {
+      if (options.json) console.log(JSON.stringify(plan, null, 2));
+      else for (const service of plan.services) console.log(`${service.id}	${service.kind}	${service.dependencies.join(",") || "-"}`);
       return;
     }
     const timeoutMs = Number.parseInt(options.readinessTimeout, 10);
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1e3 || timeoutMs > 3e5) throw new Error("--readiness-timeout must be between 1000 and 300000 milliseconds.");
-    const orchestrator = new DevOrchestrator(plan);
+    const report = (service, status, detail) => {
+      const event = { timestamp: (/* @__PURE__ */ new Date()).toISOString(), service, status, ...detail ? { detail } : {} };
+      if (options.json) console.log(JSON.stringify(event));
+      else console.log(`${status.toUpperCase()} ${service}${detail ? `: ${detail}` : ""}`);
+    };
+    const orchestrator = new DevOrchestrator(plan, void 0, report);
     let stopping = false;
-    const stop = async () => {
+    const stop = async (code) => {
       if (stopping) return;
       stopping = true;
       await orchestrator.stop();
+      process.exitCode = code;
     };
-    process.once("SIGINT", () => void stop().then(() => {
-      process.exitCode = 130;
-    }));
-    process.once("SIGTERM", () => void stop().then(() => {
-      process.exitCode = 143;
-    }));
+    process.once("SIGINT", () => void stop(130));
+    process.once("SIGTERM", () => void stop(143));
     await orchestrator.start({ readinessTimeoutMs: timeoutMs });
-    console.log("Development services are ready. Press Ctrl+C to stop LaunchStack-owned processes.");
+    report("environment", "ready", "Use SIGINT or SIGTERM to stop LaunchStack-owned processes and the namespaced Compose project.");
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    const detail = error instanceof Error ? error.message : String(error);
+    if (options.json) console.log(JSON.stringify({ timestamp: (/* @__PURE__ */ new Date()).toISOString(), service: "environment", status: "failed", detail }));
+    else console.error(detail);
     process.exitCode = 1;
   }
 });
@@ -731,13 +578,13 @@ import { Command as Command9 } from "commander";
 
 // src/release/doctor.ts
 import {
-  existsSync as existsSync7,
+  existsSync as existsSync6,
   readFileSync as readFileSync4
 } from "fs";
-import { resolve as resolve7 } from "path";
+import { resolve as resolve6 } from "path";
 function checkFile(projectDirectory, file, label) {
-  const path = resolve7(projectDirectory, file);
-  const passed = existsSync7(path);
+  const path = resolve6(projectDirectory, file);
+  const passed = existsSync6(path);
   return {
     name: label,
     passed,
@@ -745,11 +592,11 @@ function checkFile(projectDirectory, file, label) {
   };
 }
 function checkPackageScripts(projectDirectory) {
-  const packagePath = resolve7(
+  const packagePath = resolve6(
     projectDirectory,
     "package.json"
   );
-  if (!existsSync7(packagePath)) {
+  if (!existsSync6(packagePath)) {
     return {
       name: "Package scripts",
       passed: false,
@@ -779,11 +626,11 @@ function checkPackageScripts(projectDirectory) {
   };
 }
 function checkEnvironmentExample(projectDirectory) {
-  const path = resolve7(
+  const path = resolve6(
     projectDirectory,
     ".env.example"
   );
-  if (!existsSync7(path)) {
+  if (!existsSync6(path)) {
     return {
       name: "Environment example",
       passed: false,
@@ -852,7 +699,7 @@ function runDoctor(projectDirectory = process.cwd()) {
   ];
   return {
     healthy: checks.every((check) => check.passed),
-    projectDirectory: resolve7(projectDirectory),
+    projectDirectory: resolve6(projectDirectory),
     checks
   };
 }
@@ -896,10 +743,10 @@ var doctorCommand = new Command9("doctor").description("Inspect a generated Laun
 });
 
 // src/commands/docker.ts
-import { existsSync as existsSync8, writeFileSync as writeFileSync3 } from "fs";
+import { existsSync as existsSync7, writeFileSync as writeFileSync3 } from "fs";
 import { Command as Command10 } from "commander";
 function writeFileIfAllowed(path, content, force) {
-  if (existsSync8(path) && !force) {
+  if (existsSync7(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
@@ -910,8 +757,8 @@ var dockerCommand = new Command10("docker").description("Generate Docker deploym
 dockerCommand.command("init").description("Create hardened Dockerfile, .dockerignore, and docker-compose.yml").option("-f, --force", "Overwrite existing Docker files").action((options) => {
   const config = readConfig();
   const force = Boolean(options.force);
-  const hasLockfile = existsSync8("package-lock.json");
-  const prisma = existsSync8("prisma/schema.prisma");
+  const hasLockfile = existsSync7("package-lock.json");
+  const prisma = existsSync7("prisma/schema.prisma");
   const dockerfile = renderDockerfile({
     buildCommand: config.buildCommand,
     outputDirectory: config.outputDirectory,
@@ -982,11 +829,11 @@ function configure(kind) {
 var generateCommand = new Command12("generate").description("Generate architecture-aware modules and resources").addCommand(configure("module")).addCommand(configure("resource"));
 
 // src/commands/github.ts
-import { existsSync as existsSync9, mkdirSync as mkdirSync3 } from "fs";
+import { existsSync as existsSync8, mkdirSync as mkdirSync3 } from "fs";
 import { dirname as dirname3 } from "path";
 import { Command as Command13 } from "commander";
 function writeWorkflowFile(path, content, force) {
-  if (existsSync9(path) && !force) {
+  if (existsSync8(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
@@ -1080,8 +927,8 @@ var initCommand = new Command15("init").description("Create a LaunchStack config
 import { Command as Command16 } from "commander";
 
 // src/extensions/plugins.ts
-import { existsSync as existsSync10, readFileSync as readFileSync5 } from "fs";
-import { isAbsolute as isAbsolute2, join as join2, resolve as resolve8 } from "path";
+import { existsSync as existsSync9, readFileSync as readFileSync5 } from "fs";
+import { isAbsolute as isAbsolute2, join as join2, resolve as resolve7 } from "path";
 import { z as z2 } from "zod";
 var fileSchema = z2.object({ path: z2.string().min(1).max(240), content: z2.string().max(1e6), executable: z2.boolean().optional() }).strict();
 var environmentSchema = z2.object({ name: z2.string().regex(/^[A-Z][A-Z0-9_]*$/), description: z2.string().min(1).max(300), example: z2.string().max(500).optional(), required: z2.boolean().optional(), secret: z2.boolean().optional() }).strict();
@@ -1111,14 +958,14 @@ function parsePluginManifest(input, allowHooks = false) {
 }
 function resolvePluginManifestPath(projectDirectory, specifier) {
   if (specifier.includes("\0")) throw new Error("Invalid plugin specifier");
-  if (specifier.endsWith(".json") || specifier.startsWith(".") || isAbsolute2(specifier)) return resolve8(projectDirectory, specifier);
+  if (specifier.endsWith(".json") || specifier.startsWith(".") || isAbsolute2(specifier)) return resolve7(projectDirectory, specifier);
   const segments = specifier.startsWith("@") ? specifier.split("/") : [specifier];
   if (segments.some((segment) => segment === ".." || segment === "." || !segment)) throw new Error(`Invalid plugin package name: ${specifier}`);
-  return join2(resolve8(projectDirectory), "node_modules", ...segments, "launchstack-plugin.json");
+  return join2(resolve7(projectDirectory), "node_modules", ...segments, "launchstack-plugin.json");
 }
 function loadPluginManifest(projectDirectory, specifier, options = {}) {
   const path = resolvePluginManifestPath(projectDirectory, specifier);
-  if (!existsSync10(path)) throw new Error(`Plugin manifest not found at ${path}. Install third-party packages with scripts disabled, review launchstack-plugin.json, then run launchstack plugin add.`);
+  if (!existsSync9(path)) throw new Error(`Plugin manifest not found at ${path}. Install third-party packages with scripts disabled, review launchstack-plugin.json, then run launchstack plugin add.`);
   try {
     return parsePluginManifest(JSON.parse(readFileSync5(path, "utf8")), options.allowHooks ?? false);
   } catch (error) {
@@ -1242,8 +1089,8 @@ var rollbackCommand = new Command18("rollback").description("Show the latest suc
 import { Command as Command19 } from "commander";
 
 // src/secrets-store.ts
-import { chmodSync as chmodSync2, existsSync as existsSync11, lstatSync, mkdirSync as mkdirSync4, readFileSync as readFileSync6 } from "fs";
-import { resolve as resolve9 } from "path";
+import { chmodSync as chmodSync2, existsSync as existsSync10, lstatSync, mkdirSync as mkdirSync4, readFileSync as readFileSync6 } from "fs";
+import { resolve as resolve8 } from "path";
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
 var SECRET_MODE = 384;
@@ -1253,7 +1100,7 @@ var RESERVED_KEYS = /* @__PURE__ */ new Set([
   "prototype"
 ]);
 function getSecretsPath(projectDirectory = process.cwd()) {
-  return resolve9(
+  return resolve8(
     projectDirectory,
     STORE_DIR2,
     SECRETS_FILE
@@ -1270,15 +1117,15 @@ function validateSecretKey(key) {
 }
 function readSecrets(projectDirectory = process.cwd()) {
   const path = getSecretsPath(projectDirectory);
-  const directory2 = resolve9(projectDirectory, STORE_DIR2);
-  if (existsSync11(directory2)) {
+  const directory2 = resolve8(projectDirectory, STORE_DIR2);
+  if (existsSync10(directory2)) {
     const directoryStat = lstatSync(directory2);
     if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
       throw new Error("LaunchStack secrets directory must be a real directory.");
     }
   }
   let parsed = {};
-  if (existsSync11(path)) {
+  if (existsSync10(path)) {
     const secretStat = lstatSync(path);
     if (secretStat.isSymbolicLink() || !secretStat.isFile()) {
       throw new Error("secrets.json must be a regular file, not a link or special file.");
@@ -1306,7 +1153,7 @@ function readSecrets(projectDirectory = process.cwd()) {
   return secrets;
 }
 function writeSecrets(secrets, projectDirectory = process.cwd()) {
-  const storeDirectory = resolve9(projectDirectory, STORE_DIR2);
+  const storeDirectory = resolve8(projectDirectory, STORE_DIR2);
   mkdirSync4(storeDirectory, { recursive: true, mode: 448 });
   const directoryStat = lstatSync(storeDirectory);
   if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
@@ -1354,7 +1201,7 @@ async function promptHiddenSecret() {
       "Interactive secret entry requires a TTY. Pipe the value and use --stdin instead."
     );
   }
-  return new Promise((resolve10, reject) => {
+  return new Promise((resolve9, reject) => {
     let value = "";
     const input = process.stdin;
     const cleanup = () => {
@@ -1368,7 +1215,7 @@ async function promptHiddenSecret() {
         if (character === "\r" || character === "\n") {
           cleanup();
           process.stdout.write("\n");
-          resolve10(value);
+          resolve9(value);
           return;
         }
         if (character === "") {
@@ -1432,7 +1279,7 @@ secretsCommand.command("remove").description("Remove a local secret").argument("
 });
 
 // src/commands/status.ts
-import { existsSync as existsSync12 } from "fs";
+import { existsSync as existsSync11 } from "fs";
 import { join as join3 } from "path";
 import { Command as Command20 } from "commander";
 var statusCommand = new Command20("status").description("Show LaunchStack project or stage status").option("--stage <stage>", "Show one named stage").option("--json").option("-d, --directory <path>").action((options) => {
@@ -1445,7 +1292,7 @@ var statusCommand = new Command20("status").description("Show LaunchStack projec
       else console.log(`Stage ${options.stage}: ${output2.status}${output2.provider ? ` (${output2.provider})` : ""}`);
       return;
     }
-    if (existsSync12(join3(directory2, "launchstack.json"))) {
+    if (existsSync11(join3(directory2, "launchstack.json"))) {
       const manifest = loadProjectManifest(directory2);
       const state = loadProjectState(directory2, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
       const drift = detectManagedDrift(directory2, state);

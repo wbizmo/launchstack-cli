@@ -26,7 +26,11 @@
     "docker:logs": "docker compose logs -f api",
     "docker:prod": "docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build",
     "db:wait": "node scripts/wait-for-database.cjs",
-    "deploy:prepare": "npm run prisma:deploy && npm run build"
+    "deploy:prepare": "npm run prisma:deploy && npm run build",
+    "db:reset": "node scripts/dev-reset.cjs",
+    "db:seed": "node scripts/dev-seed.cjs",
+    "dev:migrate": "node scripts/dev-migrate.cjs",
+    "dev:mock": "node scripts/dev-mock.cjs"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",

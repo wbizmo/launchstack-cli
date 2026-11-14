@@ -1337,7 +1337,7 @@ function applyExtensionInstall(plan) {
 
 // src/extensions/first-party.ts
 var extension = (value) => value;
-var redis = extension({ schemaVersion: 1, id: "redis", version: "1.0.0", kind: "capability", displayName: "Redis service and client", supportedLaunchStack: ">=2 <4", coverage: "complete", packages: { dependencies: { ioredis: "^5.4.0" } }, environment: [{ name: "REDIS_URL", description: "Redis connection URL", example: "redis://localhost:6379", required: true }], composeServices: { redis: { image: "redis:8-alpine", restart: "unless-stopped", ports: ["127.0.0.1:6379:6379"], healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: "5s", timeout: "3s", retries: 10 } } }, files: [{ path: "src/launchstack/capabilities/redis.ts", content: `import Redis from "ioredis";
+var redis = extension({ schemaVersion: 1, id: "redis", version: "1.0.0", kind: "capability", displayName: "Redis service and client", supportedLaunchStack: ">=2 <4", coverage: "complete", packages: { dependencies: { ioredis: "^5.4.0" } }, environment: [{ name: "REDIS_URL", description: "Redis connection URL", example: "redis://localhost:6379", required: true }], composeServices: { redis: { image: "redis:8-alpine", restart: "unless-stopped", ports: ["127.0.0.1:${LAUNCHSTACK_REDIS_PORT:-6379}:6379"], healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: "5s", timeout: "3s", retries: 10 } } }, files: [{ path: "src/launchstack/capabilities/redis.ts", content: `import Redis from "ioredis";
 export function createRedisClient(url = process.env.REDIS_URL): Redis { if (!url) throw new Error("REDIS_URL is required"); return new Redis(url, { lazyConnect: true, maxRetriesPerRequest: null, enableReadyCheck: true }); }
 ` }] });
 var queue = extension({ schemaVersion: 1, id: "queue", version: "1.0.0", kind: "capability", displayName: "BullMQ worker and queue", supportedLaunchStack: ">=2 <4", coverage: "complete", dependencies: ["redis"], packages: { dependencies: { bullmq: "^5.0.0" } }, scripts: { worker: "tsx src/worker.ts" }, environment: [{ name: "QUEUE_PREFIX", description: "BullMQ key prefix", example: "launchstack" }], files: [
@@ -1346,15 +1346,19 @@ import { createRedisClient } from "./redis";
 export const DEFAULT_QUEUE_NAME = "launchstack-default";
 export function createQueue<Data>(name = DEFAULT_QUEUE_NAME): Queue<Data> { if (!/^[a-zA-Z0-9:_-]{1,80}$/.test(name)) throw new Error("Invalid queue name"); return new Queue<Data>(name, { connection: createRedisClient(), prefix: process.env.QUEUE_PREFIX || undefined, defaultJobOptions: { attempts: 3, backoff: { type: "exponential", delay: 1000 }, removeOnComplete: 1000, removeOnFail: 5000 } satisfies JobsOptions }); }
 ` },
-  { path: "src/worker.ts", content: `import { Worker } from "bullmq";
+  { path: "src/worker.ts", content: `import { createServer } from "node:http";
+import { Worker } from "bullmq";
 import { createRedisClient } from "./launchstack/capabilities/redis";
 import { DEFAULT_QUEUE_NAME } from "./launchstack/capabilities/queue";
 const connection = createRedisClient();
 const worker = new Worker(DEFAULT_QUEUE_NAME, async (job) => { console.info(JSON.stringify({ event: "job.processed", jobId: job.id, name: job.name })); return { processed: true }; }, { connection, prefix: process.env.QUEUE_PREFIX || undefined, concurrency: 4 });
 worker.on("failed", (job, error) => console.error(JSON.stringify({ event: "job.failed", jobId: job?.id, error: error.message })));
-worker.on("ready", () => console.info(JSON.stringify({ event: "worker.ready", queue: DEFAULT_QUEUE_NAME })));
+let workerReady = false;
+worker.on("ready", () => { workerReady = true; console.info(JSON.stringify({ event: "worker.ready", queue: DEFAULT_QUEUE_NAME })); });
+const healthPort = Number(process.env.LAUNCHSTACK_WORKER_HEALTH_PORT ?? 0);
+const healthServer = healthPort > 0 ? createServer((request, response) => { response.statusCode = request.url === "/healthz" && workerReady ? 200 : 503; response.end(); }).listen(healthPort, "127.0.0.1") : null;
 let stopping = false;
-async function shutdown(): Promise<void> { if (stopping) return; stopping = true; await worker.close(); await connection.quit(); }
+async function shutdown(): Promise<void> { if (stopping) return; stopping = true; if (healthServer) await new Promise<void>((resolve) => healthServer.close(() => resolve())); await worker.close(); await connection.quit(); }
 process.once("SIGINT", () => { void shutdown().then(() => process.exit(0)); });
 process.once("SIGTERM", () => { void shutdown().then(() => process.exit(0)); });
 ` }
@@ -1378,12 +1382,16 @@ export function requireEmailFrom(): string { const value = process.env.EMAIL_FRO
 var cron = extension({ schemaVersion: 1, id: "cron", version: "1.0.0", kind: "capability", coverage: "complete", displayName: "Scheduled worker", supportedLaunchStack: ">=2 <4", scripts: { scheduler: "tsx src/scheduler.ts" }, files: [
   { path: "src/launchstack/capabilities/cron.ts", content: `export function scheduleInterval(task: () => Promise<void>, intervalMs: number, onError: (error: unknown) => void = console.error): () => void { if (!Number.isFinite(intervalMs) || intervalMs < 1000) throw new Error("intervalMs must be at least 1000"); let running = false; const timer = setInterval(() => { if (running) return; running = true; void task().catch(onError).finally(() => { running = false; }); }, intervalMs); return () => clearInterval(timer); }
 ` },
-  { path: "src/scheduler.ts", content: `import { scheduleInterval } from "./launchstack/capabilities/cron";
+  { path: "src/scheduler.ts", content: `import { createServer } from "node:http";
+import { scheduleInterval } from "./launchstack/capabilities/cron";
 const intervalMs = Number(process.env.CRON_INTERVAL_MS ?? 60000);
 const stop = scheduleInterval(async () => { console.info(JSON.stringify({ event: "schedule.tick", at: new Date().toISOString() })); }, intervalMs);
+let schedulerReady = true;
 console.info(JSON.stringify({ event: "scheduler.ready", intervalMs }));
+const healthPort = Number(process.env.LAUNCHSTACK_SCHEDULER_HEALTH_PORT ?? 0);
+const healthServer = healthPort > 0 ? createServer((request, response) => { response.statusCode = request.url === "/healthz" && schedulerReady ? 200 : 503; response.end(); }).listen(healthPort, "127.0.0.1") : null;
 let stopping = false;
-function shutdown(): void { if (stopping) return; stopping = true; stop(); process.exit(0); }
+function shutdown(): void { if (stopping) return; stopping = true; stop(); if (healthServer) healthServer.close(() => process.exit(0)); else process.exit(0); }
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
 ` }
@@ -2174,9 +2182,9 @@ function applyModuleGeneration(plan) {
 }
 
 // src/stages/manager.ts
-var import_node_crypto5 = require("crypto");
-var import_node_fs17 = require("fs");
-var import_node_path16 = require("path");
+var import_node_crypto7 = require("crypto");
+var import_node_fs19 = require("fs");
+var import_node_path18 = require("path");
 
 // src/git.ts
 var import_node_child_process4 = require("child_process");
@@ -2215,34 +2223,156 @@ function getGitMetadata(cwd = process.cwd()) {
 }
 
 // src/stages/docker.ts
+var import_node_child_process6 = require("child_process");
+var import_node_crypto6 = require("crypto");
+var import_node_fs18 = require("fs");
+var import_node_os3 = require("os");
+var import_node_path17 = require("path");
+var import_node_net2 = require("net");
+
+// src/dev/orchestrator.ts
+var import_node_crypto5 = require("crypto");
 var import_node_child_process5 = require("child_process");
-function run2(projectDirectory, args, environment = {}) {
-  return (0, import_node_child_process5.execFileSync)("docker", args, { cwd: projectDirectory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...environment } });
-}
-var dockerStageAdapter = { id: "docker", capabilities: { create: true, inspect: true, update: true, destroy: true }, create(input) {
-  run2(input.projectDirectory, ["compose", "-p", input.resourceId, "up", "-d", "--build"], input.environment);
-  return { resourceId: input.resourceId, url: process.env.LAUNCHSTACK_PREVIEW_URL };
-}, inspect(input) {
-  try {
-    const output = run2(input.projectDirectory, ["compose", "-p", input.resourceId, "ps", "--format", "json"]).trim();
-    if (!output) return { exists: false };
-    const records = output.split(/\r?\n/).flatMap((line) => {
+var import_node_fs17 = require("fs");
+var import_node_net = require("net");
+var import_node_path16 = require("path");
+var import_node_os2 = require("os");
+async function acquireHostPortLock() {
+  const path = (0, import_node_path16.join)((0, import_node_os2.tmpdir)(), "launchstack-dev-port-allocation.lock");
+  const token = `${process.pid}:${(0, import_node_crypto5.createHash)("sha256").update(`${Date.now()}:${Math.random()}`).digest("hex")}`;
+  const deadline = Date.now() + 3e5;
+  while (Date.now() < deadline) {
+    try {
+      const descriptor = (0, import_node_fs17.openSync)(path, "wx", 384);
       try {
-        const value = JSON.parse(line);
-        return Array.isArray(value) ? value : [value];
-      } catch {
-        return [];
+        (0, import_node_fs17.writeFileSync)(descriptor, token, "utf8");
+      } finally {
+        (0, import_node_fs17.closeSync)(descriptor);
       }
-    });
-    if (!records.length) return { exists: false };
-    const running = records.every((record) => record && typeof record === "object" && String(record.State).toLowerCase() === "running");
-    return { exists: true, status: running ? "running" : "degraded" };
-  } catch {
-    return { exists: false };
+      return () => {
+        try {
+          if ((0, import_node_fs17.readFileSync)(path, "utf8") === token) (0, import_node_fs17.unlinkSync)(path);
+        } catch {
+        }
+      };
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      try {
+        const stat = (0, import_node_fs17.lstatSync)(path);
+        if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("Development port allocation lock is not a regular file.");
+        const ownerContents = (0, import_node_fs17.readFileSync)(path, "utf8");
+        if (!ownerContents.trim()) {
+          await new Promise((done) => setTimeout(done, 50));
+          continue;
+        }
+        const ownerPid = Number(ownerContents.split(":", 1)[0]);
+        if (!Number.isSafeInteger(ownerPid) || ownerPid < 1) throw new Error("Development port allocation lock has an invalid owner.");
+        let alive = true;
+        try {
+          process.kill(ownerPid, 0);
+        } catch (probeError) {
+          if (probeError.code === "ESRCH") alive = false;
+        }
+        if (!alive) {
+          const current = (0, import_node_fs17.statSync)(path);
+          if (current.ino === stat.ino) (0, import_node_fs17.unlinkSync)(path);
+          continue;
+        }
+      } catch (readError) {
+        if (readError.code === "ENOENT") continue;
+        throw readError;
+      }
+      await new Promise((done) => setTimeout(done, 50));
+    }
   }
-}, destroy(input) {
-  run2(input.projectDirectory, ["compose", "-p", input.resourceId, "down", "--remove-orphans", "--volumes"], input.environment);
-} };
+  throw new Error("Timed out waiting for the host port allocation lock.");
+}
+
+// src/stages/docker.ts
+function run2(projectDirectory, args, environment = {}) {
+  return (0, import_node_child_process6.execFileSync)("docker", args, { cwd: projectDirectory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...environment } });
+}
+function composeArgs(projectDirectory, resourceId) {
+  const args = ["compose", "-p", resourceId, "-f", "docker-compose.yml"];
+  if ((0, import_node_fs18.existsSync)((0, import_node_path17.join)(projectDirectory, "docker-compose.launchstack.yml"))) args.push("-f", "docker-compose.launchstack.yml");
+  return args;
+}
+function portAvailable(port) {
+  return new Promise((resolve16) => {
+    const server = (0, import_node_net2.createServer)();
+    server.unref();
+    server.once("error", () => resolve16(false));
+    server.listen({ host: "127.0.0.1", port }, () => server.close(() => resolve16(true)));
+  });
+}
+async function allocatePort(start) {
+  for (let port = start; port < start + 1e3 && port < 65536; port += 1) if (await portAvailable(port)) return port;
+  throw new Error(`No free preview port near ${start}.`);
+}
+var dockerStageAdapter = {
+  id: "docker",
+  capabilities: { create: true, inspect: true, update: true, destroy: true },
+  async create(input) {
+    const releasePortLock = await acquireHostPortLock();
+    const seed = (0, import_node_crypto6.createHash)("sha256").update(input.resourceId).digest("hex");
+    const postgresStart = 2e4 + Number.parseInt(seed.slice(0, 6), 16) % 1e4;
+    const redisStart = 3e4 + Number.parseInt(seed.slice(6, 12), 16) % 1e4;
+    const apiStart = 4e4 + Number.parseInt(seed.slice(6, 12), 16) % 1e4;
+    let buildOverrideDirectory;
+    try {
+      const postgresPort = Number(input.environment.LAUNCHSTACK_POSTGRES_PORT) || await allocatePort(postgresStart);
+      const hasCapabilities = (0, import_node_fs18.existsSync)((0, import_node_path17.join)(input.projectDirectory, "docker-compose.launchstack.yml"));
+      const redisPort = hasCapabilities ? Number(input.environment.LAUNCHSTACK_REDIS_PORT) || await allocatePort(redisStart) : void 0;
+      let apiPort = Number(input.environment.LAUNCHSTACK_API_PORT) || await allocatePort(apiStart);
+      while (apiPort === postgresPort || apiPort === redisPort) apiPort = await allocatePort(apiPort + 1);
+      const environment = { ...input.environment, LAUNCHSTACK_POSTGRES_PORT: String(postgresPort), ...redisPort ? { LAUNCHSTACK_REDIS_PORT: String(redisPort) } : {}, LAUNCHSTACK_API_PORT: String(apiPort) };
+      const args = composeArgs(input.projectDirectory, input.resourceId);
+      const caFile = process.env.NODE_EXTRA_CA_CERTS;
+      if (caFile) {
+        try {
+          if ((0, import_node_fs18.statSync)(caFile).isFile()) {
+            buildOverrideDirectory = (0, import_node_fs18.mkdtempSync)((0, import_node_path17.join)((0, import_node_os3.tmpdir)(), "launchstack-stage-build-"));
+            const override = {
+              services: { api: { build: { secrets: ["npmca"] } } },
+              secrets: { npmca: { file: caFile } }
+            };
+            (0, import_node_fs18.writeFileSync)((0, import_node_path17.join)(buildOverrideDirectory, "compose.yml"), JSON.stringify(override), { mode: 384 });
+            args.push("-f", (0, import_node_path17.join)(buildOverrideDirectory, "compose.yml"));
+          }
+        } catch {
+        }
+      }
+      args.push("up", "-d", "--build", "--wait", "--wait-timeout", "120");
+      run2(input.projectDirectory, args, environment);
+      return { resourceId: input.resourceId, url: process.env.LAUNCHSTACK_PREVIEW_URL ?? `http://127.0.0.1:${apiPort}` };
+    } finally {
+      if (buildOverrideDirectory) (0, import_node_fs18.rmSync)(buildOverrideDirectory, { recursive: true, force: true });
+      releasePortLock();
+    }
+  },
+  inspect(input) {
+    try {
+      const output = run2(input.projectDirectory, [...composeArgs(input.projectDirectory, input.resourceId), "ps", "--format", "json"]).trim();
+      if (!output) return { exists: false };
+      const records = output.split(/\r?\n/).flatMap((line) => {
+        try {
+          const value = JSON.parse(line);
+          return Array.isArray(value) ? value : [value];
+        } catch {
+          return [];
+        }
+      });
+      if (!records.length) return { exists: false };
+      const healthy = records.every((record) => record && typeof record === "object" && String(record.State).toLowerCase() === "running" && String(record.Health).toLowerCase() === "healthy");
+      return { exists: true, status: healthy ? "healthy" : "degraded" };
+    } catch {
+      return { exists: false };
+    }
+  },
+  destroy(input) {
+    run2(input.projectDirectory, [...composeArgs(input.projectDirectory, input.resourceId), "down", "--remove-orphans", "--volumes"], input.environment);
+  }
+};
 
 // src/stages/manager.ts
 var ADAPTERS = { docker: dockerStageAdapter };
@@ -2251,25 +2381,47 @@ function validateStageName(stage) {
   return stage;
 }
 function stageResourceId(projectDirectory, projectName, stage) {
-  const suffix = (0, import_node_crypto5.createHash)("sha256").update((0, import_node_path16.resolve)(projectDirectory)).digest("hex").slice(0, 8);
-  return `launchstack-${projectName}-${stage}-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 63);
+  const directoryHash = (0, import_node_crypto7.createHash)("sha256").update((0, import_node_path18.resolve)(projectDirectory)).digest("hex").slice(0, 10);
+  const stageHash = (0, import_node_crypto7.createHash)("sha256").update(`${(0, import_node_path18.resolve)(projectDirectory)}\0${stage}`).digest("hex").slice(0, 8);
+  const name = projectName.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 16) || "project";
+  return `ls-${directoryHash}-${name}-${stage.slice(0, 16)}-${stageHash}`;
 }
 var stageEnvironment = (stage, values) => ({ ...values ?? {}, LAUNCHSTACK_STAGE: stage });
 function stateMutation(projectDirectory, state) {
   const path = ".launchstack/state.json";
   const absolute = resolveProjectPath(projectDirectory, path);
-  return { type: "write", path, content: serializeProjectState(state), owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: (0, import_node_fs17.existsSync)(absolute) ? hashFile(absolute) : null };
+  return { type: "write", path, content: serializeProjectState(state), owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: (0, import_node_fs19.existsSync)(absolute) ? hashFile(absolute) : null };
 }
 function persist(projectDirectory, previous, next) {
   return applyFileMutations({ projectDirectory, mutations: [stateMutation(projectDirectory, next)], state: previous, nextState: next });
+}
+function writeStageState(projectDirectory, stage, value, expectedStatus) {
+  let lastError;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const previous = loadProjectState(projectDirectory);
+    const current = previous.stages[stage];
+    if (current && current.resourceId !== value.resourceId) throw new Error(`Stage ${stage} is already owned by another resource.`);
+    if (expectedStatus && current?.status !== expectedStatus) throw new Error(`Stage ${stage} changed while its provider operation was running.`);
+    if (value.status === "creating" && current?.status === "creating") throw new Error(`Stage ${stage} is already being created.`);
+    const next = structuredClone(previous);
+    next.stages[stage] = value;
+    next.updatedAt = value.updatedAt;
+    try {
+      return persist(projectDirectory, previous, next);
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof Error) || !error.message.includes("File changed since planning")) throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`Unable to update state for stage ${stage}.`);
 }
 function adapter(provider) {
   const value = ADAPTERS[provider];
   if (!value) throw new Error(`Provider ${provider} does not implement preview lifecycle operations. Supported: ${Object.keys(ADAPTERS).join(", ")}.`);
   return value;
 }
-function createOrUpdateStage(input) {
-  const projectDirectory = (0, import_node_path16.resolve)(input.projectDirectory);
+async function createOrUpdateStage(input) {
+  const projectDirectory = (0, import_node_path18.resolve)(input.projectDirectory);
   const stage = validateStageName(input.stage);
   const manifest = loadProjectManifest(projectDirectory);
   const desired = manifest.stages[stage];
@@ -2286,34 +2438,24 @@ function createOrUpdateStage(input) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const git = getGitMetadata(projectDirectory);
   const creating = { name: stage, provider, resourceId, status: "creating", sourceCommit: git?.commitHash, url: existing?.url, createdAt: existing?.createdAt ?? now, updatedAt: now, production };
-  const creatingState = structuredClone(previous);
-  creatingState.stages[stage] = creating;
-  persist(projectDirectory, previous, creatingState);
+  writeStageState(projectDirectory, stage, creating);
   try {
-    const result = providerAdapter.create({ projectDirectory, stage, resourceId, environment: stageEnvironment(stage, desired?.env), sourceCommit: git?.commitHash, production });
+    const result = await providerAdapter.create({ projectDirectory, stage, resourceId, environment: stageEnvironment(stage, desired?.env), sourceCommit: git?.commitHash, production });
     if (result.resourceId !== resourceId) throw new Error(`Provider returned unexpected resource identity for stage ${stage}.`);
-    const beforeReady = loadProjectState(projectDirectory);
     const ready = { ...creating, status: "ready", url: result.url, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
-    const next = structuredClone(beforeReady);
-    next.stages[stage] = ready;
-    next.updatedAt = ready.updatedAt;
-    persist(projectDirectory, beforeReady, next);
+    writeStageState(projectDirectory, stage, ready, "creating");
     return ready;
   } catch (error) {
-    const beforeFailed = loadProjectState(projectDirectory);
     const failed = { ...creating, status: "failed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
-    const next = structuredClone(beforeFailed);
-    next.stages[stage] = failed;
-    next.updatedAt = failed.updatedAt;
     try {
-      persist(projectDirectory, beforeFailed, next);
+      writeStageState(projectDirectory, stage, failed, "creating");
     } catch {
     }
     throw error;
   }
 }
 function inspectStage(projectDirectoryInput, stageInput) {
-  const projectDirectory = (0, import_node_path16.resolve)(projectDirectoryInput);
+  const projectDirectory = (0, import_node_path18.resolve)(projectDirectoryInput);
   const stage = validateStageName(stageInput);
   const manifest = loadProjectManifest(projectDirectory);
   const state = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
@@ -2323,7 +2465,7 @@ function inspectStage(projectDirectoryInput, stageInput) {
   return { stage, state: stored, providerExists: check.exists, providerStatus: check.status };
 }
 function destroyStage(input) {
-  const projectDirectory = (0, import_node_path16.resolve)(input.projectDirectory);
+  const projectDirectory = (0, import_node_path18.resolve)(input.projectDirectory);
   const stage = validateStageName(input.stage);
   const manifest = loadProjectManifest(projectDirectory);
   const previous = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });

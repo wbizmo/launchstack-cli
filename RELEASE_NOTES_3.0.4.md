@@ -21,10 +21,19 @@
 - Generates a BullMQ worker and cron scheduler with health-checked Redis startup and graceful process shutdown; documents OAuth, storage, observability, WebSocket, email and webhook helpers as helper-only.
 - Prevents removal of capabilities still required by another installed capability and removes generated worker/scheduler scripts safely.
 - Records 1k/10k-node and up to 100k-edge dependency planning, Redis readiness/shutdown and ten BullMQ roundtrips in `docs/benchmarks/issue-34-capabilities.md`.
+- Gives development and preview projects unique Compose namespaces and dynamically allocated loopback ports; health checks wait for the API, worker and scheduler readiness endpoints.
+- Runs generated development migrations only on loopback databases, adds explicit local reset and seed safeguards, and emits structured service status.
+- Includes an optional generic local HTTP mock for development adapters, with an explicit note that it does not reproduce provider behavior.
+- Tracks child process groups through unexpected parent exit, cleans only the owned Compose project on failure or signals, and keeps database volumes during ordinary development shutdown.
+- Supports concurrent preview stages with collision-resistant resource identities, serialized port assignment, merged state updates and temporary BuildKit CA secrets when the host Node runtime supplies a certificate path.
+- Allocates Redis capability ports per environment and includes capability services throughout preview stage creation, inspection and teardown.
+- Verified two concurrent generated projects and two concurrent Docker preview stages from the packed candidate. Actual startup measurements and the comparison limits are in `docs/benchmarks/issue-35-orchestration.md`.
+- Verified that occupied API and Redis defaults reassign safely and that the queue worker completes a real job through the dynamically configured Redis port.
 
 ## Verification
 
 - Root `release:check` passed on Node 24.22.3 and 26.13.1; generated API integration checks passed on PostgreSQL 16 and 17 respectively.
+- After issue #35, full `release:check` passed on both runtimes with 38 root test files / 137 tests and 8 generated API test files / 26 tests; both production dependency audits reported zero vulnerabilities.
 - Production dependency audits reported zero vulnerabilities for both the CLI and generated API.
 - The generated production Docker image passed its healthcheck and `/health` request.
 - The v3.0.0-to-candidate CLI comparison is recorded in `docs/benchmarks/issue-30-runtime.md`. It shows no consistent startup speedup.

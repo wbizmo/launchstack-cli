@@ -1,6 +1,6 @@
 // src/extensions/first-party.ts
 var extension = (value) => value;
-var redis = extension({ schemaVersion: 1, id: "redis", version: "1.0.0", kind: "capability", displayName: "Redis service and client", supportedLaunchStack: ">=2 <4", coverage: "complete", packages: { dependencies: { ioredis: "^5.4.0" } }, environment: [{ name: "REDIS_URL", description: "Redis connection URL", example: "redis://localhost:6379", required: true }], composeServices: { redis: { image: "redis:8-alpine", restart: "unless-stopped", ports: ["127.0.0.1:6379:6379"], healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: "5s", timeout: "3s", retries: 10 } } }, files: [{ path: "src/launchstack/capabilities/redis.ts", content: `import Redis from "ioredis";
+var redis = extension({ schemaVersion: 1, id: "redis", version: "1.0.0", kind: "capability", displayName: "Redis service and client", supportedLaunchStack: ">=2 <4", coverage: "complete", packages: { dependencies: { ioredis: "^5.4.0" } }, environment: [{ name: "REDIS_URL", description: "Redis connection URL", example: "redis://localhost:6379", required: true }], composeServices: { redis: { image: "redis:8-alpine", restart: "unless-stopped", ports: ["127.0.0.1:${LAUNCHSTACK_REDIS_PORT:-6379}:6379"], healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: "5s", timeout: "3s", retries: 10 } } }, files: [{ path: "src/launchstack/capabilities/redis.ts", content: `import Redis from "ioredis";
 export function createRedisClient(url = process.env.REDIS_URL): Redis { if (!url) throw new Error("REDIS_URL is required"); return new Redis(url, { lazyConnect: true, maxRetriesPerRequest: null, enableReadyCheck: true }); }
 ` }] });
 var queue = extension({ schemaVersion: 1, id: "queue", version: "1.0.0", kind: "capability", displayName: "BullMQ worker and queue", supportedLaunchStack: ">=2 <4", coverage: "complete", dependencies: ["redis"], packages: { dependencies: { bullmq: "^5.0.0" } }, scripts: { worker: "tsx src/worker.ts" }, environment: [{ name: "QUEUE_PREFIX", description: "BullMQ key prefix", example: "launchstack" }], files: [
@@ -9,15 +9,19 @@ import { createRedisClient } from "./redis";
 export const DEFAULT_QUEUE_NAME = "launchstack-default";
 export function createQueue<Data>(name = DEFAULT_QUEUE_NAME): Queue<Data> { if (!/^[a-zA-Z0-9:_-]{1,80}$/.test(name)) throw new Error("Invalid queue name"); return new Queue<Data>(name, { connection: createRedisClient(), prefix: process.env.QUEUE_PREFIX || undefined, defaultJobOptions: { attempts: 3, backoff: { type: "exponential", delay: 1000 }, removeOnComplete: 1000, removeOnFail: 5000 } satisfies JobsOptions }); }
 ` },
-  { path: "src/worker.ts", content: `import { Worker } from "bullmq";
+  { path: "src/worker.ts", content: `import { createServer } from "node:http";
+import { Worker } from "bullmq";
 import { createRedisClient } from "./launchstack/capabilities/redis";
 import { DEFAULT_QUEUE_NAME } from "./launchstack/capabilities/queue";
 const connection = createRedisClient();
 const worker = new Worker(DEFAULT_QUEUE_NAME, async (job) => { console.info(JSON.stringify({ event: "job.processed", jobId: job.id, name: job.name })); return { processed: true }; }, { connection, prefix: process.env.QUEUE_PREFIX || undefined, concurrency: 4 });
 worker.on("failed", (job, error) => console.error(JSON.stringify({ event: "job.failed", jobId: job?.id, error: error.message })));
-worker.on("ready", () => console.info(JSON.stringify({ event: "worker.ready", queue: DEFAULT_QUEUE_NAME })));
+let workerReady = false;
+worker.on("ready", () => { workerReady = true; console.info(JSON.stringify({ event: "worker.ready", queue: DEFAULT_QUEUE_NAME })); });
+const healthPort = Number(process.env.LAUNCHSTACK_WORKER_HEALTH_PORT ?? 0);
+const healthServer = healthPort > 0 ? createServer((request, response) => { response.statusCode = request.url === "/healthz" && workerReady ? 200 : 503; response.end(); }).listen(healthPort, "127.0.0.1") : null;
 let stopping = false;
-async function shutdown(): Promise<void> { if (stopping) return; stopping = true; await worker.close(); await connection.quit(); }
+async function shutdown(): Promise<void> { if (stopping) return; stopping = true; if (healthServer) await new Promise<void>((resolve) => healthServer.close(() => resolve())); await worker.close(); await connection.quit(); }
 process.once("SIGINT", () => { void shutdown().then(() => process.exit(0)); });
 process.once("SIGTERM", () => { void shutdown().then(() => process.exit(0)); });
 ` }
@@ -41,12 +45,16 @@ export function requireEmailFrom(): string { const value = process.env.EMAIL_FRO
 var cron = extension({ schemaVersion: 1, id: "cron", version: "1.0.0", kind: "capability", coverage: "complete", displayName: "Scheduled worker", supportedLaunchStack: ">=2 <4", scripts: { scheduler: "tsx src/scheduler.ts" }, files: [
   { path: "src/launchstack/capabilities/cron.ts", content: `export function scheduleInterval(task: () => Promise<void>, intervalMs: number, onError: (error: unknown) => void = console.error): () => void { if (!Number.isFinite(intervalMs) || intervalMs < 1000) throw new Error("intervalMs must be at least 1000"); let running = false; const timer = setInterval(() => { if (running) return; running = true; void task().catch(onError).finally(() => { running = false; }); }, intervalMs); return () => clearInterval(timer); }
 ` },
-  { path: "src/scheduler.ts", content: `import { scheduleInterval } from "./launchstack/capabilities/cron";
+  { path: "src/scheduler.ts", content: `import { createServer } from "node:http";
+import { scheduleInterval } from "./launchstack/capabilities/cron";
 const intervalMs = Number(process.env.CRON_INTERVAL_MS ?? 60000);
 const stop = scheduleInterval(async () => { console.info(JSON.stringify({ event: "schedule.tick", at: new Date().toISOString() })); }, intervalMs);
+let schedulerReady = true;
 console.info(JSON.stringify({ event: "scheduler.ready", intervalMs }));
+const healthPort = Number(process.env.LAUNCHSTACK_SCHEDULER_HEALTH_PORT ?? 0);
+const healthServer = healthPort > 0 ? createServer((request, response) => { response.statusCode = request.url === "/healthz" && schedulerReady ? 200 : 503; response.end(); }).listen(healthPort, "127.0.0.1") : null;
 let stopping = false;
-function shutdown(): void { if (stopping) return; stopping = true; stop(); process.exit(0); }
+function shutdown(): void { if (stopping) return; stopping = true; stop(); if (healthServer) healthServer.close(() => process.exit(0)); else process.exit(0); }
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
 ` }
@@ -1867,9 +1875,9 @@ function installDependencies(projectDirectory) {
 }
 
 // src/stages/manager.ts
-import { createHash as createHash3 } from "crypto";
-import { existsSync as existsSync14 } from "fs";
-import { resolve as resolve13 } from "path";
+import { createHash as createHash5 } from "crypto";
+import { existsSync as existsSync16 } from "fs";
+import { resolve as resolve14 } from "path";
 
 // src/git.ts
 import { execFileSync as execFileSync3 } from "child_process";
@@ -1909,33 +1917,478 @@ function getGitMetadata(cwd = process.cwd()) {
 
 // src/stages/docker.ts
 import { execFileSync as execFileSync4 } from "child_process";
+import { createHash as createHash4 } from "crypto";
+import { existsSync as existsSync15, mkdtempSync as mkdtempSync3, rmSync as rmSync4, statSync as statSync4, writeFileSync as writeFileSync7 } from "fs";
+import { tmpdir as tmpdir3 } from "os";
+import { join as join10 } from "path";
+import { createServer as createServer2 } from "net";
+
+// src/dev/orchestrator.ts
+import { createHash as createHash3 } from "crypto";
+import { spawn } from "child_process";
+import { closeSync as closeSync2, existsSync as existsSync14, lstatSync as lstatSync3, openSync as openSync2, readFileSync as readFileSync12, statSync as statSync3, unlinkSync as unlinkSync3, writeFileSync as writeFileSync6 } from "fs";
+import { createServer } from "net";
+import { join as join9, resolve as resolve13 } from "path";
+import { tmpdir as tmpdir2 } from "os";
+async function acquireHostPortLock() {
+  const path = join9(tmpdir2(), "launchstack-dev-port-allocation.lock");
+  const token = `${process.pid}:${createHash3("sha256").update(`${Date.now()}:${Math.random()}`).digest("hex")}`;
+  const deadline = Date.now() + 3e5;
+  while (Date.now() < deadline) {
+    try {
+      const descriptor = openSync2(path, "wx", 384);
+      try {
+        writeFileSync6(descriptor, token, "utf8");
+      } finally {
+        closeSync2(descriptor);
+      }
+      return () => {
+        try {
+          if (readFileSync12(path, "utf8") === token) unlinkSync3(path);
+        } catch {
+        }
+      };
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      try {
+        const stat = lstatSync3(path);
+        if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("Development port allocation lock is not a regular file.");
+        const ownerContents = readFileSync12(path, "utf8");
+        if (!ownerContents.trim()) {
+          await new Promise((done) => setTimeout(done, 50));
+          continue;
+        }
+        const ownerPid = Number(ownerContents.split(":", 1)[0]);
+        if (!Number.isSafeInteger(ownerPid) || ownerPid < 1) throw new Error("Development port allocation lock has an invalid owner.");
+        let alive = true;
+        try {
+          process.kill(ownerPid, 0);
+        } catch (probeError) {
+          if (probeError.code === "ESRCH") alive = false;
+        }
+        if (!alive) {
+          const current = statSync3(path);
+          if (current.ino === stat.ino) unlinkSync3(path);
+          continue;
+        }
+      } catch (readError) {
+        if (readError.code === "ENOENT") continue;
+        throw readError;
+      }
+      await new Promise((done) => setTimeout(done, 50));
+    }
+  }
+  throw new Error("Timed out waiting for the host port allocation lock.");
+}
+var defaultAdapters = {
+  spawn(command, args, options) {
+    return spawn(command, args, { ...options, shell: false, detached: process.platform !== "win32" });
+  },
+  reservePort(port) {
+    return new Promise((done) => {
+      const server = createServer();
+      server.unref();
+      server.once("error", () => done(void 0));
+      server.listen({ host: "127.0.0.1", port }, () => done({ port, release: () => new Promise((resolve16) => server.close(() => resolve16())) }));
+    });
+  },
+  acquirePortLock: acquireHostPortLock,
+  async probeHttp(url, timeoutMs) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  },
+  signal(child, signal) {
+    if (child.pid && process.platform !== "win32") {
+      try {
+        process.kill(-child.pid, signal);
+        return;
+      } catch {
+      }
+    }
+    try {
+      child.kill(signal);
+    } catch {
+    }
+  },
+  sleep(ms) {
+    return new Promise((done) => setTimeout(done, ms));
+  }
+};
+function safeProjectNamespace(name, directory) {
+  const normalized = name.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/^[^a-z0-9]+/, "").slice(0, 24) || "project";
+  const suffix = createHash3("sha256").update(resolve13(directory)).digest("hex").slice(0, 10);
+  return `ls-${normalized}-${suffix}`;
+}
+function readDotEnv(projectDirectory) {
+  const path = resolve13(projectDirectory, ".env");
+  if (!existsSync14(path)) return {};
+  return Object.fromEntries(readFileSync12(path, "utf8").split(/\r?\n/).flatMap((line) => {
+    const match = /^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
+    if (!match) return [];
+    const value = match[2].replace(/^(['"])(.*)\1$/, "$2");
+    return [[match[1], value]];
+  }));
+}
+function loopbackDatabaseUrl(value, port) {
+  if (!value) throw new Error("DATABASE_URL is missing; set it in .env before running development migrations.");
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("DATABASE_URL is invalid; refusing to run development migrations.");
+  }
+  const host = url.hostname.toLowerCase();
+  if (!["localhost", "127.0.0.1", "::1"].includes(host) || /(^|[_-])prod(uction)?($|[_-])/i.test(url.pathname)) throw new Error("Refusing automatic development migrations against a non-loopback or production-looking database URL.");
+  url.hostname = "127.0.0.1";
+  url.port = String(port);
+  return url.toString();
+}
+function topologicalServices(services) {
+  const byId = new Map(services.map((item) => [item.id, item]));
+  const indegree = /* @__PURE__ */ new Map();
+  const dependents = /* @__PURE__ */ new Map();
+  for (const item of services) {
+    indegree.set(item.id, item.dependencies.length);
+    for (const dep of item.dependencies) {
+      if (!byId.has(dep)) throw new Error(`Unknown dev service dependency ${dep} for ${item.id}`);
+      const list = dependents.get(dep) ?? [];
+      list.push(item.id);
+      dependents.set(dep, list);
+    }
+  }
+  const queue2 = services.filter((item) => (indegree.get(item.id) ?? 0) === 0).sort((a, b) => a.id.localeCompare(b.id));
+  const ordered = [];
+  while (queue2.length) {
+    const item = queue2.shift();
+    if (!item) break;
+    ordered.push(item);
+    for (const id of (dependents.get(item.id) ?? []).sort()) {
+      const next = (indegree.get(id) ?? 0) - 1;
+      indegree.set(id, next);
+      if (next === 0) {
+        const dependent = byId.get(id);
+        if (dependent) {
+          queue2.push(dependent);
+          queue2.sort((a, b) => a.id.localeCompare(b.id));
+        }
+      }
+    }
+  }
+  if (ordered.length !== services.length) throw new Error("Development service dependency cycle detected.");
+  return ordered;
+}
+function createDevPlan(projectDirectoryInput) {
+  const projectDirectory = resolve13(projectDirectoryInput);
+  const manifest = loadProjectManifest(projectDirectory);
+  const capabilities = new Set(Object.keys(manifest.capabilities));
+  const namespace = safeProjectNamespace(manifest.project.name, projectDirectory);
+  const composeArgs2 = ["compose", "-p", namespace, "-f", "docker-compose.yml"];
+  if (existsSync14(resolve13(projectDirectory, "docker-compose.launchstack.yml"))) composeArgs2.push("-f", "docker-compose.launchstack.yml");
+  const services = [{ id: "postgres", kind: "infrastructure", dependencies: [], command: "docker", args: [...composeArgs2, "up", "-d", "--wait", "postgres"], port: 5432, portEnvironment: "LAUNCHSTACK_POSTGRES_PORT", readiness: "compose", required: true }];
+  if (capabilities.has("redis") || capabilities.has("queue")) services.push({ id: "redis", kind: "infrastructure", dependencies: [], command: "docker", args: [...composeArgs2, "up", "-d", "--wait", "redis"], port: 6379, portEnvironment: "LAUNCHSTACK_REDIS_PORT", readiness: "compose", required: true });
+  services.push({ id: "migrations", kind: "migration", dependencies: ["postgres"], command: "npm", args: ["run", "dev:migrate"], required: true });
+  services.push({ id: "api", kind: "process", dependencies: ["postgres", ...capabilities.has("redis") || capabilities.has("queue") ? ["redis"] : [], "migrations"], command: "npm", args: ["run", "dev"], port: 3e3, portEnvironment: "PORT", readiness: "http", healthPath: "/ready", required: true });
+  if (capabilities.has("queue")) services.push({ id: "worker", kind: "process", dependencies: ["redis", "migrations"], command: "npm", args: ["run", "worker"], port: 3101, portEnvironment: "LAUNCHSTACK_WORKER_HEALTH_PORT", readiness: "http", healthPath: "/healthz", required: true });
+  if (capabilities.has("cron")) services.push({ id: "scheduler", kind: "process", dependencies: ["migrations"], command: "npm", args: ["run", "scheduler"], port: 3102, portEnvironment: "LAUNCHSTACK_SCHEDULER_HEALTH_PORT", readiness: "http", healthPath: "/healthz", required: false });
+  return { projectDirectory, namespace, services: topologicalServices(services) };
+}
+function selectDevPlan(plan, options) {
+  let services = plan.services;
+  if (options.noMigrate) services = services.filter((item) => item.id !== "migrations").map((item) => ({ ...item, dependencies: item.dependencies.filter((dep) => dep !== "migrations") }));
+  if (options.service) {
+    const byId = new Map(services.map((item) => [item.id, item]));
+    if (!byId.has(options.service)) throw new Error(`Unknown dev service: ${options.service}`);
+    const selected = /* @__PURE__ */ new Set();
+    const visit2 = (id) => {
+      if (selected.has(id)) return;
+      const item = byId.get(id);
+      if (!item) throw new Error(`Missing selected dependency: ${id}`);
+      selected.add(id);
+      for (const dep of item.dependencies) visit2(dep);
+    };
+    visit2(options.service);
+    services = services.filter((item) => selected.has(item.id));
+  }
+  return { ...plan, services: topologicalServices(services) };
+}
+function waitForExit(child, timeoutMs) {
+  return new Promise((done, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        reject(new Error(`Process ${child.pid ?? "unknown"} did not exit within ${timeoutMs}ms`));
+      }
+    }, timeoutMs);
+    child.once("exit", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      done(code);
+    });
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+async function waitUntilReady(service, port, adapters, timeoutMs, child) {
+  if (service.readiness === "exit" || service.readiness === "compose") return;
+  if (service.readiness !== "http") throw new Error(`Service ${service.id} has no readiness probe configured.`);
+  const deadline = Date.now() + timeoutMs;
+  let lastStatus = "no response";
+  let exited = false;
+  child.once("exit", (code) => {
+    exited = true;
+    lastStatus = `process exited with code ${String(code)}`;
+  });
+  while (Date.now() < deadline) {
+    if (exited) throw new Error(`Service ${service.id} exited before its readiness probe passed: ${lastStatus}.`);
+    const ready = await adapters.probeHttp(`http://127.0.0.1:${port}${service.healthPath ?? "/health"}`, Math.min(1e3, timeoutMs));
+    if (ready) return;
+    lastStatus = "HTTP readiness endpoint did not return a successful response";
+    await adapters.sleep(100);
+  }
+  throw new Error(`Timed out waiting for ${service.id} readiness at 127.0.0.1:${port}${service.healthPath ?? "/health"}: ${lastStatus}.`);
+}
+var DevOrchestrator = class {
+  constructor(plan, adapters = defaultAdapters, report = () => {
+  }) {
+    this.plan = plan;
+    this.adapters = adapters;
+    this.report = report;
+    this.children = /* @__PURE__ */ new Set();
+    this.processGroups = /* @__PURE__ */ new Set();
+    this.stopped = false;
+    this.stopPromise = null;
+    this.composeStarted = false;
+    this.ports = /* @__PURE__ */ new Map();
+    this.portLeases = /* @__PURE__ */ new Map();
+    this.releasePortLock = null;
+    this.environment = readDotEnv(plan.projectDirectory);
+  }
+  async allocatePort(service) {
+    if (service.port === void 0) return void 0;
+    for (let candidate = service.port; candidate <= Math.min(service.port + 1e3, 65535); candidate += 1) {
+      const lease = await this.adapters.reservePort(candidate);
+      if (lease) return lease;
+    }
+    throw new Error(`No available port found for ${service.id} near ${service.port}.`);
+  }
+  async reservePorts() {
+    for (const service of this.plan.services) {
+      if (service.port === void 0) continue;
+      const lease = await this.allocatePort(service);
+      if (!lease) continue;
+      this.portLeases.set(service.id, lease);
+      this.ports.set(service.id, lease.port);
+      if (service.portEnvironment) this.environment[service.portEnvironment] = String(lease.port);
+    }
+  }
+  serviceEnvironment(service) {
+    const env = { ...process.env, ...this.environment, ...service.environment };
+    if (service.id === "migrations") env.DATABASE_URL = loopbackDatabaseUrl(this.environment.DATABASE_URL ?? process.env.DATABASE_URL, this.ports.get("postgres") ?? 5432);
+    if (["api", "worker"].includes(service.id) && this.ports.has("redis")) env.REDIS_URL = `redis://127.0.0.1:${this.ports.get("redis")}`;
+    if (["api", "worker"].includes(service.id) && this.ports.has("postgres")) env.DATABASE_URL = loopbackDatabaseUrl(this.environment.DATABASE_URL ?? process.env.DATABASE_URL, this.ports.get("postgres"));
+    return env;
+  }
+  async start(options = {}) {
+    const timeoutMs = options.readinessTimeoutMs ?? 3e4;
+    try {
+      this.releasePortLock = await this.adapters.acquirePortLock();
+      await this.reservePorts();
+      const pendingInfrastructure = new Set(this.plan.services.filter((service) => service.kind === "infrastructure").map((service) => service.id));
+      for (const service of this.plan.services) {
+        if (this.releasePortLock && pendingInfrastructure.size === 0 && service.kind !== "infrastructure") {
+          this.releasePortLock();
+          this.releasePortLock = null;
+        }
+        if (service.kind === "migration") {
+          const databaseUrl = this.environment.DATABASE_URL ?? process.env.DATABASE_URL;
+          if (this.environment.NODE_ENV === "production" || process.env.NODE_ENV === "production") throw new Error("Refusing to run automatic development migrations when NODE_ENV is production.");
+          loopbackDatabaseUrl(databaseUrl, this.ports.get("postgres") ?? 5432);
+        }
+        if (service.kind === "infrastructure") this.composeStarted = true;
+        const lease = this.portLeases.get(service.id);
+        this.report(service.id, "started", lease ? `loopback port ${lease.port}` : void 0);
+        if (lease) {
+          await lease.release();
+          this.portLeases.delete(service.id);
+        }
+        const child = this.adapters.spawn(service.command, service.args, { cwd: this.plan.projectDirectory, stdio: "inherit", env: this.serviceEnvironment(service) });
+        this.children.add(child);
+        this.processGroups.add(child);
+        child.once("exit", (code) => {
+          this.children.delete(child);
+          if (service.kind === "infrastructure" && code === 0) this.composeStarted = true;
+          if (!this.stopped && service.kind === "process") {
+            const detail = `process exited unexpectedly with code ${String(code)}`;
+            this.report(service.id, service.required ? "failed" : "degraded", detail);
+            if (service.required) void this.stop();
+          }
+        });
+        child.once("error", (error) => {
+          this.children.delete(child);
+          if (!this.stopped && service.kind === "process") {
+            const detail = `process failed to spawn: ${error.message}`;
+            this.report(service.id, service.required ? "failed" : "degraded", detail);
+            if (service.required) void this.stop();
+          }
+        });
+        if (service.kind !== "process") {
+          const code = await waitForExit(child, timeoutMs);
+          this.children.delete(child);
+          if (code !== 0 && service.required) throw new Error(`${service.id} failed with exit code ${String(code)}.`);
+          if (service.kind === "infrastructure" && code === 0) this.composeStarted = true;
+        }
+        if (service.readiness === "http") {
+          const port = this.ports.get(service.id);
+          if (!port) throw new Error(`${service.id} has no allocated readiness port.`);
+          await waitUntilReady(service, port, this.adapters, timeoutMs, child);
+        }
+        this.report(service.id, "ready");
+        if (service.kind === "infrastructure") {
+          pendingInfrastructure.delete(service.id);
+          if (pendingInfrastructure.size === 0 && this.releasePortLock) {
+            this.releasePortLock();
+            this.releasePortLock = null;
+          }
+        }
+      }
+      if (this.releasePortLock) {
+        this.releasePortLock();
+        this.releasePortLock = null;
+      }
+    } catch (error) {
+      this.report("environment", "failed", error instanceof Error ? error.message : String(error));
+      await this.stop();
+      throw error;
+    }
+  }
+  async stop() {
+    if (this.stopPromise) return this.stopPromise;
+    this.stopped = true;
+    this.stopPromise = (async () => {
+      await Promise.all([...this.portLeases.values()].map((lease) => lease.release()));
+      this.portLeases.clear();
+      if (this.releasePortLock) {
+        this.releasePortLock();
+        this.releasePortLock = null;
+      }
+      const children = [...this.children];
+      const exitWaits = children.map((child) => waitForExit(child, 5e3));
+      for (const child of this.processGroups) this.adapters.signal(child, "SIGTERM");
+      await Promise.race([Promise.allSettled(exitWaits), this.adapters.sleep(5100)]);
+      for (const child of this.processGroups) this.adapters.signal(child, "SIGKILL");
+      this.children.clear();
+      this.processGroups.clear();
+      if (this.composeStarted) {
+        const args = ["compose", "-p", this.plan.namespace, "-f", "docker-compose.yml"];
+        if (existsSync14(resolve13(this.plan.projectDirectory, "docker-compose.launchstack.yml"))) args.push("-f", "docker-compose.launchstack.yml");
+        const child = this.adapters.spawn("docker", [...args, "down", "--remove-orphans"], { cwd: this.plan.projectDirectory, stdio: "inherit", env: { ...process.env, ...this.environment } });
+        const code = await waitForExit(child, 3e4).catch(() => {
+          this.adapters.signal(child, "SIGTERM");
+          return null;
+        });
+        if (code !== 0) this.report("compose", "degraded", "owned Compose project could not be fully stopped; its named project is preserved for inspection");
+      }
+      this.report("environment", "stopped");
+    })();
+    return this.stopPromise;
+  }
+};
+
+// src/stages/docker.ts
 function run2(projectDirectory, args, environment = {}) {
   return execFileSync4("docker", args, { cwd: projectDirectory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...environment } });
 }
-var dockerStageAdapter = { id: "docker", capabilities: { create: true, inspect: true, update: true, destroy: true }, create(input) {
-  run2(input.projectDirectory, ["compose", "-p", input.resourceId, "up", "-d", "--build"], input.environment);
-  return { resourceId: input.resourceId, url: process.env.LAUNCHSTACK_PREVIEW_URL };
-}, inspect(input) {
-  try {
-    const output = run2(input.projectDirectory, ["compose", "-p", input.resourceId, "ps", "--format", "json"]).trim();
-    if (!output) return { exists: false };
-    const records = output.split(/\r?\n/).flatMap((line) => {
-      try {
-        const value = JSON.parse(line);
-        return Array.isArray(value) ? value : [value];
-      } catch {
-        return [];
+function composeArgs(projectDirectory, resourceId) {
+  const args = ["compose", "-p", resourceId, "-f", "docker-compose.yml"];
+  if (existsSync15(join10(projectDirectory, "docker-compose.launchstack.yml"))) args.push("-f", "docker-compose.launchstack.yml");
+  return args;
+}
+function portAvailable(port) {
+  return new Promise((resolve16) => {
+    const server = createServer2();
+    server.unref();
+    server.once("error", () => resolve16(false));
+    server.listen({ host: "127.0.0.1", port }, () => server.close(() => resolve16(true)));
+  });
+}
+async function allocatePort(start) {
+  for (let port = start; port < start + 1e3 && port < 65536; port += 1) if (await portAvailable(port)) return port;
+  throw new Error(`No free preview port near ${start}.`);
+}
+var dockerStageAdapter = {
+  id: "docker",
+  capabilities: { create: true, inspect: true, update: true, destroy: true },
+  async create(input) {
+    const releasePortLock = await acquireHostPortLock();
+    const seed = createHash4("sha256").update(input.resourceId).digest("hex");
+    const postgresStart = 2e4 + Number.parseInt(seed.slice(0, 6), 16) % 1e4;
+    const redisStart = 3e4 + Number.parseInt(seed.slice(6, 12), 16) % 1e4;
+    const apiStart = 4e4 + Number.parseInt(seed.slice(6, 12), 16) % 1e4;
+    let buildOverrideDirectory;
+    try {
+      const postgresPort = Number(input.environment.LAUNCHSTACK_POSTGRES_PORT) || await allocatePort(postgresStart);
+      const hasCapabilities = existsSync15(join10(input.projectDirectory, "docker-compose.launchstack.yml"));
+      const redisPort = hasCapabilities ? Number(input.environment.LAUNCHSTACK_REDIS_PORT) || await allocatePort(redisStart) : void 0;
+      let apiPort = Number(input.environment.LAUNCHSTACK_API_PORT) || await allocatePort(apiStart);
+      while (apiPort === postgresPort || apiPort === redisPort) apiPort = await allocatePort(apiPort + 1);
+      const environment = { ...input.environment, LAUNCHSTACK_POSTGRES_PORT: String(postgresPort), ...redisPort ? { LAUNCHSTACK_REDIS_PORT: String(redisPort) } : {}, LAUNCHSTACK_API_PORT: String(apiPort) };
+      const args = composeArgs(input.projectDirectory, input.resourceId);
+      const caFile = process.env.NODE_EXTRA_CA_CERTS;
+      if (caFile) {
+        try {
+          if (statSync4(caFile).isFile()) {
+            buildOverrideDirectory = mkdtempSync3(join10(tmpdir3(), "launchstack-stage-build-"));
+            const override = {
+              services: { api: { build: { secrets: ["npmca"] } } },
+              secrets: { npmca: { file: caFile } }
+            };
+            writeFileSync7(join10(buildOverrideDirectory, "compose.yml"), JSON.stringify(override), { mode: 384 });
+            args.push("-f", join10(buildOverrideDirectory, "compose.yml"));
+          }
+        } catch {
+        }
       }
-    });
-    if (!records.length) return { exists: false };
-    const running = records.every((record) => record && typeof record === "object" && String(record.State).toLowerCase() === "running");
-    return { exists: true, status: running ? "running" : "degraded" };
-  } catch {
-    return { exists: false };
+      args.push("up", "-d", "--build", "--wait", "--wait-timeout", "120");
+      run2(input.projectDirectory, args, environment);
+      return { resourceId: input.resourceId, url: process.env.LAUNCHSTACK_PREVIEW_URL ?? `http://127.0.0.1:${apiPort}` };
+    } finally {
+      if (buildOverrideDirectory) rmSync4(buildOverrideDirectory, { recursive: true, force: true });
+      releasePortLock();
+    }
+  },
+  inspect(input) {
+    try {
+      const output = run2(input.projectDirectory, [...composeArgs(input.projectDirectory, input.resourceId), "ps", "--format", "json"]).trim();
+      if (!output) return { exists: false };
+      const records = output.split(/\r?\n/).flatMap((line) => {
+        try {
+          const value = JSON.parse(line);
+          return Array.isArray(value) ? value : [value];
+        } catch {
+          return [];
+        }
+      });
+      if (!records.length) return { exists: false };
+      const healthy = records.every((record) => record && typeof record === "object" && String(record.State).toLowerCase() === "running" && String(record.Health).toLowerCase() === "healthy");
+      return { exists: true, status: healthy ? "healthy" : "degraded" };
+    } catch {
+      return { exists: false };
+    }
+  },
+  destroy(input) {
+    run2(input.projectDirectory, [...composeArgs(input.projectDirectory, input.resourceId), "down", "--remove-orphans", "--volumes"], input.environment);
   }
-}, destroy(input) {
-  run2(input.projectDirectory, ["compose", "-p", input.resourceId, "down", "--remove-orphans", "--volumes"], input.environment);
-} };
+};
 
 // src/stages/manager.ts
 var ADAPTERS = { docker: dockerStageAdapter };
@@ -1944,25 +2397,47 @@ function validateStageName(stage) {
   return stage;
 }
 function stageResourceId(projectDirectory, projectName, stage) {
-  const suffix = createHash3("sha256").update(resolve13(projectDirectory)).digest("hex").slice(0, 8);
-  return `launchstack-${projectName}-${stage}-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 63);
+  const directoryHash = createHash5("sha256").update(resolve14(projectDirectory)).digest("hex").slice(0, 10);
+  const stageHash = createHash5("sha256").update(`${resolve14(projectDirectory)}\0${stage}`).digest("hex").slice(0, 8);
+  const name = projectName.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 16) || "project";
+  return `ls-${directoryHash}-${name}-${stage.slice(0, 16)}-${stageHash}`;
 }
 var stageEnvironment = (stage, values) => ({ ...values ?? {}, LAUNCHSTACK_STAGE: stage });
 function stateMutation(projectDirectory, state) {
   const path = ".launchstack/state.json";
   const absolute = resolveProjectPath(projectDirectory, path);
-  return { type: "write", path, content: serializeProjectState(state), owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: existsSync14(absolute) ? hashFile(absolute) : null };
+  return { type: "write", path, content: serializeProjectState(state), owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: existsSync16(absolute) ? hashFile(absolute) : null };
 }
 function persist(projectDirectory, previous, next) {
   return applyFileMutations({ projectDirectory, mutations: [stateMutation(projectDirectory, next)], state: previous, nextState: next });
+}
+function writeStageState(projectDirectory, stage, value, expectedStatus) {
+  let lastError;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const previous = loadProjectState(projectDirectory);
+    const current = previous.stages[stage];
+    if (current && current.resourceId !== value.resourceId) throw new Error(`Stage ${stage} is already owned by another resource.`);
+    if (expectedStatus && current?.status !== expectedStatus) throw new Error(`Stage ${stage} changed while its provider operation was running.`);
+    if (value.status === "creating" && current?.status === "creating") throw new Error(`Stage ${stage} is already being created.`);
+    const next = structuredClone(previous);
+    next.stages[stage] = value;
+    next.updatedAt = value.updatedAt;
+    try {
+      return persist(projectDirectory, previous, next);
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof Error) || !error.message.includes("File changed since planning")) throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`Unable to update state for stage ${stage}.`);
 }
 function adapter(provider) {
   const value = ADAPTERS[provider];
   if (!value) throw new Error(`Provider ${provider} does not implement preview lifecycle operations. Supported: ${Object.keys(ADAPTERS).join(", ")}.`);
   return value;
 }
-function createOrUpdateStage(input) {
-  const projectDirectory = resolve13(input.projectDirectory);
+async function createOrUpdateStage(input) {
+  const projectDirectory = resolve14(input.projectDirectory);
   const stage = validateStageName(input.stage);
   const manifest = loadProjectManifest(projectDirectory);
   const desired = manifest.stages[stage];
@@ -1979,34 +2454,24 @@ function createOrUpdateStage(input) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const git = getGitMetadata(projectDirectory);
   const creating = { name: stage, provider, resourceId, status: "creating", sourceCommit: git?.commitHash, url: existing?.url, createdAt: existing?.createdAt ?? now, updatedAt: now, production };
-  const creatingState = structuredClone(previous);
-  creatingState.stages[stage] = creating;
-  persist(projectDirectory, previous, creatingState);
+  writeStageState(projectDirectory, stage, creating);
   try {
-    const result = providerAdapter.create({ projectDirectory, stage, resourceId, environment: stageEnvironment(stage, desired?.env), sourceCommit: git?.commitHash, production });
+    const result = await providerAdapter.create({ projectDirectory, stage, resourceId, environment: stageEnvironment(stage, desired?.env), sourceCommit: git?.commitHash, production });
     if (result.resourceId !== resourceId) throw new Error(`Provider returned unexpected resource identity for stage ${stage}.`);
-    const beforeReady = loadProjectState(projectDirectory);
     const ready = { ...creating, status: "ready", url: result.url, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
-    const next = structuredClone(beforeReady);
-    next.stages[stage] = ready;
-    next.updatedAt = ready.updatedAt;
-    persist(projectDirectory, beforeReady, next);
+    writeStageState(projectDirectory, stage, ready, "creating");
     return ready;
   } catch (error) {
-    const beforeFailed = loadProjectState(projectDirectory);
     const failed = { ...creating, status: "failed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
-    const next = structuredClone(beforeFailed);
-    next.stages[stage] = failed;
-    next.updatedAt = failed.updatedAt;
     try {
-      persist(projectDirectory, beforeFailed, next);
+      writeStageState(projectDirectory, stage, failed, "creating");
     } catch {
     }
     throw error;
   }
 }
 function inspectStage(projectDirectoryInput, stageInput) {
-  const projectDirectory = resolve13(projectDirectoryInput);
+  const projectDirectory = resolve14(projectDirectoryInput);
   const stage = validateStageName(stageInput);
   const manifest = loadProjectManifest(projectDirectory);
   const state = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
@@ -2016,7 +2481,7 @@ function inspectStage(projectDirectoryInput, stageInput) {
   return { stage, state: stored, providerExists: check.exists, providerStatus: check.status };
 }
 function destroyStage(input) {
-  const projectDirectory = resolve13(input.projectDirectory);
+  const projectDirectory = resolve14(input.projectDirectory);
   const stage = validateStageName(input.stage);
   const manifest = loadProjectManifest(projectDirectory);
   const previous = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
@@ -2033,8 +2498,8 @@ function destroyStage(input) {
 }
 
 // src/generator/module.ts
-import { existsSync as existsSync15, readFileSync as readFileSync12 } from "fs";
-import { resolve as resolve14 } from "path";
+import { existsSync as existsSync17, readFileSync as readFileSync13 } from "fs";
+import { resolve as resolve15 } from "path";
 var RESERVED_FIELDS = /* @__PURE__ */ new Set(["id", "ownerId", "createdAt", "updatedAt"]);
 var FIELD_TYPES = /* @__PURE__ */ new Set(["string", "number", "boolean", "date"]);
 var validateName = (name) => {
@@ -2150,7 +2615,7 @@ ${registrations || "  void app;"}
 `;
 }
 function planModuleGeneration(input) {
-  const projectDirectory = resolve14(input.projectDirectory);
+  const projectDirectory = resolve15(input.projectDirectory);
   const name = validateName(input.name);
   const fields = input.kind === "resource" ? validateFields(input.fields ?? []) : [];
   const manifest = loadProjectManifest(projectDirectory);
@@ -2161,12 +2626,12 @@ function planModuleGeneration(input) {
   for (const [path, content] of Object.entries(files)) {
     if (path.startsWith(".__launchstack_model_")) continue;
     const absolute = resolveProjectPath(projectDirectory, path);
-    if (existsSync15(absolute)) throw new Error(`Generation collision: ${path} already exists.`);
+    if (existsSync17(absolute)) throw new Error(`Generation collision: ${path} already exists.`);
     mutations.push({ type: "write", path, content, owner, version: currentLaunchStackVersion(), expectedSha256: null });
   }
   const registryPath = "src/routes/launchstack.generated.ts";
   const registryAbsolute = resolveProjectPath(projectDirectory, registryPath);
-  const registryCurrent = existsSync15(registryAbsolute) ? readFileSync12(registryAbsolute, "utf8") : `import type { FastifyInstance } from "fastify";
+  const registryCurrent = existsSync17(registryAbsolute) ? readFileSync13(registryAbsolute, "utf8") : `import type { FastifyInstance } from "fastify";
 
 /* launchstack-routes: [] */
 export async function registerGeneratedRoutes(app: FastifyInstance): Promise<void> { void app; }
@@ -2174,13 +2639,13 @@ export async function registerGeneratedRoutes(app: FastifyInstance): Promise<voi
   const names = parseRoutes(registryCurrent);
   if (!names.includes(name)) names.push(name);
   const nextRegistry = renderRoutes(names);
-  if (nextRegistry !== registryCurrent) mutations.push({ type: "write", path: registryPath, content: nextRegistry, owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: existsSync15(registryAbsolute) ? hashFile(registryAbsolute) : null });
+  if (nextRegistry !== registryCurrent) mutations.push({ type: "write", path: registryPath, content: nextRegistry, owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: existsSync17(registryAbsolute) ? hashFile(registryAbsolute) : null });
   let migrationCommand;
   if (input.kind === "resource") {
     const schemaPath = "prisma/schema.prisma";
     const schemaAbsolute = resolveProjectPath(projectDirectory, schemaPath);
-    if (!existsSync15(schemaAbsolute)) throw new Error("Cannot generate a CRUD resource without prisma/schema.prisma.");
-    const schema = readFileSync12(schemaAbsolute, "utf8");
+    if (!existsSync17(schemaAbsolute)) throw new Error("Cannot generate a CRUD resource without prisma/schema.prisma.");
+    const schema = readFileSync13(schemaAbsolute, "utf8");
     const model = files[`.__launchstack_model_${name}`] ?? "";
     if (new RegExp(`\\bmodel\\s+${pascal(name)}\\b`).test(schema)) throw new Error(`Prisma model ${pascal(name)} already exists.`);
     mutations.push({ type: "write", path: schemaPath, content: `${schema.trimEnd()}
@@ -2192,7 +2657,7 @@ ${model}`, owner: "launchstack:metadata", version: currentLaunchStackVersion(), 
   nextState.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
   const statePath = ".launchstack/state.json";
   const stateAbsolute = resolveProjectPath(projectDirectory, statePath);
-  mutations.push({ type: "write", path: statePath, content: serializeProjectState(nextState), owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: existsSync15(stateAbsolute) ? hashFile(stateAbsolute) : null });
+  mutations.push({ type: "write", path: statePath, content: serializeProjectState(nextState), owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: existsSync17(stateAbsolute) ? hashFile(stateAbsolute) : null });
   return { projectDirectory, kind: input.kind, name, files: mutations.map((mutation) => mutation.path).sort(), mutations, nextState, migrationCommand };
 }
 function applyModuleGeneration(plan) {
@@ -2257,6 +2722,9 @@ export {
   generateProject,
   installDependencies,
   getGitMetadata,
+  createDevPlan,
+  selectDevPlan,
+  DevOrchestrator,
   validateStageName,
   stageResourceId,
   createOrUpdateStage,
@@ -2266,4 +2734,4 @@ export {
   planModuleGeneration,
   applyModuleGeneration
 };
-//# sourceMappingURL=chunk-WDIJLAHI.mjs.map
+//# sourceMappingURL=chunk-NI3IS4ZS.mjs.map

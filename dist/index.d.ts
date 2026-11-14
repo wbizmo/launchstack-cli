@@ -537,7 +537,7 @@ type StageProviderAdapter = {
         update: boolean;
         destroy: boolean;
     };
-    create(input: StageCreateInput): StageCreateResult;
+    create(input: StageCreateInput): StageCreateResult | Promise<StageCreateResult>;
     inspect(input: {
         projectDirectory: string;
         resourceId: string;
@@ -564,7 +564,7 @@ declare function createOrUpdateStage(input: {
     projectDirectory: string;
     stage: string;
     production?: boolean;
-}): StageState;
+}): Promise<StageState>;
 declare function inspectStage(projectDirectoryInput: string, stageInput: string): StageStatus;
 declare function destroyStage(input: {
     projectDirectory: string;

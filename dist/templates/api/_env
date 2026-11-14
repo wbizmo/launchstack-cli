@@ -1,12 +1,14 @@
 NODE_ENV=development
 HOST=127.0.0.1
 PORT=3000
+LAUNCHSTACK_POSTGRES_PORT=5432
+LAUNCHSTACK_API_PORT=3000
 LOG_LEVEL=info
 CORS_ORIGIN=http://localhost:3000
 ALLOW_INSECURE_CORS=false
 AUTH_RATE_LIMIT_MAX=20
 AUTH_RATE_LIMIT_WINDOW_MS=60000
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/{{PROJECT_NAME}}
+DATABASE_URL=postgresql://launchstack:launchstack@localhost:5432/{{PROJECT_NAME}}
 JWT_ACCESS_SECRET=replace-with-a-long-random-access-secret
 JWT_REFRESH_SECRET=replace-with-a-long-random-refresh-secret
 JWT_ACCESS_EXPIRES_IN=15m

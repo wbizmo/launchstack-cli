@@ -68,10 +68,11 @@ Lifecycle mutation plans write staged files, journal each transaction and flush 
 
 ```bash
 launchstack dev
+launchstack dev --plan --json
 launchstack dev --json
 ```
 
-The orchestrator derives required PostgreSQL/Redis/workers/API services from the project manifest, starts dependencies in deterministic order, asks Compose to wait for infrastructure health, checks ports, uses bounded readiness timeouts and terminates LaunchStack-owned children on failure or signals. `queue` adds `npm run worker`; `cron` adds `npm run scheduler`.
+The orchestrator gives each project a hashed Compose namespace and dynamically allocates loopback ports when defaults are busy. It waits for Compose health checks, runs migrations only against loopback non-production-looking database URLs, and probes the API `/ready` endpoint plus worker/scheduler health endpoints. JSON mode emits `started`, `ready`, `degraded`, `failed` and `stopped` events; `--plan --json` prints the plan and exits. On failure or SIGINT/SIGTERM it stops process groups and tears down only that named Compose project, preserving its database volume. Generated templates include guarded `npm run db:reset` and configurable `npm run db:seed` commands. `npm run dev:mock` starts an optional generic local HTTP stub for development adapters; it does not emulate provider behavior.
 
 ### Typed API clients
 

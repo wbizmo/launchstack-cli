@@ -9,7 +9,7 @@ var import_commander = require("commander");
 
 // src/extensions/first-party.ts
 var extension = (value) => value;
-var redis = extension({ schemaVersion: 1, id: "redis", version: "1.0.0", kind: "capability", displayName: "Redis service and client", supportedLaunchStack: ">=2 <4", coverage: "complete", packages: { dependencies: { ioredis: "^5.4.0" } }, environment: [{ name: "REDIS_URL", description: "Redis connection URL", example: "redis://localhost:6379", required: true }], composeServices: { redis: { image: "redis:8-alpine", restart: "unless-stopped", ports: ["127.0.0.1:6379:6379"], healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: "5s", timeout: "3s", retries: 10 } } }, files: [{ path: "src/launchstack/capabilities/redis.ts", content: `import Redis from "ioredis";
+var redis = extension({ schemaVersion: 1, id: "redis", version: "1.0.0", kind: "capability", displayName: "Redis service and client", supportedLaunchStack: ">=2 <4", coverage: "complete", packages: { dependencies: { ioredis: "^5.4.0" } }, environment: [{ name: "REDIS_URL", description: "Redis connection URL", example: "redis://localhost:6379", required: true }], composeServices: { redis: { image: "redis:8-alpine", restart: "unless-stopped", ports: ["127.0.0.1:${LAUNCHSTACK_REDIS_PORT:-6379}:6379"], healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: "5s", timeout: "3s", retries: 10 } } }, files: [{ path: "src/launchstack/capabilities/redis.ts", content: `import Redis from "ioredis";
 export function createRedisClient(url = process.env.REDIS_URL): Redis { if (!url) throw new Error("REDIS_URL is required"); return new Redis(url, { lazyConnect: true, maxRetriesPerRequest: null, enableReadyCheck: true }); }
 ` }] });
 var queue = extension({ schemaVersion: 1, id: "queue", version: "1.0.0", kind: "capability", displayName: "BullMQ worker and queue", supportedLaunchStack: ">=2 <4", coverage: "complete", dependencies: ["redis"], packages: { dependencies: { bullmq: "^5.0.0" } }, scripts: { worker: "tsx src/worker.ts" }, environment: [{ name: "QUEUE_PREFIX", description: "BullMQ key prefix", example: "launchstack" }], files: [
@@ -18,15 +18,19 @@ import { createRedisClient } from "./redis";
 export const DEFAULT_QUEUE_NAME = "launchstack-default";
 export function createQueue<Data>(name = DEFAULT_QUEUE_NAME): Queue<Data> { if (!/^[a-zA-Z0-9:_-]{1,80}$/.test(name)) throw new Error("Invalid queue name"); return new Queue<Data>(name, { connection: createRedisClient(), prefix: process.env.QUEUE_PREFIX || undefined, defaultJobOptions: { attempts: 3, backoff: { type: "exponential", delay: 1000 }, removeOnComplete: 1000, removeOnFail: 5000 } satisfies JobsOptions }); }
 ` },
-  { path: "src/worker.ts", content: `import { Worker } from "bullmq";
+  { path: "src/worker.ts", content: `import { createServer } from "node:http";
+import { Worker } from "bullmq";
 import { createRedisClient } from "./launchstack/capabilities/redis";
 import { DEFAULT_QUEUE_NAME } from "./launchstack/capabilities/queue";
 const connection = createRedisClient();
 const worker = new Worker(DEFAULT_QUEUE_NAME, async (job) => { console.info(JSON.stringify({ event: "job.processed", jobId: job.id, name: job.name })); return { processed: true }; }, { connection, prefix: process.env.QUEUE_PREFIX || undefined, concurrency: 4 });
 worker.on("failed", (job, error) => console.error(JSON.stringify({ event: "job.failed", jobId: job?.id, error: error.message })));
-worker.on("ready", () => console.info(JSON.stringify({ event: "worker.ready", queue: DEFAULT_QUEUE_NAME })));
+let workerReady = false;
+worker.on("ready", () => { workerReady = true; console.info(JSON.stringify({ event: "worker.ready", queue: DEFAULT_QUEUE_NAME })); });
+const healthPort = Number(process.env.LAUNCHSTACK_WORKER_HEALTH_PORT ?? 0);
+const healthServer = healthPort > 0 ? createServer((request, response) => { response.statusCode = request.url === "/healthz" && workerReady ? 200 : 503; response.end(); }).listen(healthPort, "127.0.0.1") : null;
 let stopping = false;
-async function shutdown(): Promise<void> { if (stopping) return; stopping = true; await worker.close(); await connection.quit(); }
+async function shutdown(): Promise<void> { if (stopping) return; stopping = true; if (healthServer) await new Promise<void>((resolve) => healthServer.close(() => resolve())); await worker.close(); await connection.quit(); }
 process.once("SIGINT", () => { void shutdown().then(() => process.exit(0)); });
 process.once("SIGTERM", () => { void shutdown().then(() => process.exit(0)); });
 ` }
@@ -50,12 +54,16 @@ export function requireEmailFrom(): string { const value = process.env.EMAIL_FRO
 var cron = extension({ schemaVersion: 1, id: "cron", version: "1.0.0", kind: "capability", coverage: "complete", displayName: "Scheduled worker", supportedLaunchStack: ">=2 <4", scripts: { scheduler: "tsx src/scheduler.ts" }, files: [
   { path: "src/launchstack/capabilities/cron.ts", content: `export function scheduleInterval(task: () => Promise<void>, intervalMs: number, onError: (error: unknown) => void = console.error): () => void { if (!Number.isFinite(intervalMs) || intervalMs < 1000) throw new Error("intervalMs must be at least 1000"); let running = false; const timer = setInterval(() => { if (running) return; running = true; void task().catch(onError).finally(() => { running = false; }); }, intervalMs); return () => clearInterval(timer); }
 ` },
-  { path: "src/scheduler.ts", content: `import { scheduleInterval } from "./launchstack/capabilities/cron";
+  { path: "src/scheduler.ts", content: `import { createServer } from "node:http";
+import { scheduleInterval } from "./launchstack/capabilities/cron";
 const intervalMs = Number(process.env.CRON_INTERVAL_MS ?? 60000);
 const stop = scheduleInterval(async () => { console.info(JSON.stringify({ event: "schedule.tick", at: new Date().toISOString() })); }, intervalMs);
+let schedulerReady = true;
 console.info(JSON.stringify({ event: "scheduler.ready", intervalMs }));
+const healthPort = Number(process.env.LAUNCHSTACK_SCHEDULER_HEALTH_PORT ?? 0);
+const healthServer = healthPort > 0 ? createServer((request, response) => { response.statusCode = request.url === "/healthz" && schedulerReady ? 200 : 503; response.end(); }).listen(healthPort, "127.0.0.1") : null;
 let stopping = false;
-function shutdown(): void { if (stopping) return; stopping = true; stop(); process.exit(0); }
+function shutdown(): void { if (stopping) return; stopping = true; stop(); if (healthServer) healthServer.close(() => process.exit(0)); else process.exit(0); }
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
 ` }
@@ -2035,7 +2043,7 @@ var createCommand = new import_commander5.Command("create").description("Create 
 });
 
 // src/commands/deploy.ts
-var import_node_child_process6 = require("child_process");
+var import_node_child_process7 = require("child_process");
 var import_commander6 = require("commander");
 
 // src/config.ts
@@ -2281,232 +2289,142 @@ function addDeploymentRecord(record, projectDirectory = process.cwd()) {
 }
 
 // src/stages/manager.ts
-var import_node_crypto6 = require("crypto");
-var import_node_fs21 = require("fs");
-var import_node_path21 = require("path");
+var import_node_crypto8 = require("crypto");
+var import_node_fs23 = require("fs");
+var import_node_path23 = require("path");
 
 // src/stages/docker.ts
-var import_node_child_process5 = require("child_process");
-function run2(projectDirectory, args, environment = {}) {
-  return (0, import_node_child_process5.execFileSync)("docker", args, { cwd: projectDirectory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...environment } });
-}
-var dockerStageAdapter = { id: "docker", capabilities: { create: true, inspect: true, update: true, destroy: true }, create(input) {
-  run2(input.projectDirectory, ["compose", "-p", input.resourceId, "up", "-d", "--build"], input.environment);
-  return { resourceId: input.resourceId, url: process.env.LAUNCHSTACK_PREVIEW_URL };
-}, inspect(input) {
-  try {
-    const output = run2(input.projectDirectory, ["compose", "-p", input.resourceId, "ps", "--format", "json"]).trim();
-    if (!output) return { exists: false };
-    const records = output.split(/\r?\n/).flatMap((line) => {
-      try {
-        const value = JSON.parse(line);
-        return Array.isArray(value) ? value : [value];
-      } catch {
-        return [];
-      }
-    });
-    if (!records.length) return { exists: false };
-    const running = records.every((record) => record && typeof record === "object" && String(record.State).toLowerCase() === "running");
-    return { exists: true, status: running ? "running" : "degraded" };
-  } catch {
-    return { exists: false };
-  }
-}, destroy(input) {
-  run2(input.projectDirectory, ["compose", "-p", input.resourceId, "down", "--remove-orphans", "--volumes"], input.environment);
-} };
-
-// src/stages/manager.ts
-var ADAPTERS = { docker: dockerStageAdapter };
-function validateStageName(stage) {
-  if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(stage)) throw new Error("Stage names must use lowercase letters, numbers, and hyphens and be at most 48 characters.");
-  return stage;
-}
-function stageResourceId(projectDirectory, projectName, stage) {
-  const suffix = (0, import_node_crypto6.createHash)("sha256").update((0, import_node_path21.resolve)(projectDirectory)).digest("hex").slice(0, 8);
-  return `launchstack-${projectName}-${stage}-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 63);
-}
-var stageEnvironment = (stage, values) => ({ ...values ?? {}, LAUNCHSTACK_STAGE: stage });
-function stateMutation(projectDirectory, state) {
-  const path = ".launchstack/state.json";
-  const absolute = resolveProjectPath(projectDirectory, path);
-  return { type: "write", path, content: serializeProjectState(state), owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: (0, import_node_fs21.existsSync)(absolute) ? hashFile(absolute) : null };
-}
-function persist(projectDirectory, previous, next) {
-  return applyFileMutations({ projectDirectory, mutations: [stateMutation(projectDirectory, next)], state: previous, nextState: next });
-}
-function adapter(provider) {
-  const value = ADAPTERS[provider];
-  if (!value) throw new Error(`Provider ${provider} does not implement preview lifecycle operations. Supported: ${Object.keys(ADAPTERS).join(", ")}.`);
-  return value;
-}
-function createOrUpdateStage(input) {
-  const projectDirectory = (0, import_node_path21.resolve)(input.projectDirectory);
-  const stage = validateStageName(input.stage);
-  const manifest = loadProjectManifest(projectDirectory);
-  const desired = manifest.stages[stage];
-  const production = input.production === true;
-  if (desired?.production === true && !production) throw new Error(`Stage ${stage} is declared production. Re-run with --production.`);
-  if (production && desired?.production !== true) throw new Error(`Refusing to infer ${stage} as production. Declare it in launchstack.json first.`);
-  const provider = desired?.provider ?? manifest.provider?.id ?? "docker";
-  const providerAdapter = adapter(provider);
-  const previous = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
-  const resourceId = stageResourceId(projectDirectory, manifest.project.name, stage);
-  const existing = previous.stages[stage];
-  if (existing && existing.resourceId !== resourceId) throw new Error(`Stored resource identity for ${stage} does not match this project.`);
-  if (existing && existing.provider !== provider) throw new Error(`Stage ${stage} is already owned by ${existing.provider}.`);
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  const git = getGitMetadata(projectDirectory);
-  const creating = { name: stage, provider, resourceId, status: "creating", sourceCommit: git?.commitHash, url: existing?.url, createdAt: existing?.createdAt ?? now, updatedAt: now, production };
-  const creatingState = structuredClone(previous);
-  creatingState.stages[stage] = creating;
-  persist(projectDirectory, previous, creatingState);
-  try {
-    const result = providerAdapter.create({ projectDirectory, stage, resourceId, environment: stageEnvironment(stage, desired?.env), sourceCommit: git?.commitHash, production });
-    if (result.resourceId !== resourceId) throw new Error(`Provider returned unexpected resource identity for stage ${stage}.`);
-    const beforeReady = loadProjectState(projectDirectory);
-    const ready = { ...creating, status: "ready", url: result.url, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
-    const next = structuredClone(beforeReady);
-    next.stages[stage] = ready;
-    next.updatedAt = ready.updatedAt;
-    persist(projectDirectory, beforeReady, next);
-    return ready;
-  } catch (error) {
-    const beforeFailed = loadProjectState(projectDirectory);
-    const failed = { ...creating, status: "failed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
-    const next = structuredClone(beforeFailed);
-    next.stages[stage] = failed;
-    next.updatedAt = failed.updatedAt;
-    try {
-      persist(projectDirectory, beforeFailed, next);
-    } catch {
-    }
-    throw error;
-  }
-}
-function inspectStage(projectDirectoryInput, stageInput) {
-  const projectDirectory = (0, import_node_path21.resolve)(projectDirectoryInput);
-  const stage = validateStageName(stageInput);
-  const manifest = loadProjectManifest(projectDirectory);
-  const state = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
-  const stored = state.stages[stage] ?? null;
-  if (!stored) return { stage, state: null };
-  const check = adapter(stored.provider).inspect({ projectDirectory, resourceId: stored.resourceId });
-  return { stage, state: stored, providerExists: check.exists, providerStatus: check.status };
-}
-function destroyStage(input) {
-  const projectDirectory = (0, import_node_path21.resolve)(input.projectDirectory);
-  const stage = validateStageName(input.stage);
-  const manifest = loadProjectManifest(projectDirectory);
-  const previous = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
-  const stored = previous.stages[stage];
-  if (!stored) throw new Error(`Stage ${stage} is not recorded.`);
-  if (stored.production !== Boolean(input.production)) throw new Error(`Production acknowledgement does not match stored stage ${stage}.`);
-  const expected = stageResourceId(projectDirectory, manifest.project.name, stage);
-  if (stored.resourceId !== expected) throw new Error(`Stored resource identity for ${stage} failed verification; refusing destroy.`);
-  adapter(stored.provider).destroy({ projectDirectory, resourceId: stored.resourceId, environment: stageEnvironment(stage, manifest.stages[stage]?.env) });
-  const next = structuredClone(previous);
-  delete next.stages[stage];
-  next.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  persist(projectDirectory, previous, next);
-}
-
-// src/commands/deploy.ts
-var deployCommand = new import_commander6.Command("deploy").description("Build/prepare deployment artifacts or deploy a manifest-declared stage").option("--skip-build").option("--stage <stage>").option("--production").option("--json").action((options) => {
-  const createdAt = (/* @__PURE__ */ new Date()).toISOString();
-  try {
-    if (options.stage) {
-      if (!options.skipBuild) (0, import_node_child_process6.execSync)("npm run build", { stdio: "inherit", cwd: process.cwd() });
-      const stage = createOrUpdateStage({ projectDirectory: process.cwd(), stage: options.stage, production: options.production });
-      if (options.json) console.log(JSON.stringify(stage, null, 2));
-      else {
-        console.log(`Stage ${stage.name}: ${stage.status}`);
-        console.log(`Provider: ${stage.provider}`);
-        console.log(`Resource: ${stage.resourceId}`);
-        if (stage.url) console.log(`URL: ${stage.url}`);
-      }
-      return;
-    }
-    if (options.production) throw new Error("--production is only valid with --stage.");
-    const config = readConfig();
-    const git = getGitMetadata();
-    const provider = PROVIDERS[config.provider];
-    console.log("LaunchStack deployment preparation");
-    console.log(`App: ${config.appName}`);
-    console.log(`Environment: ${config.environment}`);
-    console.log(`Provider: ${provider.label}`);
-    if (git) {
-      console.log(`Branch: ${git.branch}`);
-      console.log(`Commit: ${git.commitHash.slice(0, 7)}`);
-      if (git.dirty) console.log("Working tree has uncommitted changes");
-    }
-    if (!options.skipBuild) (0, import_node_child_process6.execSync)(config.buildCommand, { stdio: "inherit", cwd: process.cwd() });
-    resolveVerifiedOutputDirectory(process.cwd(), config.outputDirectory);
-    addDeploymentRecord({ id: `dep_${Date.now()}`, appName: config.appName, environment: config.environment, provider: config.provider, deployTarget: config.deployTarget, outputDirectory: config.outputDirectory, status: "prepared", createdAt, git });
-    console.log(`Deploy target: ${config.deployTarget}`);
-    console.log(provider.remoteDeploymentSupported ? "Deployment provider confirmed the remote deployment." : "Artifacts are prepared. LaunchStack has not performed or confirmed a remote deployment for this provider.");
-  } catch (error) {
-    console.log("Deployment preparation failed");
-    console.log(error instanceof Error ? error.message : error);
-    process.exitCode = 1;
-  }
-});
-
-// src/commands/stages.ts
-var import_commander7 = require("commander");
-var fail2 = (error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-};
-var previewCommand = new import_commander7.Command("preview").description("Create or update a non-production preview stage").argument("[stage]", "Preview stage name", "preview").option("-d, --directory <path>").option("--json").action((stage, options) => {
-  try {
-    const state = createOrUpdateStage({ projectDirectory: options.directory ?? process.cwd(), stage, production: false });
-    if (options.json) console.log(JSON.stringify(state, null, 2));
-    else console.log(`Preview ${state.name}: ${state.status}`);
-  } catch (error) {
-    fail2(error);
-  }
-});
-var stageCommand = new import_commander7.Command("stage").description("Inspect named LaunchStack stages");
-stageCommand.command("status").argument("<stage>").option("-d, --directory <path>").option("--json").action((stage, options) => {
-  try {
-    const status = inspectStage(options.directory ?? process.cwd(), stage);
-    if (options.json) console.log(JSON.stringify(status, null, 2));
-    else console.log(status.state ? `Stage ${stage}: ${status.state.status}` : `Stage ${stage}: absent`);
-  } catch (error) {
-    fail2(error);
-  }
-});
-var destroyCommand = new import_commander7.Command("destroy").description("Destroy a verified LaunchStack stage resource").option("--stage <stage>").option("-d, --directory <path>").option("--production").option("--json").action((options) => {
-  try {
-    if (!options.stage) throw new Error("--stage is required.");
-    destroyStage({ projectDirectory: options.directory ?? process.cwd(), stage: options.stage, production: options.production });
-    if (options.json) console.log(JSON.stringify({ stage: options.stage, status: "destroyed" }, null, 2));
-    else console.log(`Destroyed stage ${options.stage}.`);
-  } catch (error) {
-    fail2(error);
-  }
-});
-
-// src/commands/dev.ts
-var import_commander8 = require("commander");
+var import_node_child_process6 = require("child_process");
+var import_node_crypto7 = require("crypto");
+var import_node_fs22 = require("fs");
+var import_node_os3 = require("os");
+var import_node_path22 = require("path");
+var import_node_net2 = require("net");
 
 // src/dev/orchestrator.ts
-var import_node_child_process7 = require("child_process");
-var import_node_fs22 = require("fs");
+var import_node_crypto6 = require("crypto");
+var import_node_child_process5 = require("child_process");
+var import_node_fs21 = require("fs");
 var import_node_net = require("net");
-var import_node_path22 = require("path");
-var defaultAdapters = { spawn(command, args, options) {
-  return (0, import_node_child_process7.spawn)(command, args, { ...options, shell: false });
-}, portAvailable(port) {
-  return new Promise((done) => {
-    const server = (0, import_node_net.createServer)();
-    server.unref();
-    server.once("error", () => done(false));
-    server.listen({ host: "127.0.0.1", port }, () => server.close(() => done(true)));
-  });
-}, sleep(ms) {
-  return new Promise((done) => setTimeout(done, ms));
-} };
+var import_node_path21 = require("path");
+var import_node_os2 = require("os");
+async function acquireHostPortLock() {
+  const path = (0, import_node_path21.join)((0, import_node_os2.tmpdir)(), "launchstack-dev-port-allocation.lock");
+  const token = `${process.pid}:${(0, import_node_crypto6.createHash)("sha256").update(`${Date.now()}:${Math.random()}`).digest("hex")}`;
+  const deadline = Date.now() + 3e5;
+  while (Date.now() < deadline) {
+    try {
+      const descriptor = (0, import_node_fs21.openSync)(path, "wx", 384);
+      try {
+        (0, import_node_fs21.writeFileSync)(descriptor, token, "utf8");
+      } finally {
+        (0, import_node_fs21.closeSync)(descriptor);
+      }
+      return () => {
+        try {
+          if ((0, import_node_fs21.readFileSync)(path, "utf8") === token) (0, import_node_fs21.unlinkSync)(path);
+        } catch {
+        }
+      };
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      try {
+        const stat = (0, import_node_fs21.lstatSync)(path);
+        if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("Development port allocation lock is not a regular file.");
+        const ownerContents = (0, import_node_fs21.readFileSync)(path, "utf8");
+        if (!ownerContents.trim()) {
+          await new Promise((done) => setTimeout(done, 50));
+          continue;
+        }
+        const ownerPid = Number(ownerContents.split(":", 1)[0]);
+        if (!Number.isSafeInteger(ownerPid) || ownerPid < 1) throw new Error("Development port allocation lock has an invalid owner.");
+        let alive = true;
+        try {
+          process.kill(ownerPid, 0);
+        } catch (probeError) {
+          if (probeError.code === "ESRCH") alive = false;
+        }
+        if (!alive) {
+          const current = (0, import_node_fs21.statSync)(path);
+          if (current.ino === stat.ino) (0, import_node_fs21.unlinkSync)(path);
+          continue;
+        }
+      } catch (readError) {
+        if (readError.code === "ENOENT") continue;
+        throw readError;
+      }
+      await new Promise((done) => setTimeout(done, 50));
+    }
+  }
+  throw new Error("Timed out waiting for the host port allocation lock.");
+}
+var defaultAdapters = {
+  spawn(command, args, options) {
+    return (0, import_node_child_process5.spawn)(command, args, { ...options, shell: false, detached: process.platform !== "win32" });
+  },
+  reservePort(port) {
+    return new Promise((done) => {
+      const server = (0, import_node_net.createServer)();
+      server.unref();
+      server.once("error", () => done(void 0));
+      server.listen({ host: "127.0.0.1", port }, () => done({ port, release: () => new Promise((resolve24) => server.close(() => resolve24())) }));
+    });
+  },
+  acquirePortLock: acquireHostPortLock,
+  async probeHttp(url, timeoutMs) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  },
+  signal(child, signal) {
+    if (child.pid && process.platform !== "win32") {
+      try {
+        process.kill(-child.pid, signal);
+        return;
+      } catch {
+      }
+    }
+    try {
+      child.kill(signal);
+    } catch {
+    }
+  },
+  sleep(ms) {
+    return new Promise((done) => setTimeout(done, ms));
+  }
+};
+function safeProjectNamespace(name, directory2) {
+  const normalized = name.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/^[^a-z0-9]+/, "").slice(0, 24) || "project";
+  const suffix = (0, import_node_crypto6.createHash)("sha256").update((0, import_node_path21.resolve)(directory2)).digest("hex").slice(0, 10);
+  return `ls-${normalized}-${suffix}`;
+}
+function readDotEnv(projectDirectory) {
+  const path = (0, import_node_path21.resolve)(projectDirectory, ".env");
+  if (!(0, import_node_fs21.existsSync)(path)) return {};
+  return Object.fromEntries((0, import_node_fs21.readFileSync)(path, "utf8").split(/\r?\n/).flatMap((line) => {
+    const match = /^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
+    if (!match) return [];
+    const value = match[2].replace(/^(['"])(.*)\1$/, "$2");
+    return [[match[1], value]];
+  }));
+}
+function loopbackDatabaseUrl(value, port) {
+  if (!value) throw new Error("DATABASE_URL is missing; set it in .env before running development migrations.");
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("DATABASE_URL is invalid; refusing to run development migrations.");
+  }
+  const host = url.hostname.toLowerCase();
+  if (!["localhost", "127.0.0.1", "::1"].includes(host) || /(^|[_-])prod(uction)?($|[_-])/i.test(url.pathname)) throw new Error("Refusing automatic development migrations against a non-loopback or production-looking database URL.");
+  url.hostname = "127.0.0.1";
+  url.port = String(port);
+  return url.toString();
+}
 function topologicalServices(services) {
   const byId = new Map(services.map((item) => [item.id, item]));
   const indegree = /* @__PURE__ */ new Map();
@@ -2542,23 +2460,23 @@ function topologicalServices(services) {
   return ordered;
 }
 function createDevPlan(projectDirectoryInput) {
-  const projectDirectory = (0, import_node_path22.resolve)(projectDirectoryInput);
+  const projectDirectory = (0, import_node_path21.resolve)(projectDirectoryInput);
   const manifest = loadProjectManifest(projectDirectory);
   const capabilities = new Set(Object.keys(manifest.capabilities));
-  const composeArgs = ["compose", "-f", "docker-compose.yml"];
-  if ((0, import_node_fs22.existsSync)((0, import_node_path22.resolve)(projectDirectory, "docker-compose.launchstack.yml"))) composeArgs.push("-f", "docker-compose.launchstack.yml");
-  const services = [{ id: "postgres", kind: "infrastructure", dependencies: [], command: "docker", args: [...composeArgs, "up", "-d", "--wait", "postgres"], port: 5432, required: true }];
-  if (capabilities.has("redis") || capabilities.has("queue")) services.push({ id: "redis", kind: "infrastructure", dependencies: [], command: "docker", args: [...composeArgs, "up", "-d", "--wait", "redis"], port: 6379, required: true });
-  services.push({ id: "migrations", kind: "migration", dependencies: ["postgres"], command: "npm", args: ["run", "prisma:deploy"], required: true }, { id: "api", kind: "process", dependencies: ["postgres", ...services.some((item) => item.id === "redis") ? ["redis"] : [], "migrations"], command: "npm", args: ["run", "dev"], port: 3e3, required: true });
-  if (capabilities.has("queue")) services.push({ id: "worker", kind: "process", dependencies: ["redis", "migrations"], command: "npm", args: ["run", "worker"], required: false });
-  if (capabilities.has("cron")) services.push({ id: "scheduler", kind: "process", dependencies: ["migrations"], command: "npm", args: ["run", "scheduler"], required: false });
-  return { projectDirectory, services: topologicalServices(services) };
+  const namespace = safeProjectNamespace(manifest.project.name, projectDirectory);
+  const composeArgs2 = ["compose", "-p", namespace, "-f", "docker-compose.yml"];
+  if ((0, import_node_fs21.existsSync)((0, import_node_path21.resolve)(projectDirectory, "docker-compose.launchstack.yml"))) composeArgs2.push("-f", "docker-compose.launchstack.yml");
+  const services = [{ id: "postgres", kind: "infrastructure", dependencies: [], command: "docker", args: [...composeArgs2, "up", "-d", "--wait", "postgres"], port: 5432, portEnvironment: "LAUNCHSTACK_POSTGRES_PORT", readiness: "compose", required: true }];
+  if (capabilities.has("redis") || capabilities.has("queue")) services.push({ id: "redis", kind: "infrastructure", dependencies: [], command: "docker", args: [...composeArgs2, "up", "-d", "--wait", "redis"], port: 6379, portEnvironment: "LAUNCHSTACK_REDIS_PORT", readiness: "compose", required: true });
+  services.push({ id: "migrations", kind: "migration", dependencies: ["postgres"], command: "npm", args: ["run", "dev:migrate"], required: true });
+  services.push({ id: "api", kind: "process", dependencies: ["postgres", ...capabilities.has("redis") || capabilities.has("queue") ? ["redis"] : [], "migrations"], command: "npm", args: ["run", "dev"], port: 3e3, portEnvironment: "PORT", readiness: "http", healthPath: "/ready", required: true });
+  if (capabilities.has("queue")) services.push({ id: "worker", kind: "process", dependencies: ["redis", "migrations"], command: "npm", args: ["run", "worker"], port: 3101, portEnvironment: "LAUNCHSTACK_WORKER_HEALTH_PORT", readiness: "http", healthPath: "/healthz", required: true });
+  if (capabilities.has("cron")) services.push({ id: "scheduler", kind: "process", dependencies: ["migrations"], command: "npm", args: ["run", "scheduler"], port: 3102, portEnvironment: "LAUNCHSTACK_SCHEDULER_HEALTH_PORT", readiness: "http", healthPath: "/healthz", required: false });
+  return { projectDirectory, namespace, services: topologicalServices(services) };
 }
 function selectDevPlan(plan, options) {
   let services = plan.services;
-  if (options.noMigrate) {
-    services = services.filter((item) => item.id !== "migrations").map((item) => ({ ...item, dependencies: item.dependencies.filter((dep) => dep !== "migrations") }));
-  }
+  if (options.noMigrate) services = services.filter((item) => item.id !== "migrations").map((item) => ({ ...item, dependencies: item.dependencies.filter((dep) => dep !== "migrations") }));
   if (options.service) {
     const byId = new Map(services.map((item) => [item.id, item]));
     if (!byId.has(options.service)) throw new Error(`Unknown dev service: ${options.service}`);
@@ -2590,92 +2508,483 @@ function waitForExit(child, timeoutMs) {
       clearTimeout(timer);
       done(code);
     });
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
   });
 }
-async function waitUntilPortOccupied(port, adapters, timeoutMs) {
+async function waitUntilReady(service, port, adapters, timeoutMs, child) {
+  if (service.readiness === "exit" || service.readiness === "compose") return;
+  if (service.readiness !== "http") throw new Error(`Service ${service.id} has no readiness probe configured.`);
   const deadline = Date.now() + timeoutMs;
+  let lastStatus = "no response";
+  let exited = false;
+  child.once("exit", (code) => {
+    exited = true;
+    lastStatus = `process exited with code ${String(code)}`;
+  });
   while (Date.now() < deadline) {
-    if (!await adapters.portAvailable(port)) return;
+    if (exited) throw new Error(`Service ${service.id} exited before its readiness probe passed: ${lastStatus}.`);
+    const ready = await adapters.probeHttp(`http://127.0.0.1:${port}${service.healthPath ?? "/health"}`, Math.min(1e3, timeoutMs));
+    if (ready) return;
+    lastStatus = "HTTP readiness endpoint did not return a successful response";
     await adapters.sleep(100);
   }
-  throw new Error(`Timed out waiting for service on port ${port}`);
+  throw new Error(`Timed out waiting for ${service.id} readiness at 127.0.0.1:${port}${service.healthPath ?? "/health"}: ${lastStatus}.`);
 }
 var DevOrchestrator = class {
-  constructor(plan, adapters = defaultAdapters) {
+  constructor(plan, adapters = defaultAdapters, report = () => {
+  }) {
     this.plan = plan;
     this.adapters = adapters;
+    this.report = report;
     this.children = /* @__PURE__ */ new Set();
+    this.processGroups = /* @__PURE__ */ new Set();
     this.stopped = false;
+    this.stopPromise = null;
+    this.composeStarted = false;
+    this.ports = /* @__PURE__ */ new Map();
+    this.portLeases = /* @__PURE__ */ new Map();
+    this.releasePortLock = null;
+    this.environment = readDotEnv(plan.projectDirectory);
+  }
+  async allocatePort(service) {
+    if (service.port === void 0) return void 0;
+    for (let candidate = service.port; candidate <= Math.min(service.port + 1e3, 65535); candidate += 1) {
+      const lease = await this.adapters.reservePort(candidate);
+      if (lease) return lease;
+    }
+    throw new Error(`No available port found for ${service.id} near ${service.port}.`);
+  }
+  async reservePorts() {
+    for (const service of this.plan.services) {
+      if (service.port === void 0) continue;
+      const lease = await this.allocatePort(service);
+      if (!lease) continue;
+      this.portLeases.set(service.id, lease);
+      this.ports.set(service.id, lease.port);
+      if (service.portEnvironment) this.environment[service.portEnvironment] = String(lease.port);
+    }
+  }
+  serviceEnvironment(service) {
+    const env = { ...process.env, ...this.environment, ...service.environment };
+    if (service.id === "migrations") env.DATABASE_URL = loopbackDatabaseUrl(this.environment.DATABASE_URL ?? process.env.DATABASE_URL, this.ports.get("postgres") ?? 5432);
+    if (["api", "worker"].includes(service.id) && this.ports.has("redis")) env.REDIS_URL = `redis://127.0.0.1:${this.ports.get("redis")}`;
+    if (["api", "worker"].includes(service.id) && this.ports.has("postgres")) env.DATABASE_URL = loopbackDatabaseUrl(this.environment.DATABASE_URL ?? process.env.DATABASE_URL, this.ports.get("postgres"));
+    return env;
   }
   async start(options = {}) {
     const timeoutMs = options.readinessTimeoutMs ?? 3e4;
-    const ports = /* @__PURE__ */ new Set();
-    for (const service of this.plan.services) if (service.port) {
-      if (ports.has(service.port)) throw new Error(`Duplicate configured dev port: ${service.port}`);
-      ports.add(service.port);
-      if (!await this.adapters.portAvailable(service.port)) throw new Error(`Port ${service.port} required by ${service.id} is already occupied.`);
-    }
     try {
+      this.releasePortLock = await this.adapters.acquirePortLock();
+      await this.reservePorts();
+      const pendingInfrastructure = new Set(this.plan.services.filter((service) => service.kind === "infrastructure").map((service) => service.id));
       for (const service of this.plan.services) {
-        const child = this.adapters.spawn(service.command, service.args, { cwd: this.plan.projectDirectory, stdio: "inherit" });
+        if (this.releasePortLock && pendingInfrastructure.size === 0 && service.kind !== "infrastructure") {
+          this.releasePortLock();
+          this.releasePortLock = null;
+        }
+        if (service.kind === "migration") {
+          const databaseUrl = this.environment.DATABASE_URL ?? process.env.DATABASE_URL;
+          if (this.environment.NODE_ENV === "production" || process.env.NODE_ENV === "production") throw new Error("Refusing to run automatic development migrations when NODE_ENV is production.");
+          loopbackDatabaseUrl(databaseUrl, this.ports.get("postgres") ?? 5432);
+        }
+        if (service.kind === "infrastructure") this.composeStarted = true;
+        const lease = this.portLeases.get(service.id);
+        this.report(service.id, "started", lease ? `loopback port ${lease.port}` : void 0);
+        if (lease) {
+          await lease.release();
+          this.portLeases.delete(service.id);
+        }
+        const child = this.adapters.spawn(service.command, service.args, { cwd: this.plan.projectDirectory, stdio: "inherit", env: this.serviceEnvironment(service) });
         this.children.add(child);
-        child.once("exit", () => this.children.delete(child));
+        this.processGroups.add(child);
+        child.once("exit", (code) => {
+          this.children.delete(child);
+          if (service.kind === "infrastructure" && code === 0) this.composeStarted = true;
+          if (!this.stopped && service.kind === "process") {
+            const detail = `process exited unexpectedly with code ${String(code)}`;
+            this.report(service.id, service.required ? "failed" : "degraded", detail);
+            if (service.required) void this.stop();
+          }
+        });
+        child.once("error", (error) => {
+          this.children.delete(child);
+          if (!this.stopped && service.kind === "process") {
+            const detail = `process failed to spawn: ${error.message}`;
+            this.report(service.id, service.required ? "failed" : "degraded", detail);
+            if (service.required) void this.stop();
+          }
+        });
         if (service.kind !== "process") {
           const code = await waitForExit(child, timeoutMs);
-          if (code !== 0 && service.required) throw new Error(`${service.id} failed with exit code ${String(code)}`);
-        } else if (service.port) await waitUntilPortOccupied(service.port, this.adapters, timeoutMs);
+          this.children.delete(child);
+          if (code !== 0 && service.required) throw new Error(`${service.id} failed with exit code ${String(code)}.`);
+          if (service.kind === "infrastructure" && code === 0) this.composeStarted = true;
+        }
+        if (service.readiness === "http") {
+          const port = this.ports.get(service.id);
+          if (!port) throw new Error(`${service.id} has no allocated readiness port.`);
+          await waitUntilReady(service, port, this.adapters, timeoutMs, child);
+        }
+        this.report(service.id, "ready");
+        if (service.kind === "infrastructure") {
+          pendingInfrastructure.delete(service.id);
+          if (pendingInfrastructure.size === 0 && this.releasePortLock) {
+            this.releasePortLock();
+            this.releasePortLock = null;
+          }
+        }
+      }
+      if (this.releasePortLock) {
+        this.releasePortLock();
+        this.releasePortLock = null;
       }
     } catch (error) {
+      this.report("environment", "failed", error instanceof Error ? error.message : String(error));
       await this.stop();
       throw error;
     }
   }
   async stop() {
-    if (this.stopped) return;
+    if (this.stopPromise) return this.stopPromise;
     this.stopped = true;
-    const children = [...this.children];
-    for (const child of children) try {
-      child.kill("SIGTERM");
-    } catch {
-    }
-    await Promise.race([Promise.allSettled(children.map((child) => waitForExit(child, 5e3))), this.adapters.sleep(5100)]);
-    for (const child of [...this.children]) {
-      try {
-        child.kill("SIGKILL");
-      } catch {
+    this.stopPromise = (async () => {
+      await Promise.all([...this.portLeases.values()].map((lease) => lease.release()));
+      this.portLeases.clear();
+      if (this.releasePortLock) {
+        this.releasePortLock();
+        this.releasePortLock = null;
       }
-      this.children.delete(child);
-    }
+      const children = [...this.children];
+      const exitWaits = children.map((child) => waitForExit(child, 5e3));
+      for (const child of this.processGroups) this.adapters.signal(child, "SIGTERM");
+      await Promise.race([Promise.allSettled(exitWaits), this.adapters.sleep(5100)]);
+      for (const child of this.processGroups) this.adapters.signal(child, "SIGKILL");
+      this.children.clear();
+      this.processGroups.clear();
+      if (this.composeStarted) {
+        const args = ["compose", "-p", this.plan.namespace, "-f", "docker-compose.yml"];
+        if ((0, import_node_fs21.existsSync)((0, import_node_path21.resolve)(this.plan.projectDirectory, "docker-compose.launchstack.yml"))) args.push("-f", "docker-compose.launchstack.yml");
+        const child = this.adapters.spawn("docker", [...args, "down", "--remove-orphans"], { cwd: this.plan.projectDirectory, stdio: "inherit", env: { ...process.env, ...this.environment } });
+        const code = await waitForExit(child, 3e4).catch(() => {
+          this.adapters.signal(child, "SIGTERM");
+          return null;
+        });
+        if (code !== 0) this.report("compose", "degraded", "owned Compose project could not be fully stopped; its named project is preserved for inspection");
+      }
+      this.report("environment", "stopped");
+    })();
+    return this.stopPromise;
   }
 };
 
+// src/stages/docker.ts
+function run2(projectDirectory, args, environment = {}) {
+  return (0, import_node_child_process6.execFileSync)("docker", args, { cwd: projectDirectory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...environment } });
+}
+function composeArgs(projectDirectory, resourceId) {
+  const args = ["compose", "-p", resourceId, "-f", "docker-compose.yml"];
+  if ((0, import_node_fs22.existsSync)((0, import_node_path22.join)(projectDirectory, "docker-compose.launchstack.yml"))) args.push("-f", "docker-compose.launchstack.yml");
+  return args;
+}
+function portAvailable(port) {
+  return new Promise((resolve24) => {
+    const server = (0, import_node_net2.createServer)();
+    server.unref();
+    server.once("error", () => resolve24(false));
+    server.listen({ host: "127.0.0.1", port }, () => server.close(() => resolve24(true)));
+  });
+}
+async function allocatePort(start) {
+  for (let port = start; port < start + 1e3 && port < 65536; port += 1) if (await portAvailable(port)) return port;
+  throw new Error(`No free preview port near ${start}.`);
+}
+var dockerStageAdapter = {
+  id: "docker",
+  capabilities: { create: true, inspect: true, update: true, destroy: true },
+  async create(input) {
+    const releasePortLock = await acquireHostPortLock();
+    const seed = (0, import_node_crypto7.createHash)("sha256").update(input.resourceId).digest("hex");
+    const postgresStart = 2e4 + Number.parseInt(seed.slice(0, 6), 16) % 1e4;
+    const redisStart = 3e4 + Number.parseInt(seed.slice(6, 12), 16) % 1e4;
+    const apiStart = 4e4 + Number.parseInt(seed.slice(6, 12), 16) % 1e4;
+    let buildOverrideDirectory;
+    try {
+      const postgresPort = Number(input.environment.LAUNCHSTACK_POSTGRES_PORT) || await allocatePort(postgresStart);
+      const hasCapabilities = (0, import_node_fs22.existsSync)((0, import_node_path22.join)(input.projectDirectory, "docker-compose.launchstack.yml"));
+      const redisPort = hasCapabilities ? Number(input.environment.LAUNCHSTACK_REDIS_PORT) || await allocatePort(redisStart) : void 0;
+      let apiPort = Number(input.environment.LAUNCHSTACK_API_PORT) || await allocatePort(apiStart);
+      while (apiPort === postgresPort || apiPort === redisPort) apiPort = await allocatePort(apiPort + 1);
+      const environment = { ...input.environment, LAUNCHSTACK_POSTGRES_PORT: String(postgresPort), ...redisPort ? { LAUNCHSTACK_REDIS_PORT: String(redisPort) } : {}, LAUNCHSTACK_API_PORT: String(apiPort) };
+      const args = composeArgs(input.projectDirectory, input.resourceId);
+      const caFile = process.env.NODE_EXTRA_CA_CERTS;
+      if (caFile) {
+        try {
+          if ((0, import_node_fs22.statSync)(caFile).isFile()) {
+            buildOverrideDirectory = (0, import_node_fs22.mkdtempSync)((0, import_node_path22.join)((0, import_node_os3.tmpdir)(), "launchstack-stage-build-"));
+            const override = {
+              services: { api: { build: { secrets: ["npmca"] } } },
+              secrets: { npmca: { file: caFile } }
+            };
+            (0, import_node_fs22.writeFileSync)((0, import_node_path22.join)(buildOverrideDirectory, "compose.yml"), JSON.stringify(override), { mode: 384 });
+            args.push("-f", (0, import_node_path22.join)(buildOverrideDirectory, "compose.yml"));
+          }
+        } catch {
+        }
+      }
+      args.push("up", "-d", "--build", "--wait", "--wait-timeout", "120");
+      run2(input.projectDirectory, args, environment);
+      return { resourceId: input.resourceId, url: process.env.LAUNCHSTACK_PREVIEW_URL ?? `http://127.0.0.1:${apiPort}` };
+    } finally {
+      if (buildOverrideDirectory) (0, import_node_fs22.rmSync)(buildOverrideDirectory, { recursive: true, force: true });
+      releasePortLock();
+    }
+  },
+  inspect(input) {
+    try {
+      const output = run2(input.projectDirectory, [...composeArgs(input.projectDirectory, input.resourceId), "ps", "--format", "json"]).trim();
+      if (!output) return { exists: false };
+      const records = output.split(/\r?\n/).flatMap((line) => {
+        try {
+          const value = JSON.parse(line);
+          return Array.isArray(value) ? value : [value];
+        } catch {
+          return [];
+        }
+      });
+      if (!records.length) return { exists: false };
+      const healthy = records.every((record) => record && typeof record === "object" && String(record.State).toLowerCase() === "running" && String(record.Health).toLowerCase() === "healthy");
+      return { exists: true, status: healthy ? "healthy" : "degraded" };
+    } catch {
+      return { exists: false };
+    }
+  },
+  destroy(input) {
+    run2(input.projectDirectory, [...composeArgs(input.projectDirectory, input.resourceId), "down", "--remove-orphans", "--volumes"], input.environment);
+  }
+};
+
+// src/stages/manager.ts
+var ADAPTERS = { docker: dockerStageAdapter };
+function validateStageName(stage) {
+  if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(stage)) throw new Error("Stage names must use lowercase letters, numbers, and hyphens and be at most 48 characters.");
+  return stage;
+}
+function stageResourceId(projectDirectory, projectName, stage) {
+  const directoryHash = (0, import_node_crypto8.createHash)("sha256").update((0, import_node_path23.resolve)(projectDirectory)).digest("hex").slice(0, 10);
+  const stageHash = (0, import_node_crypto8.createHash)("sha256").update(`${(0, import_node_path23.resolve)(projectDirectory)}\0${stage}`).digest("hex").slice(0, 8);
+  const name = projectName.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 16) || "project";
+  return `ls-${directoryHash}-${name}-${stage.slice(0, 16)}-${stageHash}`;
+}
+var stageEnvironment = (stage, values) => ({ ...values ?? {}, LAUNCHSTACK_STAGE: stage });
+function stateMutation(projectDirectory, state) {
+  const path = ".launchstack/state.json";
+  const absolute = resolveProjectPath(projectDirectory, path);
+  return { type: "write", path, content: serializeProjectState(state), owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: (0, import_node_fs23.existsSync)(absolute) ? hashFile(absolute) : null };
+}
+function persist(projectDirectory, previous, next) {
+  return applyFileMutations({ projectDirectory, mutations: [stateMutation(projectDirectory, next)], state: previous, nextState: next });
+}
+function writeStageState(projectDirectory, stage, value, expectedStatus) {
+  let lastError;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const previous = loadProjectState(projectDirectory);
+    const current = previous.stages[stage];
+    if (current && current.resourceId !== value.resourceId) throw new Error(`Stage ${stage} is already owned by another resource.`);
+    if (expectedStatus && current?.status !== expectedStatus) throw new Error(`Stage ${stage} changed while its provider operation was running.`);
+    if (value.status === "creating" && current?.status === "creating") throw new Error(`Stage ${stage} is already being created.`);
+    const next = structuredClone(previous);
+    next.stages[stage] = value;
+    next.updatedAt = value.updatedAt;
+    try {
+      return persist(projectDirectory, previous, next);
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof Error) || !error.message.includes("File changed since planning")) throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`Unable to update state for stage ${stage}.`);
+}
+function adapter(provider) {
+  const value = ADAPTERS[provider];
+  if (!value) throw new Error(`Provider ${provider} does not implement preview lifecycle operations. Supported: ${Object.keys(ADAPTERS).join(", ")}.`);
+  return value;
+}
+async function createOrUpdateStage(input) {
+  const projectDirectory = (0, import_node_path23.resolve)(input.projectDirectory);
+  const stage = validateStageName(input.stage);
+  const manifest = loadProjectManifest(projectDirectory);
+  const desired = manifest.stages[stage];
+  const production = input.production === true;
+  if (desired?.production === true && !production) throw new Error(`Stage ${stage} is declared production. Re-run with --production.`);
+  if (production && desired?.production !== true) throw new Error(`Refusing to infer ${stage} as production. Declare it in launchstack.json first.`);
+  const provider = desired?.provider ?? manifest.provider?.id ?? "docker";
+  const providerAdapter = adapter(provider);
+  const previous = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
+  const resourceId = stageResourceId(projectDirectory, manifest.project.name, stage);
+  const existing = previous.stages[stage];
+  if (existing && existing.resourceId !== resourceId) throw new Error(`Stored resource identity for ${stage} does not match this project.`);
+  if (existing && existing.provider !== provider) throw new Error(`Stage ${stage} is already owned by ${existing.provider}.`);
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const git = getGitMetadata(projectDirectory);
+  const creating = { name: stage, provider, resourceId, status: "creating", sourceCommit: git?.commitHash, url: existing?.url, createdAt: existing?.createdAt ?? now, updatedAt: now, production };
+  writeStageState(projectDirectory, stage, creating);
+  try {
+    const result = await providerAdapter.create({ projectDirectory, stage, resourceId, environment: stageEnvironment(stage, desired?.env), sourceCommit: git?.commitHash, production });
+    if (result.resourceId !== resourceId) throw new Error(`Provider returned unexpected resource identity for stage ${stage}.`);
+    const ready = { ...creating, status: "ready", url: result.url, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+    writeStageState(projectDirectory, stage, ready, "creating");
+    return ready;
+  } catch (error) {
+    const failed = { ...creating, status: "failed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+    try {
+      writeStageState(projectDirectory, stage, failed, "creating");
+    } catch {
+    }
+    throw error;
+  }
+}
+function inspectStage(projectDirectoryInput, stageInput) {
+  const projectDirectory = (0, import_node_path23.resolve)(projectDirectoryInput);
+  const stage = validateStageName(stageInput);
+  const manifest = loadProjectManifest(projectDirectory);
+  const state = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
+  const stored = state.stages[stage] ?? null;
+  if (!stored) return { stage, state: null };
+  const check = adapter(stored.provider).inspect({ projectDirectory, resourceId: stored.resourceId });
+  return { stage, state: stored, providerExists: check.exists, providerStatus: check.status };
+}
+function destroyStage(input) {
+  const projectDirectory = (0, import_node_path23.resolve)(input.projectDirectory);
+  const stage = validateStageName(input.stage);
+  const manifest = loadProjectManifest(projectDirectory);
+  const previous = loadProjectState(projectDirectory, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
+  const stored = previous.stages[stage];
+  if (!stored) throw new Error(`Stage ${stage} is not recorded.`);
+  if (stored.production !== Boolean(input.production)) throw new Error(`Production acknowledgement does not match stored stage ${stage}.`);
+  const expected = stageResourceId(projectDirectory, manifest.project.name, stage);
+  if (stored.resourceId !== expected) throw new Error(`Stored resource identity for ${stage} failed verification; refusing destroy.`);
+  adapter(stored.provider).destroy({ projectDirectory, resourceId: stored.resourceId, environment: stageEnvironment(stage, manifest.stages[stage]?.env) });
+  const next = structuredClone(previous);
+  delete next.stages[stage];
+  next.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  persist(projectDirectory, previous, next);
+}
+
+// src/commands/deploy.ts
+var deployCommand = new import_commander6.Command("deploy").description("Build/prepare deployment artifacts or deploy a manifest-declared stage").option("--skip-build").option("--stage <stage>").option("--production").option("--json").action(async (options) => {
+  const createdAt = (/* @__PURE__ */ new Date()).toISOString();
+  try {
+    if (options.stage) {
+      if (!options.skipBuild) (0, import_node_child_process7.execSync)("npm run build", { stdio: "inherit", cwd: process.cwd() });
+      const stage = await createOrUpdateStage({ projectDirectory: process.cwd(), stage: options.stage, production: options.production });
+      if (options.json) console.log(JSON.stringify(stage, null, 2));
+      else {
+        console.log(`Stage ${stage.name}: ${stage.status}`);
+        console.log(`Provider: ${stage.provider}`);
+        console.log(`Resource: ${stage.resourceId}`);
+        if (stage.url) console.log(`URL: ${stage.url}`);
+      }
+      return;
+    }
+    if (options.production) throw new Error("--production is only valid with --stage.");
+    const config = readConfig();
+    const git = getGitMetadata();
+    const provider = PROVIDERS[config.provider];
+    console.log("LaunchStack deployment preparation");
+    console.log(`App: ${config.appName}`);
+    console.log(`Environment: ${config.environment}`);
+    console.log(`Provider: ${provider.label}`);
+    if (git) {
+      console.log(`Branch: ${git.branch}`);
+      console.log(`Commit: ${git.commitHash.slice(0, 7)}`);
+      if (git.dirty) console.log("Working tree has uncommitted changes");
+    }
+    if (!options.skipBuild) (0, import_node_child_process7.execSync)(config.buildCommand, { stdio: "inherit", cwd: process.cwd() });
+    resolveVerifiedOutputDirectory(process.cwd(), config.outputDirectory);
+    addDeploymentRecord({ id: `dep_${Date.now()}`, appName: config.appName, environment: config.environment, provider: config.provider, deployTarget: config.deployTarget, outputDirectory: config.outputDirectory, status: "prepared", createdAt, git });
+    console.log(`Deploy target: ${config.deployTarget}`);
+    console.log(provider.remoteDeploymentSupported ? "Deployment provider confirmed the remote deployment." : "Artifacts are prepared. LaunchStack has not performed or confirmed a remote deployment for this provider.");
+  } catch (error) {
+    console.log("Deployment preparation failed");
+    console.log(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  }
+});
+
+// src/commands/stages.ts
+var import_commander7 = require("commander");
+var fail2 = (error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+};
+var previewCommand = new import_commander7.Command("preview").description("Create or update a non-production preview stage").argument("[stage]", "Preview stage name", "preview").option("-d, --directory <path>").option("--json").action(async (stage, options) => {
+  try {
+    const state = await createOrUpdateStage({ projectDirectory: options.directory ?? process.cwd(), stage, production: false });
+    if (options.json) console.log(JSON.stringify(state, null, 2));
+    else console.log(`Preview ${state.name}: ${state.status}`);
+  } catch (error) {
+    fail2(error);
+  }
+});
+var stageCommand = new import_commander7.Command("stage").description("Inspect named LaunchStack stages");
+stageCommand.command("status").argument("<stage>").option("-d, --directory <path>").option("--json").action(async (stage, options) => {
+  try {
+    const status = inspectStage(options.directory ?? process.cwd(), stage);
+    if (options.json) console.log(JSON.stringify(status, null, 2));
+    else console.log(status.state ? `Stage ${stage}: ${status.state.status}` : `Stage ${stage}: absent`);
+  } catch (error) {
+    fail2(error);
+  }
+});
+var destroyCommand = new import_commander7.Command("destroy").description("Destroy a verified LaunchStack stage resource").option("--stage <stage>").option("-d, --directory <path>").option("--production").option("--json").action((options) => {
+  try {
+    if (!options.stage) throw new Error("--stage is required.");
+    destroyStage({ projectDirectory: options.directory ?? process.cwd(), stage: options.stage, production: options.production });
+    if (options.json) console.log(JSON.stringify({ stage: options.stage, status: "destroyed" }, null, 2));
+    else console.log(`Destroyed stage ${options.stage}.`);
+  } catch (error) {
+    fail2(error);
+  }
+});
+
 // src/commands/dev.ts
-var devCommand = new import_commander8.Command("dev").description("Start LaunchStack-managed local development services").option("-d, --directory <path>").option("--service <id>", "Start one service plus its dependencies").option("--no-migrate", "Skip the migration process").option("--json").option("--readiness-timeout <ms>", "Readiness timeout", "30000").action(async (options) => {
+var import_commander8 = require("commander");
+var devCommand = new import_commander8.Command("dev").description("Start LaunchStack-managed local development services").option("-d, --directory <path>").option("--service <id>", "Start one service plus its dependencies").option("--no-migrate", "Skip the development migration process").option("--plan", "Print the resolved service plan and exit").option("--json", "Emit structured service status events").option("--readiness-timeout <ms>", "Readiness timeout", "30000").action(async (options) => {
   try {
     const plan = selectDevPlan(createDevPlan(options.directory ?? process.cwd()), { service: options.service, noMigrate: options.migrate === false });
-    if (options.json) {
-      console.log(JSON.stringify(plan, null, 2));
+    if (options.plan) {
+      if (options.json) console.log(JSON.stringify(plan, null, 2));
+      else for (const service of plan.services) console.log(`${service.id}	${service.kind}	${service.dependencies.join(",") || "-"}`);
       return;
     }
     const timeoutMs = Number.parseInt(options.readinessTimeout, 10);
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1e3 || timeoutMs > 3e5) throw new Error("--readiness-timeout must be between 1000 and 300000 milliseconds.");
-    const orchestrator = new DevOrchestrator(plan);
+    const report = (service, status, detail) => {
+      const event = { timestamp: (/* @__PURE__ */ new Date()).toISOString(), service, status, ...detail ? { detail } : {} };
+      if (options.json) console.log(JSON.stringify(event));
+      else console.log(`${status.toUpperCase()} ${service}${detail ? `: ${detail}` : ""}`);
+    };
+    const orchestrator = new DevOrchestrator(plan, void 0, report);
     let stopping = false;
-    const stop = async () => {
+    const stop = async (code) => {
       if (stopping) return;
       stopping = true;
       await orchestrator.stop();
+      process.exitCode = code;
     };
-    process.once("SIGINT", () => void stop().then(() => {
-      process.exitCode = 130;
-    }));
-    process.once("SIGTERM", () => void stop().then(() => {
-      process.exitCode = 143;
-    }));
+    process.once("SIGINT", () => void stop(130));
+    process.once("SIGTERM", () => void stop(143));
     await orchestrator.start({ readinessTimeoutMs: timeoutMs });
-    console.log("Development services are ready. Press Ctrl+C to stop LaunchStack-owned processes.");
+    report("environment", "ready", "Use SIGINT or SIGTERM to stop LaunchStack-owned processes and the namespaced Compose project.");
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    const detail = error instanceof Error ? error.message : String(error);
+    if (options.json) console.log(JSON.stringify({ timestamp: (/* @__PURE__ */ new Date()).toISOString(), service: "environment", status: "failed", detail }));
+    else console.error(detail);
     process.exitCode = 1;
   }
 });
@@ -2684,11 +2993,11 @@ var devCommand = new import_commander8.Command("dev").description("Start LaunchS
 var import_commander9 = require("commander");
 
 // src/release/doctor.ts
-var import_node_fs23 = require("fs");
-var import_node_path23 = require("path");
+var import_node_fs24 = require("fs");
+var import_node_path24 = require("path");
 function checkFile(projectDirectory, file, label) {
-  const path = (0, import_node_path23.resolve)(projectDirectory, file);
-  const passed = (0, import_node_fs23.existsSync)(path);
+  const path = (0, import_node_path24.resolve)(projectDirectory, file);
+  const passed = (0, import_node_fs24.existsSync)(path);
   return {
     name: label,
     passed,
@@ -2696,11 +3005,11 @@ function checkFile(projectDirectory, file, label) {
   };
 }
 function checkPackageScripts(projectDirectory) {
-  const packagePath = (0, import_node_path23.resolve)(
+  const packagePath = (0, import_node_path24.resolve)(
     projectDirectory,
     "package.json"
   );
-  if (!(0, import_node_fs23.existsSync)(packagePath)) {
+  if (!(0, import_node_fs24.existsSync)(packagePath)) {
     return {
       name: "Package scripts",
       passed: false,
@@ -2708,7 +3017,7 @@ function checkPackageScripts(projectDirectory) {
     };
   }
   const packageJson2 = JSON.parse(
-    (0, import_node_fs23.readFileSync)(packagePath, "utf8")
+    (0, import_node_fs24.readFileSync)(packagePath, "utf8")
   );
   const requiredScripts = [
     "dev",
@@ -2730,18 +3039,18 @@ function checkPackageScripts(projectDirectory) {
   };
 }
 function checkEnvironmentExample(projectDirectory) {
-  const path = (0, import_node_path23.resolve)(
+  const path = (0, import_node_path24.resolve)(
     projectDirectory,
     ".env.example"
   );
-  if (!(0, import_node_fs23.existsSync)(path)) {
+  if (!(0, import_node_fs24.existsSync)(path)) {
     return {
       name: "Environment example",
       passed: false,
       detail: ".env.example is missing"
     };
   }
-  const content = (0, import_node_fs23.readFileSync)(path, "utf8");
+  const content = (0, import_node_fs24.readFileSync)(path, "utf8");
   const requiredVariables = [
     "DATABASE_URL",
     "JWT_ACCESS_SECRET",
@@ -2803,7 +3112,7 @@ function runDoctor(projectDirectory = process.cwd()) {
   ];
   return {
     healthy: checks.every((check) => check.passed),
-    projectDirectory: (0, import_node_path23.resolve)(projectDirectory),
+    projectDirectory: (0, import_node_path24.resolve)(projectDirectory),
     checks
   };
 }
@@ -2847,22 +3156,22 @@ var doctorCommand = new import_commander9.Command("doctor").description("Inspect
 });
 
 // src/commands/docker.ts
-var import_node_fs24 = require("fs");
+var import_node_fs25 = require("fs");
 var import_commander10 = require("commander");
 function writeFileIfAllowed(path, content, force) {
-  if ((0, import_node_fs24.existsSync)(path) && !force) {
+  if ((0, import_node_fs25.existsSync)(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  (0, import_node_fs24.writeFileSync)(path, content);
+  (0, import_node_fs25.writeFileSync)(path, content);
   console.log(`Created ${path}`);
 }
 var dockerCommand = new import_commander10.Command("docker").description("Generate Docker deployment files");
 dockerCommand.command("init").description("Create hardened Dockerfile, .dockerignore, and docker-compose.yml").option("-f, --force", "Overwrite existing Docker files").action((options) => {
   const config = readConfig();
   const force = Boolean(options.force);
-  const hasLockfile = (0, import_node_fs24.existsSync)("package-lock.json");
-  const prisma = (0, import_node_fs24.existsSync)("prisma/schema.prisma");
+  const hasLockfile = (0, import_node_fs25.existsSync)("package-lock.json");
+  const prisma = (0, import_node_fs25.existsSync)("prisma/schema.prisma");
   const dockerfile = renderDockerfile({
     buildCommand: config.buildCommand,
     outputDirectory: config.outputDirectory,
@@ -2912,8 +3221,8 @@ var envCommand = new import_commander11.Command("env").description("View or upda
 var import_commander12 = require("commander");
 
 // src/generator/module.ts
-var import_node_fs25 = require("fs");
-var import_node_path24 = require("path");
+var import_node_fs26 = require("fs");
+var import_node_path25 = require("path");
 var RESERVED_FIELDS = /* @__PURE__ */ new Set(["id", "ownerId", "createdAt", "updatedAt"]);
 var FIELD_TYPES = /* @__PURE__ */ new Set(["string", "number", "boolean", "date"]);
 var validateName = (name) => {
@@ -3029,7 +3338,7 @@ ${registrations || "  void app;"}
 `;
 }
 function planModuleGeneration(input) {
-  const projectDirectory = (0, import_node_path24.resolve)(input.projectDirectory);
+  const projectDirectory = (0, import_node_path25.resolve)(input.projectDirectory);
   const name = validateName(input.name);
   const fields = input.kind === "resource" ? validateFields(input.fields ?? []) : [];
   const manifest = loadProjectManifest(projectDirectory);
@@ -3040,12 +3349,12 @@ function planModuleGeneration(input) {
   for (const [path, content] of Object.entries(files)) {
     if (path.startsWith(".__launchstack_model_")) continue;
     const absolute = resolveProjectPath(projectDirectory, path);
-    if ((0, import_node_fs25.existsSync)(absolute)) throw new Error(`Generation collision: ${path} already exists.`);
+    if ((0, import_node_fs26.existsSync)(absolute)) throw new Error(`Generation collision: ${path} already exists.`);
     mutations.push({ type: "write", path, content, owner, version: currentLaunchStackVersion(), expectedSha256: null });
   }
   const registryPath = "src/routes/launchstack.generated.ts";
   const registryAbsolute = resolveProjectPath(projectDirectory, registryPath);
-  const registryCurrent = (0, import_node_fs25.existsSync)(registryAbsolute) ? (0, import_node_fs25.readFileSync)(registryAbsolute, "utf8") : `import type { FastifyInstance } from "fastify";
+  const registryCurrent = (0, import_node_fs26.existsSync)(registryAbsolute) ? (0, import_node_fs26.readFileSync)(registryAbsolute, "utf8") : `import type { FastifyInstance } from "fastify";
 
 /* launchstack-routes: [] */
 export async function registerGeneratedRoutes(app: FastifyInstance): Promise<void> { void app; }
@@ -3053,13 +3362,13 @@ export async function registerGeneratedRoutes(app: FastifyInstance): Promise<voi
   const names = parseRoutes(registryCurrent);
   if (!names.includes(name)) names.push(name);
   const nextRegistry = renderRoutes(names);
-  if (nextRegistry !== registryCurrent) mutations.push({ type: "write", path: registryPath, content: nextRegistry, owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: (0, import_node_fs25.existsSync)(registryAbsolute) ? hashFile(registryAbsolute) : null });
+  if (nextRegistry !== registryCurrent) mutations.push({ type: "write", path: registryPath, content: nextRegistry, owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: (0, import_node_fs26.existsSync)(registryAbsolute) ? hashFile(registryAbsolute) : null });
   let migrationCommand;
   if (input.kind === "resource") {
     const schemaPath = "prisma/schema.prisma";
     const schemaAbsolute = resolveProjectPath(projectDirectory, schemaPath);
-    if (!(0, import_node_fs25.existsSync)(schemaAbsolute)) throw new Error("Cannot generate a CRUD resource without prisma/schema.prisma.");
-    const schema = (0, import_node_fs25.readFileSync)(schemaAbsolute, "utf8");
+    if (!(0, import_node_fs26.existsSync)(schemaAbsolute)) throw new Error("Cannot generate a CRUD resource without prisma/schema.prisma.");
+    const schema = (0, import_node_fs26.readFileSync)(schemaAbsolute, "utf8");
     const model = files[`.__launchstack_model_${name}`] ?? "";
     if (new RegExp(`\\bmodel\\s+${pascal(name)}\\b`).test(schema)) throw new Error(`Prisma model ${pascal(name)} already exists.`);
     mutations.push({ type: "write", path: schemaPath, content: `${schema.trimEnd()}
@@ -3071,7 +3380,7 @@ ${model}`, owner: "launchstack:metadata", version: currentLaunchStackVersion(), 
   nextState.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
   const statePath = ".launchstack/state.json";
   const stateAbsolute = resolveProjectPath(projectDirectory, statePath);
-  mutations.push({ type: "write", path: statePath, content: serializeProjectState(nextState), owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: (0, import_node_fs25.existsSync)(stateAbsolute) ? hashFile(stateAbsolute) : null });
+  mutations.push({ type: "write", path: statePath, content: serializeProjectState(nextState), owner: "launchstack:metadata", version: currentLaunchStackVersion(), expectedSha256: (0, import_node_fs26.existsSync)(stateAbsolute) ? hashFile(stateAbsolute) : null });
   return { projectDirectory, kind: input.kind, name, files: mutations.map((mutation) => mutation.path).sort(), mutations, nextState, migrationCommand };
 }
 function applyModuleGeneration(plan) {
@@ -3102,15 +3411,15 @@ function configure(kind) {
 var generateCommand = new import_commander12.Command("generate").description("Generate architecture-aware modules and resources").addCommand(configure("module")).addCommand(configure("resource"));
 
 // src/commands/github.ts
-var import_node_fs26 = require("fs");
-var import_node_path25 = require("path");
+var import_node_fs27 = require("fs");
+var import_node_path26 = require("path");
 var import_commander13 = require("commander");
 function writeWorkflowFile(path, content, force) {
-  if ((0, import_node_fs26.existsSync)(path) && !force) {
+  if ((0, import_node_fs27.existsSync)(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  (0, import_node_fs26.mkdirSync)((0, import_node_path25.dirname)(path), { recursive: true });
+  (0, import_node_fs27.mkdirSync)((0, import_node_path26.dirname)(path), { recursive: true });
   atomicWriteText(path, content);
   console.log(`Created ${path}`);
 }
@@ -3200,8 +3509,8 @@ var initCommand = new import_commander15.Command("init").description("Create a L
 var import_commander16 = require("commander");
 
 // src/extensions/plugins.ts
-var import_node_fs27 = require("fs");
-var import_node_path26 = require("path");
+var import_node_fs28 = require("fs");
+var import_node_path27 = require("path");
 var import_zod4 = require("zod");
 var fileSchema = import_zod4.z.object({ path: import_zod4.z.string().min(1).max(240), content: import_zod4.z.string().max(1e6), executable: import_zod4.z.boolean().optional() }).strict();
 var environmentSchema = import_zod4.z.object({ name: import_zod4.z.string().regex(/^[A-Z][A-Z0-9_]*$/), description: import_zod4.z.string().min(1).max(300), example: import_zod4.z.string().max(500).optional(), required: import_zod4.z.boolean().optional(), secret: import_zod4.z.boolean().optional() }).strict();
@@ -3231,16 +3540,16 @@ function parsePluginManifest(input, allowHooks = false) {
 }
 function resolvePluginManifestPath(projectDirectory, specifier) {
   if (specifier.includes("\0")) throw new Error("Invalid plugin specifier");
-  if (specifier.endsWith(".json") || specifier.startsWith(".") || (0, import_node_path26.isAbsolute)(specifier)) return (0, import_node_path26.resolve)(projectDirectory, specifier);
+  if (specifier.endsWith(".json") || specifier.startsWith(".") || (0, import_node_path27.isAbsolute)(specifier)) return (0, import_node_path27.resolve)(projectDirectory, specifier);
   const segments = specifier.startsWith("@") ? specifier.split("/") : [specifier];
   if (segments.some((segment) => segment === ".." || segment === "." || !segment)) throw new Error(`Invalid plugin package name: ${specifier}`);
-  return (0, import_node_path26.join)((0, import_node_path26.resolve)(projectDirectory), "node_modules", ...segments, "launchstack-plugin.json");
+  return (0, import_node_path27.join)((0, import_node_path27.resolve)(projectDirectory), "node_modules", ...segments, "launchstack-plugin.json");
 }
 function loadPluginManifest(projectDirectory, specifier, options = {}) {
   const path = resolvePluginManifestPath(projectDirectory, specifier);
-  if (!(0, import_node_fs27.existsSync)(path)) throw new Error(`Plugin manifest not found at ${path}. Install third-party packages with scripts disabled, review launchstack-plugin.json, then run launchstack plugin add.`);
+  if (!(0, import_node_fs28.existsSync)(path)) throw new Error(`Plugin manifest not found at ${path}. Install third-party packages with scripts disabled, review launchstack-plugin.json, then run launchstack plugin add.`);
   try {
-    return parsePluginManifest(JSON.parse((0, import_node_fs27.readFileSync)(path, "utf8")), options.allowHooks ?? false);
+    return parsePluginManifest(JSON.parse((0, import_node_fs28.readFileSync)(path, "utf8")), options.allowHooks ?? false);
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("Invalid LaunchStack")) throw error;
     throw new Error(`Unable to read plugin manifest: ${error instanceof Error ? error.message : String(error)}`);
@@ -3362,8 +3671,8 @@ var rollbackCommand = new import_commander18.Command("rollback").description("Sh
 var import_commander19 = require("commander");
 
 // src/secrets-store.ts
-var import_node_fs28 = require("fs");
-var import_node_path27 = require("path");
+var import_node_fs29 = require("fs");
+var import_node_path28 = require("path");
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
 var SECRET_MODE = 384;
@@ -3373,7 +3682,7 @@ var RESERVED_KEYS = /* @__PURE__ */ new Set([
   "prototype"
 ]);
 function getSecretsPath(projectDirectory = process.cwd()) {
-  return (0, import_node_path27.resolve)(
+  return (0, import_node_path28.resolve)(
     projectDirectory,
     STORE_DIR2,
     SECRETS_FILE
@@ -3390,16 +3699,16 @@ function validateSecretKey(key) {
 }
 function readSecrets(projectDirectory = process.cwd()) {
   const path = getSecretsPath(projectDirectory);
-  const directory2 = (0, import_node_path27.resolve)(projectDirectory, STORE_DIR2);
-  if ((0, import_node_fs28.existsSync)(directory2)) {
-    const directoryStat = (0, import_node_fs28.lstatSync)(directory2);
+  const directory2 = (0, import_node_path28.resolve)(projectDirectory, STORE_DIR2);
+  if ((0, import_node_fs29.existsSync)(directory2)) {
+    const directoryStat = (0, import_node_fs29.lstatSync)(directory2);
     if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
       throw new Error("LaunchStack secrets directory must be a real directory.");
     }
   }
   let parsed = {};
-  if ((0, import_node_fs28.existsSync)(path)) {
-    const secretStat = (0, import_node_fs28.lstatSync)(path);
+  if ((0, import_node_fs29.existsSync)(path)) {
+    const secretStat = (0, import_node_fs29.lstatSync)(path);
     if (secretStat.isSymbolicLink() || !secretStat.isFile()) {
       throw new Error("secrets.json must be a regular file, not a link or special file.");
     }
@@ -3407,7 +3716,7 @@ function readSecrets(projectDirectory = process.cwd()) {
       throw new Error("secrets.json permissions are too broad; expected owner-only access.");
     }
     try {
-      parsed = JSON.parse((0, import_node_fs28.readFileSync)(path, "utf8"));
+      parsed = JSON.parse((0, import_node_fs29.readFileSync)(path, "utf8"));
     } catch {
       throw new Error("Invalid JSON in secrets.json.");
     }
@@ -3426,13 +3735,13 @@ function readSecrets(projectDirectory = process.cwd()) {
   return secrets;
 }
 function writeSecrets(secrets, projectDirectory = process.cwd()) {
-  const storeDirectory = (0, import_node_path27.resolve)(projectDirectory, STORE_DIR2);
-  (0, import_node_fs28.mkdirSync)(storeDirectory, { recursive: true, mode: 448 });
-  const directoryStat = (0, import_node_fs28.lstatSync)(storeDirectory);
+  const storeDirectory = (0, import_node_path28.resolve)(projectDirectory, STORE_DIR2);
+  (0, import_node_fs29.mkdirSync)(storeDirectory, { recursive: true, mode: 448 });
+  const directoryStat = (0, import_node_fs29.lstatSync)(storeDirectory);
   if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
     throw new Error("LaunchStack secrets directory must be a real directory.");
   }
-  if (process.platform !== "win32") (0, import_node_fs28.chmodSync)(storeDirectory, 448);
+  if (process.platform !== "win32") (0, import_node_fs29.chmodSync)(storeDirectory, 448);
   atomicWriteText(
     getSecretsPath(projectDirectory),
     `${JSON.stringify(secrets, null, 2)}
@@ -3552,8 +3861,8 @@ secretsCommand.command("remove").description("Remove a local secret").argument("
 });
 
 // src/commands/status.ts
-var import_node_fs29 = require("fs");
-var import_node_path28 = require("path");
+var import_node_fs30 = require("fs");
+var import_node_path29 = require("path");
 var import_commander20 = require("commander");
 var statusCommand = new import_commander20.Command("status").description("Show LaunchStack project or stage status").option("--stage <stage>", "Show one named stage").option("--json").option("-d, --directory <path>").action((options) => {
   const directory2 = options.directory ?? process.cwd();
@@ -3565,7 +3874,7 @@ var statusCommand = new import_commander20.Command("status").description("Show L
       else console.log(`Stage ${options.stage}: ${output2.status}${output2.provider ? ` (${output2.provider})` : ""}`);
       return;
     }
-    if ((0, import_node_fs29.existsSync)((0, import_node_path28.join)(directory2, "launchstack.json"))) {
+    if ((0, import_node_fs30.existsSync)((0, import_node_path29.join)(directory2, "launchstack.json"))) {
       const manifest = loadProjectManifest(directory2);
       const state = loadProjectState(directory2, { templateVersion: manifest.project.templateVersion, cliVersion: currentLaunchStackVersion() });
       const drift = detectManagedDrift(directory2, state);

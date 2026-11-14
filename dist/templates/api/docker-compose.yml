@@ -1,14 +1,13 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: {{PROJECT_NAME}}-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: launchstack
       POSTGRES_PASSWORD: launchstack
       POSTGRES_DB: {{PROJECT_NAME}}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${LAUNCHSTACK_POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +22,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: {{PROJECT_NAME}}-api
     restart: unless-stopped
     depends_on:
       postgres:
@@ -40,7 +38,7 @@ services:
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${LAUNCHSTACK_API_PORT:-3000}:3000"
     healthcheck:
       test:
         - CMD

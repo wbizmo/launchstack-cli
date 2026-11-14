@@ -47,6 +47,18 @@
 - Refuse capability removal when another installed capability depends on it; remove generated process scripts and regenerate Compose state without deleting modified or user-owned files.
 - Verified packed CLI capability addition, lockfile installation, Compose validation, Redis health/readiness and a real BullMQ job roundtrip. The scheduler emitted repeated ticks and stopped on SIGTERM.
 
+### Local orchestration and previews (issue #35)
+- Use project and stage specific Compose namespaces, allocate loopback ports, and wait for Compose health checks plus API, worker and scheduler HTTP readiness.
+- Keep development migrations on loopback, add guarded local reset and seed scripts, and report structured service states.
+- Add an optional generic local HTTP mock endpoint for development adapters; it clearly identifies itself as a stub and does not claim provider fidelity.
+- Track process groups through child exit so failure cleanup still stops descendants; preserve database volumes during development shutdown.
+- Serialize host port allocation and merge concurrent stage state updates. Pass an available Node CA file to BuildKit as a temporary secret during local preview builds.
+- Carry allocated Redis ports into generated capability Compose files and include those services in isolated preview stage create/status/destroy operations.
+- Verified a fresh packed CLI with two simultaneous generated projects and two simultaneous preview stages, including real PostgreSQL and API health checks. Measurements are recorded in `docs/benchmarks/issue-35-orchestration.md`.
+- With default API/Redis ports occupied, verified reassignment to 3001/6380 and completed a real BullMQ job through the generated worker.
+- Added regression coverage for migration/reset/seed safeguards, premature child exits, readiness retry, Docker failure cleanup and operation timeouts.
+- Full `release:check` passed on Node 24.22.3/PostgreSQL 16 and Node 26.13.1/PostgreSQL 17: each run passed 38 root test files / 137 tests and 8 generated API test files / 26 tests, with zero production audit findings.
+
 ## 3.0.0 - 2026-09-14
 
 ### Lifecycle platform

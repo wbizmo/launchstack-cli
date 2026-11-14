@@ -7,4 +7,4 @@ services:
       NODE_ENV: production
       LOG_LEVEL: warn
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${LAUNCHSTACK_API_PORT:-3000}:3000"
