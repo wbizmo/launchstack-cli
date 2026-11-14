@@ -1,17 +1,13 @@
 # LaunchStack CLI
 
-[![CI](https://github.com/wbizmo/launchstack-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wbizmo/launchstack-cli/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/wbizmo/launchstack-cli/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/wbizmo/launchstack-cli/actions/workflows/codeql.yml)
 [![GitHub release](https://img.shields.io/github/v/release/wbizmo/launchstack-cli?display_name=tag)](https://github.com/wbizmo/launchstack-cli/releases)
-[![npm version](https://img.shields.io/npm/v/launchstack-cli)](https://www.npmjs.com/package/launchstack-cli)
+[![npm version](https://img.shields.io/badge/npm-v3.0.4-CB3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/launchstack-cli)
 [![Node.js](https://img.shields.io/badge/Node.js-24%20%7C%2026-339933?logo=node.js&logoColor=white)](docs/COMPATIBILITY.md)
 [![License: MIT](https://img.shields.io/github/license/wbizmo/launchstack-cli)](LICENSE)
 
 TypeScript backend scaffolding and lifecycle management. LaunchStack creates Fastify, Prisma and PostgreSQL projects, then helps teams manage generated files, capabilities, upgrades, local environments, typed clients and preview stages as the project changes.
 
-**Latest GitHub release:** [v3.0.4](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.4) · [Release notes](RELEASE_NOTES_3.0.4.md) · [Zivora Labs project page](https://www.zivoralabs.xyz/open-source/launchstack-cli)
-
-**npm status:** The latest version in the npm registry is currently 3.0.0. v3.0.4 is available as a GitHub release; npm publication is pending separate approval.
+**Release:** [v3.0.4](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.4) · [Release notes](RELEASE_NOTES_3.0.4.md) · [Zivora Labs project page](https://www.zivoralabs.xyz/open-source/launchstack-cli)
 
 ## Requirements
 
@@ -20,21 +16,8 @@ TypeScript backend scaffolding and lifecycle management. LaunchStack creates Fas
 
 ## Install
 
-After v3.0.4 is published to npm:
-
 ```bash
-npm install --global launchstack-cli
-```
-
-To use the current GitHub release before npm publication:
-
-```bash
-git clone https://github.com/wbizmo/launchstack-cli.git
-cd launchstack-cli
-git checkout v3.0.4
-npm ci
-npm run build
-npm link
+npm install --global launchstack-cli@3.0.4
 ```
 
 ## Quick start
@@ -128,7 +111,7 @@ The generated API exposes Swagger UI at `/docs`, health at `/health` and readine
 
 ## v3.0.4 benchmark results
 
-These are measured diagnostics from the v3.0.4 qualification work, not performance guarantees. The reports contain full methodology, environment, raw JSON and comparison limits; all are included in the public [`v3.0.4` source tag](https://github.com/wbizmo/launchstack-cli/tree/v3.0.4/docs/benchmarks).
+These are measured diagnostics from the v3.0.4 qualification work. The reports contain full methodology, environment, raw JSON and comparison limits; all are included in the public [`v3.0.4` source tag](https://github.com/wbizmo/launchstack-cli/tree/v3.0.4/docs/benchmarks).
 
 | Area                                                                                                               | Recorded result                                                                                                                                                                         | Reproduction                                                                                                         |
 | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
@@ -153,7 +136,7 @@ npm run release:check
 npm run docker:template:smoke
 ```
 
-`release:check` runs formatting, lint, strict typechecking, tests, bounded security fuzzing, reproducible distribution checks, package inspection, runtime dependency audit, SBOM validation, packed CLI smoke and a PostgreSQL-backed generated-project smoke. The v3.0.4 release gate passed on Node 24.22.3/PostgreSQL 16 and Node 26.13.1/PostgreSQL 17. The production Docker smoke passed health and PostgreSQL readiness checks.
+`release:check` runs formatting, lint, strict typechecking, tests, bounded security fuzzing, reproducible distribution checks, package inspection, runtime dependency audit, SBOM validation, packed CLI smoke and a PostgreSQL-backed generated-project smoke. `docker:template:smoke` builds and checks the generated production container.
 
 Publishing is guarded by a manually dispatched workflow on `main`, requires `authorize_publication=true` and uses the protected `npm-publish` environment. A merge or tag push alone does not publish. Read [the release process](docs/RELEASING.md) and [the full issue ledger](docs/release/ISSUES_30_39.md).
 
