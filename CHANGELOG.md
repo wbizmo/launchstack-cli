@@ -11,7 +11,7 @@ Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.m
 - The matched v3.0.0 / v3.0.4 CLI measurements show higher candidate startup and total generation times on this run; the candidate template is larger, and no general speedup is claimed.
 - Add a v3.0.4 engineering summary and compatibility/migration table, including the Node 20 support break, Prisma 6 compatibility and the explicit v2.0.0-to-v3.0.0 project migration edge.
 - Extend the release gate with Prettier, CycloneDX production SBOM validation and Windows portability CI; add CodeQL security analysis.
-- Restrict npm publication to manual workflow dispatch on `main` with the explicit authorization input and protected `npm-publish` environment. Ordinary branch/tag pushes cannot publish.
+- Restrict npm publication to manual workflow dispatch on `main` with the explicit authorization input and the `npm-publish` GitHub environment. Ordinary branch/tag pushes cannot publish.
 - v3.0.4 is released as [LaunchStack CLI v3.0.4](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.4). Post-merge `release:check` passed on Node 24.22.3 and 26.13.1; generated production Docker smoke, main CI and CodeQL passed. The README and [`RELEASE_NOTES_3.0.4.md`](RELEASE_NOTES_3.0.4.md) contain measured benchmark summaries, reproduction commands and links to the reports and machine-readable results.
 
 ### Changed

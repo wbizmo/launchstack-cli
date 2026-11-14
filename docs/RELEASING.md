@@ -15,7 +15,7 @@ LaunchStack releases are produced from a reviewed, verified `main` commit. v3.0.
 
 `.github/workflows/publish.yml` runs only through manual `workflow_dispatch` on `main` with `authorize_publication=true`. The job is also attached to the `npm-publish` GitHub environment, where repository administrators should configure required reviewers and the npm credential. Ordinary pushes to `main` and tag pushes cannot publish. The workflow verifies that the package is exactly v3.0.4, confirms the version is not already published, reruns `release:check`, checks tag consistency, then creates the matching tag, publishes with npm provenance and creates the GitHub Release.
 
-The boolean workflow input is an explicit release authorization. The protected environment is an additional repository-side check. The draft review must be approved by maintainers before workflow dispatch; the publish workflow does not merge code or change review state.
+The boolean workflow input is an explicit release authorization. The `npm-publish` GitHub environment is an additional repository-side gate. The draft review must be approved by maintainers before workflow dispatch; the publish workflow does not merge code or change review state.
 
 ## npm credential
 

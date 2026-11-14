@@ -140,7 +140,7 @@ npm run docker:template:smoke
 
 `release:check` runs formatting, lint, strict typechecking, tests, bounded security fuzzing, reproducible distribution checks, package inspection, runtime dependency audit, SBOM validation, packed CLI smoke and a PostgreSQL-backed generated-project smoke. `docker:template:smoke` builds and checks the generated production container.
 
-Publishing is guarded by a manually dispatched workflow on `main`, requires `authorize_publication=true` and uses the protected `npm-publish` environment. A merge or tag push alone does not publish. Read [the release process](docs/RELEASING.md) and [the engineering summary](docs/release/V3.0.4_RELEASE_SUMMARY.md).
+Publishing is guarded by a manually dispatched workflow on `main`, requires `authorize_publication=true` and uses the `npm-publish` GitHub environment. A merge or tag push alone does not publish. Read [the release process](docs/RELEASING.md) and [the engineering summary](docs/release/V3.0.4_RELEASE_SUMMARY.md).
 
 ## Maintainers
 
