@@ -1,4 +1,4 @@
-# Issue #36 generator query and SDK verification
+# Generator query and SDK verification
 
 Implementation: [`b5cf167`](https://github.com/wbizmo/launchstack-cli/commit/b5cf167defb475caf7d50fab79093d88df4cc66b)
 
@@ -26,4 +26,4 @@ The loader enforces HTTPS for remote sources, a 10 second timeout, a 1 MiB trans
 
 The focused suite passed 13 tests across two files. The generated project passed typecheck, its build, 28 tests across nine files and the production dependency audit (zero high or critical findings). The smoke script performs `npm ci` to build the isolated project; package download duration is excluded from the query-count observations.
 
-Machine-readable observations are in [`issue-36-generators.json`](issue-36-generators.json). No response-time, throughput or scale claim is made from this workload.
+Machine-readable observations are in [`generators.json`](generators.json). No response-time, throughput or scale claim is made from this workload.

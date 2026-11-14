@@ -1,8 +1,8 @@
-# Issue #31 audit path-scanning benchmark
+# Security audit path-scanning benchmark
 
 **Candidate:** audit bound and classification correction at `eb2a6f9a7d1869f5f32aa17addc8990262d5d056`.
 
-**Runtime and machine:** Node 24.22.3, Linux x64, kernel 6.18.57, AMD EPYC 9V74, four CPUs available. The fixture is a synthetic Git index with one shared blob and deterministic path labels. It exercises `git ls-files` and the LS005 tracked-path heuristic without creating or reading file contents. One warmup and three measured samples ran at each size. The [machine-readable output](issue-31-security.json) records CPU, sampled descriptor counts, RSS, workload bytes and integrity outcomes.
+**Runtime and machine:** Node 24.22.3, Linux x64, kernel 6.18.57, AMD EPYC 9V74, four CPUs available. The fixture is a synthetic Git index with one shared blob and deterministic path labels. It exercises `git ls-files` and the LS005 tracked-path heuristic without creating or reading file contents. One warmup and three measured samples ran at each size. The [machine-readable output](security-audit.json) records CPU, sampled descriptor counts, RSS, workload bytes and integrity outcomes.
 
 | Tracked paths | Git path bytes | LS005 path candidates |   Scan p50 / p95 | Filesystem content bytes read | Descriptor count before / after |
 | ------------: | -------------: | --------------------: | ---------------: | ----------------------------: | ------------------------------: |

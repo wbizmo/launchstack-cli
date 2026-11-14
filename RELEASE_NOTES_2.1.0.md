@@ -36,9 +36,9 @@ The repository now uses lockfile-first CI, intentional semver ranges, Node.js 20
 
 When a new version reaches `main`, the publish workflow reruns the full release gate, verifies the versioned release notes, creates the matching `v<version>` tag at the exact merged commit, publishes to npm with provenance using the `LAUNCHSTACK_NPM_TOKEN` repository secret, and creates the GitHub Release titled `LaunchStack CLI v<version>` from this file.
 
-## GitHub issues addressed
+## Hardening delivered
 
-This release implements the correctness/security/performance hardening backlog tracked in issues #2 through #18, including credential-forwarding release integrity, secret storage, refresh-token concurrency, vulnerable generated dependencies, auth hardening, CORS, duplicate registration races, CI/release gating, deployment semantics, supply-chain reproducibility, JWT configuration validation, CLI version drift, transactional generation, template performance, Git subprocess reduction, Docker hardening, and provider consistency.
+This release delivers correctness, security and performance hardening, including credential-forwarding release integrity, secret storage, refresh-token concurrency, vulnerable generated dependencies, authentication hardening, CORS, duplicate registration races, CI/release gating, deployment semantics, supply-chain reproducibility, JWT configuration validation, CLI version consistency, transactional generation, template performance, Git subprocess reduction, Docker hardening, and provider consistency.
 
 ## Breaking/behavior changes
 

@@ -1,12 +1,12 @@
-# Issue #33 upgrade planning benchmark
+# Upgrade planning benchmark
 
 **Baseline:** published v3.0.0, `f76996cc0c3d125abcb1e6f998d2cc037c02b140`
 
-**Candidate:** issue #33 implementation; exact commit is recorded in the JSON result.
+**Candidate:** upgrade improvements implementation; exact commit is recorded in the JSON result.
 
 **Runtime and machine:** Node 24.22.3, Linux x64, AMD EPYC 9V74, 5 visible CPUs, 33.3 GiB RAM. Both versions used the same `/tmp` filesystem.
 
-The benchmark builds v2.0.0 projects with 100, 1,000 or 10,000 actual tracked files and package version 2.1.3. It separately measures a full SHA-256 drift scan and `planUpgrade`, using one warmup and three fresh worker processes per size, without network access. Planning does not apply mutations. Machine-readable observations and state sizes are in [`issue-33-upgrades.json`](issue-33-upgrades.json).
+The benchmark builds v2.0.0 projects with 100, 1,000 or 10,000 actual tracked files and package version 2.1.3. It separately measures a full SHA-256 drift scan and `planUpgrade`, using one warmup and three fresh worker processes per size, without network access. Planning does not apply mutations. Machine-readable observations and state sizes are in [`upgrades.json`](upgrades.json).
 
 | Tracked files | State JSON | Drift scan p50 / p95 | Plan p50 / p95 (baseline) | Plan p50 / p95 (candidate) | Candidate sampled RSS |
 | ------------: | ---------: | -------------------: | ------------------------: | -------------------------: | --------------------: |

@@ -1,4 +1,4 @@
-# Issue #35 local orchestration measurements
+# Local orchestration measurements
 
 Run date: 2026-11-14 UTC
 

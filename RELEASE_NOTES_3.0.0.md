@@ -31,9 +31,9 @@ Fresh projects include `launchstack.json` plus `.launchstack/state.json`. `plan`
 - OpenAPI generation traverses paths/schema nodes once and uses deterministic collision suffixes.
 - Existing generated API database-enforced refresh-token and registration race tests remain in the release gate.
 
-## Issues addressed
+## Release scope
 
-This release implements the v3 roadmap tracked in #19 through #27: composable capabilities, project drift/upgrades, local orchestration, typed API clients, production audit, resource/module generation, preview/stage lifecycle, plugin recipes, and the declarative project manifest/reconciliation engine.
+This release implements the v3 roadmap, including: composable capabilities, project drift/upgrades, local orchestration, typed API clients, production audit, resource/module generation, preview/stage lifecycle, plugin recipes, and the declarative project manifest/reconciliation engine.
 
 ## Upgrade
 
@@ -49,4 +49,4 @@ Ambiguous user edits are reported as conflicts and must be resolved explicitly.
 
 ## Verification
 
-The release is only considered complete after the exact PR head and merged `main` SHA pass `npm run release:check`, followed by a successful provenance-enabled npm publish and GitHub Release creation.
+The release passed `npm run release:check` on the exact source and merged `main` commits, followed by provenance-enabled npm publication and GitHub Release creation.

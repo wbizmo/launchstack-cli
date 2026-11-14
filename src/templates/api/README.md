@@ -35,7 +35,7 @@ launchstack diff
 launchstack audit --production
 launchstack generate resource invoice --field total:number
 launchstack client generate --schema ./openapi.json
-launchstack preview pr-142
+launchstack preview preview-demo
 ```
 
 Generated CRUD resources are authenticated and owner-scoped at persistence boundaries by default. Add domain-specific RBAC/invariants in services before privileged workflows.
