@@ -1,6 +1,6 @@
 # LaunchStack CLI v3.0.4 release ledger
 
-Status: **Draft / Unreleased**. The ledger records local implementation and evidence; GitHub review, CI and publication are tracked separately and must be verified on the final PR head.
+Status: **Draft / Unreleased**. The ledger records local implementation and evidence; Local verification is recorded below. GitHub CI, CodeRabbit review and publication are tracked separately and must be verified on the pushed PR head.
 
 | Issue                                                      | Batch                                                       | Implementation commit                      | Verification evidence                                                                                                                                                            | Status                                 |
 | ---------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
