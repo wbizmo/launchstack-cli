@@ -1,6 +1,6 @@
 # Issue #38: release qualification measurements
 
-Status: measured on the local v3.0.4 candidate, **Draft / Unreleased**. Workload targets from the issue are not performance claims. The machine-readable run with raw samples and workload details is [`issue-38-qualification.json`](issue-38-qualification.json).
+Status: measured on the local v3.0.4 candidate and included in the [published v3.0.4 source tag](https://github.com/wbizmo/launchstack-cli/tree/v3.0.4/docs/benchmarks). Workload targets from the issue are not performance claims. The machine-readable run with raw samples and workload details is [`issue-38-qualification.json`](issue-38-qualification.json).
 
 ## Method
 

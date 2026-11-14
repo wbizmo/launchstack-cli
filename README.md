@@ -1,5 +1,9 @@
 # LaunchStack CLI
 
+**Current GitHub release: [v3.0.4](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.4)** · [Release notes](RELEASE_NOTES_3.0.4.md) · [Benchmark results](#v304-benchmark-results-and-reproduction)
+
+GitHub release v3.0.4 was published on 2026-11-14. npm publication is pending separate approval, so the new version is not yet available from the npm registry.
+
 Production-ready backend scaffolding **and lifecycle management** for TypeScript services.
 
 LaunchStack generates hardened Fastify APIs with TypeScript, Prisma/PostgreSQL, JWT authentication, Zod validation, OpenAPI, Docker and CI, then keeps those projects manageable as they evolve: capabilities, drift-safe upgrades, local orchestration, typed SDKs, production audits, resource generation, preview stages and validated plugins all share one project-state model.
@@ -194,11 +198,29 @@ npm run release:check
 
 The release gate runs linting, strict TypeScript checks, unit/integration tests, deterministic `dist/` verification, `npm pack` inspection, packed-artifact smoke tests, a fresh generated API install/build/test against PostgreSQL, auth race/concurrency tests and runtime vulnerability audits.
 
+## v3.0.4 benchmark results and reproduction
+
+These are measured diagnostics, not performance guarantees. The full methodology, environment, raw observations and limits are in the linked reports, all included in the public [`v3.0.4` source tag](https://github.com/wbizmo/launchstack-cli/tree/v3.0.4/docs/benchmarks). Set `NPM_CONFIG_CACHE` to a writable npm cache directory before running the commands below; the release qualification environment used `/workspace/.npm-cache`.
+
+| Issue                                                                                                          | Measured result                                                                                                                                                                                          | Reproduction command                                                                                                 |
+| -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| [#30 runtime](docs/benchmarks/issue-30-runtime.md)                                                             | No consistent startup speedup; warm `--version` p50 was 5.7% slower and `--help` p50 1.4% faster in this sample.                                                                                         | `npm run bench:cli`                                                                                                  |
+| [#31 audit and fuzz](docs/benchmarks/issue-31-security.md) · [fuzz](docs/benchmarks/issue-31-security-fuzz.md) | 100k tracked paths scanned at 111.1 ms p50 / 141.7 ms p95; 1,290 bounded hostile-input cases passed.                                                                                                     | `npm run bench:security` and `npm run security:fuzz`                                                                 |
+| [#32 transactions](docs/benchmarks/issue-32-transactions.md)                                                   | 10k-file apply p50 was 6.27 s vs 1.98 s on v3.0.0; durable staging and flushes account for added cost. 8/32 process writer tests had no lost writes.                                                     | `npm run bench:transactions`                                                                                         |
+| [#33 upgrades](docs/benchmarks/issue-33-upgrades.md)                                                           | At 10k files, upgrade-plan p50 was 82.1 ms vs 46.9 ms on v3.0.0; no speedup is claimed.                                                                                                                  | `npm run bench:upgrades`                                                                                             |
+| [#34 capabilities](docs/benchmarks/issue-34-capabilities.md)                                                   | Dense 10k-node / 99,945-edge graph p50 was 9.19 ms; ten BullMQ jobs completed with p50 2.00 ms / p95 6.65 ms.                                                                                            | `npm run bench:capabilities`; Redis/queue/cron checks require Docker Compose and `redis:8-alpine`.                   |
+| [#35 orchestration](docs/benchmarks/issue-35-orchestration.md)                                                 | Two generated projects reached readiness in 19.96 s; two warm preview stages in 68.28 s. Single-host observations only.                                                                                  | Follow the Docker and packed-CLI scenario in the report; no standalone benchmark script is provided.                 |
+| [#36 generators](docs/benchmarks/issue-36-generators.md)                                                       | Owner-scoped concurrent updates used two `UPDATE`s and no pre-read; each keyset page used one bounded `SELECT`. Functional query-count check, not a latency benchmark.                                   | `npm run template:smoke`; it requires PostgreSQL.                                                                    |
+| [#37 complexity](docs/benchmarks/issue-37-complexity.md)                                                       | Scheduling is **O((V+E) log V)**; extension ordering **O(V+E)**; streaming hash **O(B)** time with a fixed-size buffer.                                                                                  | `npm run bench:complexity`                                                                                           |
+| [#38 qualification](docs/benchmarks/issue-38-qualification.md)                                                 | At 250k files, candidate drift p50 was 36.41 s vs 2.53 s on v3.0.0; the candidate was 14.41× slower in this host comparison. API results and other workloads are reported without a general speed claim. | `npm run build && npm run bench:qualification`; requires PostgreSQL, Docker and temporary disk for up to 250k files. |
+
+Machine-readable JSON accompanies the reports where available. For the exact post-merge release gate, run `npm run release:check` on Node 24.22.3 and 26.13.1 with PostgreSQL, then `npm run docker:template:smoke` with a working Docker daemon. The benchmark reports record when a comparison was not run, such as optional 128-worker or 1,000-fault-trial stress; those targets are not presented as achieved results.
+
 ## Releases
 
 Every release from v2.1.0 onward has `RELEASE_NOTES_<version>.md` plus the cumulative `CHANGELOG.md`. `docs/RELEASING.md` documents the process.
 
-When a new version reaches `main`, `.github/workflows/publish.yml` reruns the full release gate, verifies the versioned release notes, creates `v<version>` on the exact merged SHA, publishes with npm provenance using the repository secret `LAUNCHSTACK_NPM_TOKEN` exposed only as `NODE_AUTH_TOKEN`, and creates the GitHub Release. Already-published versions are not republished.
+Publishing is guarded by a manually dispatched `.github/workflows/publish.yml` run on `main` with `authorize_publication=true` and the protected `npm-publish` environment. The workflow reruns the full release gate, verifies the versioned release notes and matching tag, then publishes with npm provenance using `LAUNCHSTACK_NPM_TOKEN`. A merge or tag push alone does not publish. Already-published versions are not republished.
 
 ## Complexity targets
 
@@ -211,8 +233,6 @@ Complexity bounds for the implemented hot paths:
 - Stage state lookup is **O(1)** by key. See the per-issue reports under [`docs/benchmarks/`](docs/benchmarks/) for measured workloads; timing results are diagnostic unless a controlled runner is used.
 
 Run `npm run bench:complexity` for the deterministic graph and file-hash cases. The recorded #37 results, comparison limits and CPU profile are in [`docs/benchmarks/issue-37-complexity.md`](docs/benchmarks/issue-37-complexity.md).
-
-Run `NPM_CONFIG_CACHE=/workspace/.npm-cache npm run bench:security` for a reproducible Git tracked-path audit benchmark at 1k, 10k, 50k and 100k entries. The harness reports path bytes and explicitly records that it does not scan file contents.
 
 Run `NPM_CONFIG_CACHE=/workspace/.npm-cache npm run bench:security` for a reproducible Git tracked-path audit benchmark at 1k, 10k, 50k and 100k entries. The harness reports path bytes and explicitly records that it does not scan file contents.
 
