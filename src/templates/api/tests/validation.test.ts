@@ -1,9 +1,4 @@
-import {
-  afterEach,
-  describe,
-  expect,
-  it
-} from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/app";
 
@@ -29,8 +24,8 @@ describe("Zod request validation", () => {
       url: "/api/auth/register",
       payload: {
         email: "not-an-email",
-        password: "strong-password"
-      }
+        password: "strong-password",
+      },
     });
 
     expect(response.statusCode).toBe(400);
@@ -45,8 +40,8 @@ describe("Zod request validation", () => {
       url: "/api/auth/register",
       payload: {
         email: "user@example.com",
-        password: "short"
-      }
+        password: "short",
+      },
     });
 
     expect(response.statusCode).toBe(400);
@@ -61,8 +56,8 @@ describe("Zod request validation", () => {
       url: "/api/auth/register",
       payload: {
         email: "user@example.com",
-        password: "x".repeat(129)
-      }
+        password: "x".repeat(129),
+      },
     });
 
     expect(response.statusCode).toBe(400);
@@ -75,7 +70,7 @@ describe("Zod request validation", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/auth/login",
-      payload: {}
+      payload: {},
     });
 
     expect(response.statusCode).toBe(400);
@@ -90,12 +85,12 @@ describe("Zod request validation", () => {
     const first = await app.inject({
       method: "POST",
       url: "/api/auth/login",
-      payload: {}
+      payload: {},
     });
     const second = await app.inject({
       method: "POST",
       url: "/api/auth/login",
-      payload: {}
+      payload: {},
     });
 
     expect(first.statusCode).toBe(400);
@@ -111,8 +106,8 @@ describe("Zod request validation", () => {
       method: "POST",
       url: "/api/auth/refresh",
       payload: {
-        refreshToken: "x".repeat(4097)
-      }
+        refreshToken: "x".repeat(4097),
+      },
     });
 
     expect(response.statusCode).toBe(400);
@@ -124,7 +119,7 @@ describe("Zod request validation", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: "/health"
+      url: "/health",
     });
 
     expect(response.statusCode).toBe(200);

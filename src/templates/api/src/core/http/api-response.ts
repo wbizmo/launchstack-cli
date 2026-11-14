@@ -5,14 +5,14 @@ export type ApiSuccessResponse<T> = {
 
 export function successResponse<T>(
   data: T,
-  meta?: Record<string, unknown>
+  meta?: Record<string, unknown>,
 ): ApiSuccessResponse<T> {
   return meta
     ? {
         data,
-        meta
+        meta,
       }
     : {
-        data
+        data,
       };
 }

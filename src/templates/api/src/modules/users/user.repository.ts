@@ -1,7 +1,4 @@
-import type {
-  PrismaClient,
-  User
-} from "@prisma/client";
+import type { PrismaClient, User } from "@prisma/client";
 
 export type CreateUserRecord = {
   email: string;
@@ -10,29 +7,27 @@ export type CreateUserRecord = {
 };
 
 export class UserRepository {
-  constructor(
-    private readonly prisma: PrismaClient
-  ) {}
+  constructor(private readonly prisma: PrismaClient) {}
 
   findById(id: string): Promise<User | null> {
     return this.prisma.user.findUnique({
       where: {
-        id
-      }
+        id,
+      },
     });
   }
 
   findByEmail(email: string): Promise<User | null> {
     return this.prisma.user.findUnique({
       where: {
-        email
-      }
+        email,
+      },
     });
   }
 
   create(input: CreateUserRecord): Promise<User> {
     return this.prisma.user.create({
-      data: input
+      data: input,
     });
   }
 }

@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
   databaseHealthResponseSchema,
-  healthResponseSchema
+  healthResponseSchema,
 } from "../schemas/common";
 
 export const healthRoutes: FastifyPluginAsync = async (app) => {
@@ -14,9 +14,9 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
         description:
           "Returns the current process status and basic runtime information.",
         response: {
-          200: healthResponseSchema
-        }
-      }
+          200: healthResponseSchema,
+        },
+      },
     },
     async () => {
       return {
@@ -24,9 +24,9 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
         service: "{{PROJECT_NAME}}",
         environment: app.config.nodeEnv,
         timestamp: new Date().toISOString(),
-        uptime: process.uptime()
+        uptime: process.uptime(),
       };
-    }
+    },
   );
 
   app.get(
@@ -39,9 +39,9 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
           "Runs a lightweight query to verify PostgreSQL connectivity.",
         response: {
           200: databaseHealthResponseSchema,
-          503: databaseHealthResponseSchema
-        }
-      }
+          503: databaseHealthResponseSchema,
+        },
+      },
     },
     async (_request, reply) => {
       try {
@@ -50,15 +50,15 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
         return {
           status: "ok" as const,
           database: "connected" as const,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
       } catch {
         return reply.status(503).send({
           status: "error" as const,
           database: "unavailable" as const,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
       }
-    }
+    },
   );
 };
