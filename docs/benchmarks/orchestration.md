@@ -8,7 +8,7 @@ Host: Linux x86_64
 
 Container runtime: Docker 29.9.2, PostgreSQL 16
 
-These are single-run wall-clock observations from the packed 3.0.4 candidate. They verify startup and isolation behavior; they are not performance claims or workload targets.
+These are single-run wall-clock observations from the packed 3.0.4 candidate, measuring startup and isolation behavior.
 
 ## Two generated development projects
 
@@ -45,4 +45,4 @@ A separate packed-CLI run received SIGINT after the API `/ready` probe passed. I
 
 ## Comparison limits
 
-No comparable v3.0.0 startup timing is claimed. The previous orchestration uses fixed service ports and container names, which cannot provide a valid simultaneous-project comparison in this host where port 5432 is already occupied. The measurements above record behavior of the candidate only.
+No v3.0.0 startup timing is available. The previous orchestration uses fixed service ports and container names, which cannot provide a valid simultaneous-project comparison on this host where port 5432 is already occupied. The measurements above record behavior of the candidate.

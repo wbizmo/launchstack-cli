@@ -13,6 +13,6 @@
 | `--help`                 |       93.2 / 122.4 ms |          91.9 / 104.4 ms |  1.4% faster p50 |
 | Fresh project generation |        92.4 / 95.8 ms |         109.5 / 161.6 ms | 18.5% slower p50 |
 
-Sampled warm peak RSS was 65–68 MiB. Generation output increased from 71 files / 195,004 bytes to 107 files / 241,602 bytes. Generation timings are not normalized for this 51% increase in output file count, so they do not establish a regression in per-file work. The measurements show no consistent startup speedup from this change; runtime modernization was selected for supported security fixes and compatibility, not speed.
+Sampled warm peak RSS was 65–68 MiB. Generation output increased from 71 files / 195,004 bytes to 107 files / 241,602 bytes. Generation timing includes this 51% increase in output file count. The measurements show no consistent startup speedup from this change; runtime modernization provides supported security fixes and compatibility.
 
-Machine-readable observations are in [`runtime.json`](runtime.json). The benchmark records process startup and no-install generation only. Dependency install duration, Docker startup/readiness, steady-state API memory and workload throughput are measured separately by the applicable integration checks; no throughput claim is made here.
+Machine-readable observations are in [`runtime.json`](runtime.json). The benchmark records process startup and no-install generation. Dependency install duration, Docker startup/readiness, steady-state API memory and workload throughput are measured separately by the applicable integration checks.

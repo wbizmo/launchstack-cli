@@ -2,7 +2,7 @@
 
 Release date: 2026-09-14
 
-v2.1.0 is a hardening release focused on making the package users install match the security guarantees in source, strengthening generated authentication under concurrency, and turning the release pipeline into an artifact-level quality gate.
+v2.1.0 strengthened generated authentication under concurrency and improved verification of the package users install.
 
 ## Highlights
 
@@ -34,8 +34,6 @@ Project generation is staged transactionally before the destination is replaced.
 
 The repository now uses lockfile-first CI, intentional semver ranges, Node.js 20-compatible runtime dependencies, linting, TypeScript typechecking, deterministic build-artifact checks, packed-artifact smoke tests, generated-project smoke tests, PostgreSQL-backed concurrency checks, and runtime vulnerability audits.
 
-When a new version reaches `main`, the publish workflow reruns the full release gate, verifies the versioned release notes, creates the matching `v<version>` tag at the exact merged commit, publishes to npm with provenance using the `LAUNCHSTACK_NPM_TOKEN` repository secret, and creates the GitHub Release titled `LaunchStack CLI v<version>` from this file.
-
 ## Hardening delivered
 
 This release delivers correctness, security and performance hardening, including credential-forwarding release integrity, secret storage, refresh-token concurrency, vulnerable generated dependencies, authentication hardening, CORS, duplicate registration races, CI/release gating, deployment semantics, supply-chain reproducibility, JWT configuration validation, CLI version consistency, transactional generation, template performance, Git subprocess reduction, Docker hardening, and provider consistency.
@@ -55,4 +53,4 @@ npm ci
 npm run release:check
 ```
 
-The merged `main` commit is verified again before tag creation or npm publishing. No release is considered complete until the exact merged commit has a green release gate and the npm/GitHub release workflow succeeds.
+Release verification included the packaged CLI checks, generated-project tests, PostgreSQL concurrency tests and dependency audits described above.

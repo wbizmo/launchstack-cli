@@ -49,4 +49,4 @@ Ambiguous user edits are reported as conflicts and must be resolved explicitly.
 
 ## Verification
 
-The release passed `npm run release:check` on the exact source and merged `main` commits, followed by provenance-enabled npm publication and GitHub Release creation.
+The release passed `npm run release:check` on the exact source and merged `main` commits.
