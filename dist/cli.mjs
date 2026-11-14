@@ -36,7 +36,7 @@ import {
   runProductionAudit,
   selectDevPlan,
   severityRank
-} from "./chunk-Z2ZXMOPQ.mjs";
+} from "./chunk-AJEJLKT2.mjs";
 
 // src/cli.ts
 import { Command as Command22 } from "commander";
@@ -1345,6 +1345,7 @@ import { resolve as resolve8 } from "path";
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
 var SECRET_MODE = 384;
+var MAX_SECRET_STORE_BYTES = 1048576;
 var RESERVED_KEYS = /* @__PURE__ */ new Set(["__proto__", "constructor", "prototype"]);
 function getSecretsPath(projectDirectory = process.cwd()) {
   return resolve8(projectDirectory, STORE_DIR2, SECRETS_FILE);
@@ -1404,12 +1405,11 @@ function writeSecrets(secrets, projectDirectory = process.cwd()) {
     throw new Error("LaunchStack secrets directory must be a real directory.");
   }
   if (process.platform !== "win32") chmodSync(storeDirectory, 448);
-  atomicWriteText(
-    getSecretsPath(projectDirectory),
-    `${JSON.stringify(secrets, null, 2)}
-`,
-    SECRET_MODE
-  );
+  const serialized = `${JSON.stringify(secrets, null, 2)}
+`;
+  if (Buffer.byteLength(serialized, "utf8") > MAX_SECRET_STORE_BYTES)
+    throw new Error("secrets.json would exceed the 1 MiB size limit.");
+  atomicWriteText(getSecretsPath(projectDirectory), serialized, SECRET_MODE);
 }
 function setSecret(key, value, projectDirectory = process.cwd()) {
   const normalizedKey = validateSecretKey(key);

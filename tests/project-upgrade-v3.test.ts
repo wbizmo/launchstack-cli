@@ -136,6 +136,73 @@ describe("versioned project migrations", () => {
     expect(/(^|[^\r])\n/.test(upgraded)).toBe(false);
   });
 
+  test("uses an aliased import when inserting the generated route call", () => {
+    const root = legacyProject();
+    const routePath = join(root, "src", "routes", "index.ts");
+    const content = readFileSync(routePath, "utf8").replace(
+      'import { readinessRoutes } from "./readiness";',
+      'import { readinessRoutes } from "./readiness";\nimport { registerGeneratedRoutes as generatedRoutes } from "./launchstack.generated";',
+    );
+    writeFileSync(routePath, content);
+
+    const plan = planUpgrade(root);
+    const routeDiff = plan.diffs.find(
+      (item) => item.path === "src/routes/index.ts",
+    );
+    expect(plan.conflicts).toEqual([]);
+    expect(routeDiff?.after).toContain("await generatedRoutes(app);");
+    expect(routeDiff?.after).not.toContain(
+      "await registerGeneratedRoutes(app);",
+    );
+  });
+
+  test("inserts capability integration before an early return", () => {
+    const root = legacyProject();
+    const appPath = join(root, "src", "app.ts");
+    writeFileSync(
+      appPath,
+      'import { registerPlugins } from "./plugins";\nexport async function buildApp() {\n  await registerPlugins(app);\n  return app;\n}\n',
+    );
+    const plan = planUpgrade(root);
+    const appDiff = plan.diffs.find((item) => item.path === "src/app.ts");
+    expect(plan.conflicts).toEqual([]);
+    expect(
+      appDiff?.after?.indexOf("await registerLaunchStackCapabilities(app);"),
+    ).toBeLessThan(appDiff?.after?.indexOf("return app;") ?? -1);
+  });
+
+  test("rejects an incompatible registry import even when it is already called", () => {
+    const root = legacyProject();
+    const routePath = join(root, "src", "routes", "index.ts");
+    writeFileSync(
+      routePath,
+      'import { registerGeneratedRoutes } from "./custom";\nexport async function registerRoutes(app: any) { await registerGeneratedRoutes(app); }\n',
+    );
+    expect(planUpgrade(root).conflicts.join(" ")).toContain(
+      "registerGeneratedRoutes is imported from ./custom",
+    );
+  });
+
+  test("rejects non-callable registry exports and synchronous integration functions", () => {
+    const root = legacyProject();
+    writeFileSync(
+      join(root, "src", "routes", "launchstack.generated.ts"),
+      "export const registerGeneratedRoutes = 42;\n",
+    );
+    expect(planUpgrade(root).conflicts.join(" ")).toContain(
+      "does not export registerGeneratedRoutes",
+    );
+
+    const secondRoot = legacyProject();
+    writeFileSync(
+      join(secondRoot, "src", "app.ts"),
+      'import { registerPlugins } from "./plugins";\nexport function buildApp() { registerPlugins(app); }\n',
+    );
+    expect(planUpgrade(secondRoot).conflicts.join(" ")).toContain(
+      "buildApp must be async",
+    );
+  });
+
   test("does not infer template schema from a legacy package version", () => {
     const root = mkdtempSync(
       join(tmpdir(), "launchstack-upgrade-legacy-package-"),

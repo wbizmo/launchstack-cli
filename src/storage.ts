@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 
 export type SafeFileSnapshot = {
   content: string;
+  bytes: Buffer;
   size: number;
   mode: number;
   dev: number;
@@ -34,7 +35,9 @@ export function readRegularFileNoFollow(
   try {
     descriptor = openSync(
       path,
-      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+      constants.O_RDONLY |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
       0o600,
     );
   } catch (error) {
@@ -71,8 +74,10 @@ export function readRegularFileNoFollow(
     const after = fstatSync(descriptor);
     if (after.dev !== before.dev || after.ino !== before.ino)
       throw new Error("Opened file identity changed while reading.");
+    const bytes = Buffer.concat(chunks, total);
     return {
-      content: Buffer.concat(chunks, total).toString("utf8"),
+      content: bytes.toString("utf8"),
+      bytes,
       size: after.size,
       mode: after.mode,
       dev: after.dev,

@@ -492,7 +492,7 @@ function decodeRefName(ref: string): string {
 export function componentTypeNames(
   document: OpenApiDocument,
 ): Record<string, string> {
-  const result: Record<string, string> = {};
+  const result = Object.create(null) as Record<string, string>;
   const used = new Set<string>();
   for (const name of Object.keys(document.components?.schemas ?? {}).sort()) {
     let candidate = name.replace(/[^A-Za-z0-9_$]+/g, "_");

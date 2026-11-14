@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
+import { intersects, validRange } from "semver";
 import { loadProjectManifest } from "../project/manifest";
 import { detectManagedDrift, loadProjectState } from "../project/state";
 import {
@@ -37,7 +38,7 @@ type NpmAuditAdvisory = {
 };
 
 export function parseNpmAuditAdvisories(output: string): AuditFinding[] {
-  let parsed: { vulnerabilities?: unknown; error?: unknown };
+  let parsed: unknown;
   try {
     parsed = JSON.parse(output) as {
       vulnerabilities?: unknown;
@@ -55,7 +56,19 @@ export function parseNpmAuditAdvisories(output: string): AuditFinding[] {
       ),
     ];
   }
-  if (parsed.error)
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+    return [
+      finding(
+        "LS024",
+        "medium",
+        "Dependency advisory check returned invalid data",
+        "npm audit did not return valid JSON advisory evidence; rerun the check and inspect npm/registry availability.",
+        false,
+        "package-lock.json",
+      ),
+    ];
+  const audit = parsed as { vulnerabilities?: unknown; error?: unknown };
+  if (audit.error)
     return [
       finding(
         "LS024",
@@ -67,9 +80,9 @@ export function parseNpmAuditAdvisories(output: string): AuditFinding[] {
       ),
     ];
   if (
-    !parsed.vulnerabilities ||
-    typeof parsed.vulnerabilities !== "object" ||
-    Array.isArray(parsed.vulnerabilities)
+    !audit.vulnerabilities ||
+    typeof audit.vulnerabilities !== "object" ||
+    Array.isArray(audit.vulnerabilities)
   )
     return [
       finding(
@@ -85,7 +98,7 @@ export function parseNpmAuditAdvisories(output: string): AuditFinding[] {
   const safeText = (value: string) =>
     value.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 200);
   const vulnerabilities = Object.entries(
-    parsed.vulnerabilities as Record<string, NpmAuditAdvisory | null>,
+    audit.vulnerabilities as Record<string, NpmAuditAdvisory | null>,
   )
     .map(([packageName, advisory]) => {
       const record = advisory && typeof advisory === "object" ? advisory : {};
@@ -333,7 +346,14 @@ export function runProductionAudit(
         "Dockerfile",
       ),
     );
-  if (dockerfile && /FROM\s+node:(?:1[0-9]|20)(?:[-@\s]|$)/im.test(dockerfile))
+  if (
+    dockerfile &&
+    [
+      ...dockerfile.matchAll(
+        /^FROM\s+(?:--platform=\S+\s+)?node:(\d+)(?=[.@\-\s]|$)/gim,
+      ),
+    ].some((match) => Number(match[1]) <= 20)
+  )
     findings.push(
       finding(
         "LS016",
@@ -361,7 +381,8 @@ export function runProductionAudit(
         ),
       );
     else if (
-      /(?:^|[\s<>=~^|])v?(?:1[0-9]|20)(?=\.|[\s|]|$)/i.test(engines.node)
+      validRange(engines.node) !== null &&
+      intersects(engines.node, "<=20.x", { includePrerelease: true })
     )
       findings.push(
         finding(
@@ -498,6 +519,7 @@ export function runProductionAudit(
         ".env.example",
       ),
     );
+  if (options.dependencyAdvisories) findings.push(...npmAdvisoryFindings(root));
   if (existsSync(join(root, "launchstack.json")))
     try {
       const manifest = loadProjectManifest(root);
@@ -545,7 +567,6 @@ export function runProductionAudit(
         ),
       );
     }
-  if (options.dependencyAdvisories) findings.push(...npmAdvisoryFindings(root));
   findings.sort((a, b) => a.ruleId.localeCompare(b.ruleId));
   const summary: AuditReport["summary"] = {
     info: 0,

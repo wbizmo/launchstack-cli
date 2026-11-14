@@ -45,6 +45,10 @@ describe("v3 production audit", () => {
         JSON.stringify({ error: { code: "ENOAUDIT" } }),
       )[0],
     ).toMatchObject({ ruleId: "LS024", verified: false });
+    expect(parseNpmAuditAdvisories("null")[0]).toMatchObject({
+      ruleId: "LS024",
+      verified: false,
+    });
   });
 
   test("records a successful clean production advisory lookup", () => {
@@ -129,6 +133,35 @@ describe("v3 production audit", () => {
 
     const report = runProductionAudit(root);
     expect(report.findings.map((item) => item.ruleId)).not.toContain("LS018");
+  });
+
+  test("evaluates supported Node engine ranges rather than their text", () => {
+    const root = mkdtempSync(join(tmpdir(), "launchstack-audit-node-range-"));
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({ engines: { node: ">=8" } }),
+    );
+    expect(
+      runProductionAudit(root).findings.map((item) => item.ruleId),
+    ).toContain("LS018");
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({ engines: { node: ">20" } }),
+    );
+    expect(
+      runProductionAudit(root).findings.map((item) => item.ruleId),
+    ).not.toContain("LS018");
+  });
+
+  test("recognizes patch-pinned Node Docker tags", () => {
+    const root = mkdtempSync(join(tmpdir(), "launchstack-audit-node-image-"));
+    writeFileSync(
+      join(root, "Dockerfile"),
+      "FROM node:20.19.0-alpine\nUSER node\n",
+    );
+    expect(
+      runProductionAudit(root).findings.map((item) => item.ruleId),
+    ).toContain("LS016");
   });
 
   test("classifies tracked secret-like paths as heuristic without exposing contents", () => {

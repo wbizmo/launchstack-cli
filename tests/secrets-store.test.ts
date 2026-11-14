@@ -50,6 +50,15 @@ describe("secret store", () => {
     }
   });
 
+  it("rejects serialized stores over the read limit without replacing the prior store", () => {
+    const directory = temporaryDirectory();
+    setSecret("API_KEY", "safe", directory);
+    expect(() => setSecret("LARGE", "x".repeat(1_048_576), directory)).toThrow(
+      /1 MiB/,
+    );
+    expect(readSecrets(directory).API_KEY).toBe("safe");
+  });
+
   it("fails closed for malformed secret JSON", () => {
     const directory = temporaryDirectory();
     const storeDirectory = join(directory, ".launchstack");

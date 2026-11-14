@@ -5,6 +5,7 @@ import { atomicWriteText, readRegularFileNoFollow } from "./storage";
 const STORE_DIR = ".launchstack";
 const SECRETS_FILE = "secrets.json";
 const SECRET_MODE = 0o600;
+const MAX_SECRET_STORE_BYTES = 1_048_576;
 const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 export type SecretStore = Record<string, string>;
@@ -85,11 +86,10 @@ export function writeSecrets(
   }
   if (process.platform !== "win32") chmodSync(storeDirectory, 0o700);
 
-  atomicWriteText(
-    getSecretsPath(projectDirectory),
-    `${JSON.stringify(secrets, null, 2)}\n`,
-    SECRET_MODE,
-  );
+  const serialized = `${JSON.stringify(secrets, null, 2)}\n`;
+  if (Buffer.byteLength(serialized, "utf8") > MAX_SECRET_STORE_BYTES)
+    throw new Error("secrets.json would exceed the 1 MiB size limit.");
+  atomicWriteText(getSecretsPath(projectDirectory), serialized, SECRET_MODE);
 }
 
 export function setSecret(

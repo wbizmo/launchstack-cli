@@ -95,6 +95,15 @@ describe("v3 module/resource generator", () => {
       }),
     ).toThrow();
   });
+  test("rejects resource names reserved by Prisma's generated client", () => {
+    expect(() =>
+      planModuleGeneration({
+        projectDirectory: fixture(),
+        kind: "resource",
+        name: "prisma-client",
+      }),
+    ).toThrow(/PrismaClient/);
+  });
   test("rejects Prisma-reserved identifiers and ambiguous resource names", () => {
     expect(() =>
       planModuleGeneration({

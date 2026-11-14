@@ -63,6 +63,7 @@ const RESERVED_SCHEMA_IDENTIFIERS = new Set([
   "Bytes",
   "Unsupported",
   "Prisma",
+  "PrismaClient",
 ]);
 const FIELD_TYPES = new Set<ResourceFieldType>([
   "string",

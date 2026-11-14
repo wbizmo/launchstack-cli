@@ -1,4 +1,12 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -61,5 +69,30 @@ describe("template renderer", () => {
     renderDirectory(directory, { PROJECT_NAME: "changed" });
 
     expect(readFileSync(asset)).toEqual(original);
+  });
+
+  it("preserves executable mode when rendering and skips existing symlinks", () => {
+    if (process.platform === "win32") return;
+    const directory = mkdtempSync(join(tmpdir(), "launchstack-template-mode-"));
+    directories.push(directory);
+    const script = join(directory, "run.sh");
+    const parent = mkdtempSync(
+      join(tmpdir(), "launchstack-template-link-target-"),
+    );
+    directories.push(parent);
+    const external = join(parent, "external.txt");
+    const link = join(directory, "user-link.txt");
+    writeFileSync(script, "#!/bin/sh\necho {{PROJECT_NAME}}\n");
+    chmodSync(script, 0o755);
+    writeFileSync(external, "{{PROJECT_NAME}}\n");
+    symlinkSync(external, link);
+
+    expect(() =>
+      renderDirectory(directory, { PROJECT_NAME: "rendered" }),
+    ).not.toThrow();
+    expect(readFileSync(script, "utf8")).toContain("echo rendered");
+    expect(lstatSync(script).mode & 0o777).toBe(0o755);
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(readFileSync(external, "utf8")).toBe("{{PROJECT_NAME}}\n");
   });
 });

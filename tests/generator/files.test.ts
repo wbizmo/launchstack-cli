@@ -1,5 +1,6 @@
 import {
   existsSync,
+  lstatSync,
   mkdtempSync,
   mkdirSync,
   rmSync,
@@ -51,5 +52,21 @@ describe("copyDirectory", () => {
     symlinkSync(external, join(source, "_gitignore"));
 
     expect(() => copyDirectory(source, destination)).toThrow(/symbolic link/i);
+  });
+
+  it("preserves unrelated destination symlinks while copying templates", () => {
+    if (process.platform === "win32") return;
+    const root = temporaryDirectory();
+    const source = join(root, "source");
+    const destination = join(root, "destination");
+    const external = join(root, "external");
+    mkdirSync(source);
+    mkdirSync(join(destination, "node_modules", ".bin"), { recursive: true });
+    writeFileSync(external, "user file");
+    const link = join(destination, "node_modules", ".bin", "tool");
+    symlinkSync(external, link);
+
+    expect(() => copyDirectory(source, destination)).not.toThrow();
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
   });
 });

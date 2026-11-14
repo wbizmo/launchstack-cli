@@ -315,7 +315,7 @@ function readRegularFileNoFollow(path, maxBytes) {
   try {
     descriptor = (0, import_node_fs2.openSync)(
       path,
-      import_node_fs2.constants.O_RDONLY | (import_node_fs2.constants.O_NOFOLLOW ?? 0),
+      import_node_fs2.constants.O_RDONLY | (import_node_fs2.constants.O_NOFOLLOW ?? 0) | (import_node_fs2.constants.O_NONBLOCK ?? 0),
       384
     );
   } catch (error) {
@@ -345,8 +345,10 @@ function readRegularFileNoFollow(path, maxBytes) {
     const after = (0, import_node_fs2.fstatSync)(descriptor);
     if (after.dev !== before.dev || after.ino !== before.ino)
       throw new Error("Opened file identity changed while reading.");
+    const bytes = Buffer.concat(chunks, total);
     return {
-      content: Buffer.concat(chunks, total).toString("utf8"),
+      content: bytes.toString("utf8"),
+      bytes,
       size: after.size,
       mode: after.mode,
       dev: after.dev,
@@ -406,6 +408,7 @@ function copyDirectory(sourceDirectory, destinationDirectory, overwriteRenamedFi
   if (!(0, import_node_fs3.existsSync)(sourceDirectory)) {
     throw new Error(`Template directory not found: ${sourceDirectory}`);
   }
+  rejectTemplateLinks(sourceDirectory);
   (0, import_node_fs3.mkdirSync)(destinationDirectory, { recursive: true });
   (0, import_node_fs3.cpSync)(sourceDirectory, destinationDirectory, {
     recursive: true,
@@ -413,15 +416,22 @@ function copyDirectory(sourceDirectory, destinationDirectory, overwriteRenamedFi
   });
   renameTemplateFiles(destinationDirectory, overwriteRenamedFiles);
 }
+function rejectTemplateLinks(directory) {
+  for (const entry of (0, import_node_fs3.readdirSync)(directory)) {
+    const path = (0, import_node_path3.resolve)(directory, entry);
+    const stats = (0, import_node_fs3.lstatSync)(path);
+    if (stats.isSymbolicLink())
+      throw new Error(
+        `Template contains an unsupported symbolic link: ${path}`
+      );
+    if (stats.isDirectory()) rejectTemplateLinks(path);
+  }
+}
 function renameTemplateFiles(directory, overwriteRenamedFiles) {
   for (const entry of (0, import_node_fs3.readdirSync)(directory)) {
     const currentPath = (0, import_node_path3.resolve)(directory, entry);
     const stats = (0, import_node_fs3.lstatSync)(currentPath);
-    if (stats.isSymbolicLink()) {
-      throw new Error(
-        `Template contains an unsupported symbolic link: ${currentPath}`
-      );
-    }
+    if (stats.isSymbolicLink()) continue;
     if (stats.isDirectory()) {
       renameTemplateFiles(currentPath, overwriteRenamedFiles);
       continue;
@@ -564,8 +574,7 @@ function renderDirectory(directory, variables) {
   for (const entry of (0, import_node_fs5.readdirSync)(directory)) {
     const path = (0, import_node_path5.join)(directory, entry);
     const stats = (0, import_node_fs5.lstatSync)(path);
-    if (stats.isSymbolicLink())
-      throw new Error("Template directory cannot contain symbolic links.");
+    if (stats.isSymbolicLink()) continue;
     if (stats.isDirectory()) {
       renderDirectory(path, variables);
       continue;
@@ -573,10 +582,15 @@ function renderDirectory(directory, variables) {
     if (!isTextTemplateFile(path)) {
       continue;
     }
-    const content = readRegularFileNoFollow(path, 16 * 1024 * 1024).content;
+    const snapshot = readRegularFileNoFollow(path, 16 * 1024 * 1024);
+    const content = snapshot.content;
     const rendered = renderTemplate(content, variables);
     if (rendered !== content) {
-      atomicWriteText(path, rendered);
+      atomicWriteText(
+        path,
+        rendered,
+        process.platform === "win32" ? void 0 : snapshot.mode & 511
+      );
     }
   }
 }
@@ -2547,7 +2561,8 @@ function readText(projectDirectory, path) {
   const absolute = resolveProjectPath(projectDirectory, path);
   if (!(0, import_node_fs14.existsSync)(absolute))
     throw new Error(`Expected project file is missing: ${path}`);
-  return { content: (0, import_node_fs14.readFileSync)(absolute, "utf8"), hash: hashFile(absolute) };
+  const snapshot = readRegularFileNoFollow(absolute, 256 * 1024 * 1024);
+  return { content: snapshot.content, hash: sha256(snapshot.bytes) };
 }
 function inferLegacyProject(projectDirectory) {
   const packagePath = resolveProjectPath(projectDirectory, "package.json");
@@ -2601,7 +2616,7 @@ function findNamedImport(source, name) {
     if (statement.type !== "ImportDeclaration") continue;
     for (const binding of statement.specifiers ?? []) {
       if (binding.type !== "ImportSpecifier") continue;
-      if (localName(binding.local) === name || localName(binding.imported) === name || moduleName(binding.imported) === name) {
+      if (localName(binding.imported) === name || moduleName(binding.imported) === name) {
         const module2 = moduleName(statement.source);
         if (module2) return { module: module2, binding };
       }
@@ -2668,9 +2683,17 @@ function exportsFunction(content, path, name) {
     if (declaration.type === "FunctionDeclaration")
       return localName(declaration.id) === name;
     if (declaration.type !== "VariableDeclaration") return false;
-    return (declaration.declarations ?? []).some(
-      (item) => localName(item.id) === name
-    );
+    return (declaration.declarations ?? []).some((item) => {
+      if (localName(item.id) !== name) return false;
+      let initializer = item.init;
+      while (initializer && [
+        "TSAsExpression",
+        "TSTypeAssertion",
+        "ParenthesizedExpression"
+      ].includes(initializer.type))
+        initializer = initializer.expression;
+      return initializer?.type === "ArrowFunctionExpression" || initializer?.type === "FunctionExpression";
+    });
   });
 }
 function addAwaitCall(content, path, functionName, callName, afterCallName) {
@@ -2681,11 +2704,23 @@ function addAwaitCall(content, path, functionName, callName, afterCallName) {
     throw new Error(
       `Cannot safely upgrade ${path}: ${functionName} function was not found.`
     );
+  if (!functionNode.async)
+    throw new Error(
+      `Cannot safely upgrade ${path}: ${functionName} must be async before adding an awaited integration.`
+    );
   if (functionCalls(functionNode, callName).length) return content;
-  const anchor = afterCallName ? body.body.find(
+  const returnIndex = body.body.findIndex(
+    (statement) => statement.type === "ReturnStatement"
+  );
+  const candidateIndex = afterCallName ? body.body.findIndex(
     (statement) => statement.type === "ExpressionStatement" && statement.expression?.type === "AwaitExpression" && statement.expression.argument?.type === "CallExpression" && statement.expression.argument.callee?.type === "Identifier" && localName(statement.expression.argument.callee) === afterCallName
   ) : void 0;
-  const insertion = anchor?.end ?? (body.end ?? content.length) - 1;
+  const anchor = candidateIndex !== void 0 && candidateIndex >= 0 && (returnIndex < 0 || candidateIndex < returnIndex) ? body.body[candidateIndex] : void 0;
+  const insertion = anchor?.end ?? (returnIndex >= 0 ? body.body[returnIndex]?.start : (body.end ?? content.length) - 1);
+  if (insertion === void 0 || insertion === null)
+    throw new Error(
+      `Cannot safely upgrade ${path}: no reachable insertion point exists in ${functionName}.`
+    );
   const lineStart = content.lastIndexOf("\n", insertion - 1) + 1;
   const currentLine = content.slice(lineStart, insertion);
   const indent = /^\s*/.exec(currentLine)?.[0] ?? "  ";
@@ -2700,14 +2735,15 @@ function addIntegration(content, path, options) {
     throw new Error(
       `Cannot safely upgrade ${path}: ${options.functionName} function was not found.`
     );
-  const alreadyCalled = functionCalls(functionNode, options.importName).length > 0;
+  if (imported && imported.module !== options.module)
+    throw new Error(
+      `Cannot safely upgrade ${path}: ${options.importName} is imported from ${imported.module}.`
+    );
+  const callName = imported ? localName(imported.binding.local) ?? options.importName : options.importName;
+  const alreadyCalled = functionCalls(functionNode, callName).length > 0;
   if (alreadyCalled && !imported)
     throw new Error(
       `Cannot safely upgrade ${path}: ${options.importName} is called without a matching import.`
-    );
-  if (!alreadyCalled && imported && imported.module !== options.module)
-    throw new Error(
-      `Cannot safely upgrade ${path}: ${options.importName} is imported from ${imported.module}.`
     );
   if (alreadyCalled) return content;
   const withImport = addNamedImport(
@@ -2720,7 +2756,7 @@ function addIntegration(content, path, options) {
     withImport,
     path,
     options.functionName,
-    options.importName,
+    callName,
     options.afterCallName
   );
 }
@@ -3387,7 +3423,7 @@ function decodeRefName(ref) {
   return pointerParts(ref).pop() ?? "Unknown";
 }
 function componentTypeNames(document) {
-  const result = {};
+  const result = /* @__PURE__ */ Object.create(null);
   const used = /* @__PURE__ */ new Set();
   for (const name of Object.keys(document.components?.schemas ?? {}).sort()) {
     let candidate = name.replace(/[^A-Za-z0-9_$]+/g, "_");
@@ -3675,6 +3711,7 @@ function severityRank(severity) {
 var import_node_fs15 = require("fs");
 var import_node_child_process3 = require("child_process");
 var import_node_path15 = require("path");
+var import_semver = require("semver");
 var readIfPresent = (root, path) => {
   const absolute = (0, import_node_path15.join)(root, path);
   return (0, import_node_fs15.existsSync)(absolute) ? (0, import_node_fs15.readFileSync)(absolute, "utf8") : void 0;
@@ -3707,7 +3744,19 @@ function parseNpmAuditAdvisories(output) {
       )
     ];
   }
-  if (parsed.error)
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+    return [
+      finding(
+        "LS024",
+        "medium",
+        "Dependency advisory check returned invalid data",
+        "npm audit did not return valid JSON advisory evidence; rerun the check and inspect npm/registry availability.",
+        false,
+        "package-lock.json"
+      )
+    ];
+  const audit = parsed;
+  if (audit.error)
     return [
       finding(
         "LS024",
@@ -3718,7 +3767,7 @@ function parseNpmAuditAdvisories(output) {
         "package-lock.json"
       )
     ];
-  if (!parsed.vulnerabilities || typeof parsed.vulnerabilities !== "object" || Array.isArray(parsed.vulnerabilities))
+  if (!audit.vulnerabilities || typeof audit.vulnerabilities !== "object" || Array.isArray(audit.vulnerabilities))
     return [
       finding(
         "LS024",
@@ -3731,7 +3780,7 @@ function parseNpmAuditAdvisories(output) {
     ];
   const safeText = (value) => value.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 200);
   const vulnerabilities = Object.entries(
-    parsed.vulnerabilities
+    audit.vulnerabilities
   ).map(([packageName, advisory]) => {
     const record = advisory && typeof advisory === "object" ? advisory : {};
     const severity2 = typeof record.severity === "string" && AUDIT_SEVERITIES.includes(record.severity) ? record.severity : "medium";
@@ -3927,7 +3976,11 @@ function runProductionAudit(projectDirectoryInput, options = {}) {
         "Dockerfile"
       )
     );
-  if (dockerfile && /FROM\s+node:(?:1[0-9]|20)(?:[-@\s]|$)/im.test(dockerfile))
+  if (dockerfile && [
+    ...dockerfile.matchAll(
+      /^FROM\s+(?:--platform=\S+\s+)?node:(\d+)(?=[.@\-\s]|$)/gim
+    )
+  ].some((match) => Number(match[1]) <= 20))
     findings.push(
       finding(
         "LS016",
@@ -3951,7 +4004,7 @@ function runProductionAudit(projectDirectoryInput, options = {}) {
           "package.json"
         )
       );
-    else if (/(?:^|[\s<>=~^|])v?(?:1[0-9]|20)(?=\.|[\s|]|$)/i.test(engines.node))
+    else if ((0, import_semver.validRange)(engines.node) !== null && (0, import_semver.intersects)(engines.node, "<=20.x", { includePrerelease: true }))
       findings.push(
         finding(
           "LS018",
@@ -4065,6 +4118,7 @@ function runProductionAudit(projectDirectoryInput, options = {}) {
         ".env.example"
       )
     );
+  if (options.dependencyAdvisories) findings.push(...npmAdvisoryFindings(root));
   if ((0, import_node_fs15.existsSync)((0, import_node_path15.join)(root, "launchstack.json")))
     try {
       const manifest = loadProjectManifest(root);
@@ -4110,7 +4164,6 @@ function runProductionAudit(projectDirectoryInput, options = {}) {
         )
       );
     }
-  if (options.dependencyAdvisories) findings.push(...npmAdvisoryFindings(root));
   findings.sort((a, b) => a.ruleId.localeCompare(b.ruleId));
   const summary = {
     info: 0,
@@ -4160,7 +4213,8 @@ var RESERVED_SCHEMA_IDENTIFIERS = /* @__PURE__ */ new Set([
   "Json",
   "Bytes",
   "Unsupported",
-  "Prisma"
+  "Prisma",
+  "PrismaClient"
 ]);
 var FIELD_TYPES = /* @__PURE__ */ new Set([
   "string",

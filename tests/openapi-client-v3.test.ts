@@ -6,6 +6,7 @@ import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import {
   collectOperations,
+  componentTypeNames,
   parseOpenApiDocument,
   schemaToType,
 } from "../src/client/openapi";
@@ -91,6 +92,15 @@ function fixtureDocument(version = "3.1.0") {
 }
 
 describe("v3 OpenAPI client generation", () => {
+  test("uses own properties for schema names such as __proto__", () => {
+    const names = componentTypeNames({
+      openapi: "3.1.0",
+      paths: {},
+      components: { schemas: JSON.parse('{"__proto__":{"type":"string"}}') },
+    });
+    expect(Object.hasOwn(names, "__proto__")).toBe(true);
+    expect(names.__proto__).toBe("__proto__");
+  });
   test("preserves optional and nullable semantics", () => {
     expect(schemaToType({ type: ["string", "null"] })).toBe("string | null");
     expect(

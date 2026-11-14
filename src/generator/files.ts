@@ -44,6 +44,8 @@ export function copyDirectory(
     throw new Error(`Template directory not found: ${sourceDirectory}`);
   }
 
+  rejectTemplateLinks(sourceDirectory);
+
   mkdirSync(destinationDirectory, { recursive: true });
 
   cpSync(sourceDirectory, destinationDirectory, {
@@ -54,6 +56,18 @@ export function copyDirectory(
   renameTemplateFiles(destinationDirectory, overwriteRenamedFiles);
 }
 
+function rejectTemplateLinks(directory: string): void {
+  for (const entry of readdirSync(directory)) {
+    const path = resolve(directory, entry);
+    const stats = lstatSync(path);
+    if (stats.isSymbolicLink())
+      throw new Error(
+        `Template contains an unsupported symbolic link: ${path}`,
+      );
+    if (stats.isDirectory()) rejectTemplateLinks(path);
+  }
+}
+
 function renameTemplateFiles(
   directory: string,
   overwriteRenamedFiles: boolean,
@@ -62,11 +76,9 @@ function renameTemplateFiles(
     const currentPath = resolve(directory, entry);
     const stats = lstatSync(currentPath);
 
-    if (stats.isSymbolicLink()) {
-      throw new Error(
-        `Template contains an unsupported symbolic link: ${currentPath}`,
-      );
-    }
+    // The destination may include user-owned content copied for --force.
+    // Template links are rejected from sourceDirectory before copying.
+    if (stats.isSymbolicLink()) continue;
 
     if (stats.isDirectory()) {
       renameTemplateFiles(currentPath, overwriteRenamedFiles);

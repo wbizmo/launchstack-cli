@@ -62,8 +62,9 @@ export function renderDirectory(
   for (const entry of readdirSync(directory)) {
     const path = join(directory, entry);
     const stats = lstatSync(path);
-    if (stats.isSymbolicLink())
-      throw new Error("Template directory cannot contain symbolic links.");
+    // Existing user projects copied into the staging directory may contain
+    // links (notably node_modules/.bin); preserve them without dereferencing.
+    if (stats.isSymbolicLink()) continue;
 
     if (stats.isDirectory()) {
       renderDirectory(path, variables);
@@ -74,11 +75,16 @@ export function renderDirectory(
       continue;
     }
 
-    const content = readRegularFileNoFollow(path, 16 * 1024 * 1024).content;
+    const snapshot = readRegularFileNoFollow(path, 16 * 1024 * 1024);
+    const content = snapshot.content;
     const rendered = renderTemplate(content, variables);
 
     if (rendered !== content) {
-      atomicWriteText(path, rendered);
+      atomicWriteText(
+        path,
+        rendered,
+        process.platform === "win32" ? undefined : snapshot.mode & 0o777,
+      );
     }
   }
 }

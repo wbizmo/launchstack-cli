@@ -7,7 +7,13 @@ import {
   serializeProjectManifest,
 } from "./manifest";
 import { resolveProjectPath } from "./paths";
-import { hashFile, loadProjectState, serializeProjectState } from "./state";
+import {
+  hashFile,
+  loadProjectState,
+  serializeProjectState,
+  sha256,
+} from "./state";
+import { readRegularFileNoFollow } from "../storage";
 import { applyFileMutations, withTrackedMutations } from "./transaction";
 import {
   emptyProjectState,
@@ -38,6 +44,8 @@ type BabelNode = {
   arguments?: BabelNode[];
   declaration?: BabelNode;
   declarations?: BabelNode[];
+  init?: BabelNode;
+  async?: boolean;
 };
 type ParsedSource = { program: { body: BabelNode[] } };
 
@@ -100,7 +108,8 @@ function readText(
   const absolute = resolveProjectPath(projectDirectory, path);
   if (!existsSync(absolute))
     throw new Error(`Expected project file is missing: ${path}`);
-  return { content: readFileSync(absolute, "utf8"), hash: hashFile(absolute) };
+  const snapshot = readRegularFileNoFollow(absolute, 256 * 1024 * 1024);
+  return { content: snapshot.content, hash: sha256(snapshot.bytes) };
 }
 
 function inferLegacyProject(projectDirectory: string): LegacyProject {
@@ -170,7 +179,6 @@ function findNamedImport(
     for (const binding of statement.specifiers ?? []) {
       if (binding.type !== "ImportSpecifier") continue;
       if (
-        localName(binding.local) === name ||
         localName(binding.imported) === name ||
         moduleName(binding.imported) === name
       ) {
@@ -265,9 +273,23 @@ function exportsFunction(content: string, path: string, name: string): boolean {
     if (declaration.type === "FunctionDeclaration")
       return localName(declaration.id) === name;
     if (declaration.type !== "VariableDeclaration") return false;
-    return (declaration.declarations ?? []).some(
-      (item) => localName(item.id) === name,
-    );
+    return (declaration.declarations ?? []).some((item) => {
+      if (localName(item.id) !== name) return false;
+      let initializer = item.init;
+      while (
+        initializer &&
+        [
+          "TSAsExpression",
+          "TSTypeAssertion",
+          "ParenthesizedExpression",
+        ].includes(initializer.type)
+      )
+        initializer = initializer.expression;
+      return (
+        initializer?.type === "ArrowFunctionExpression" ||
+        initializer?.type === "FunctionExpression"
+      );
+    });
   });
 }
 
@@ -290,9 +312,16 @@ function addAwaitCall(
     throw new Error(
       `Cannot safely upgrade ${path}: ${functionName} function was not found.`,
     );
+  if (!functionNode.async)
+    throw new Error(
+      `Cannot safely upgrade ${path}: ${functionName} must be async before adding an awaited integration.`,
+    );
   if (functionCalls(functionNode, callName).length) return content;
-  const anchor = afterCallName
-    ? body.body.find(
+  const returnIndex = body.body.findIndex(
+    (statement) => statement.type === "ReturnStatement",
+  );
+  const candidateIndex = afterCallName
+    ? body.body.findIndex(
         (statement) =>
           statement.type === "ExpressionStatement" &&
           statement.expression?.type === "AwaitExpression" &&
@@ -301,7 +330,21 @@ function addAwaitCall(
           localName(statement.expression.argument.callee) === afterCallName,
       )
     : undefined;
-  const insertion = anchor?.end ?? (body.end ?? content.length) - 1;
+  const anchor =
+    candidateIndex !== undefined &&
+    candidateIndex >= 0 &&
+    (returnIndex < 0 || candidateIndex < returnIndex)
+      ? body.body[candidateIndex]
+      : undefined;
+  const insertion =
+    anchor?.end ??
+    (returnIndex >= 0
+      ? body.body[returnIndex]?.start
+      : (body.end ?? content.length) - 1);
+  if (insertion === undefined || insertion === null)
+    throw new Error(
+      `Cannot safely upgrade ${path}: no reachable insertion point exists in ${functionName}.`,
+    );
   const lineStart = content.lastIndexOf("\n", insertion - 1) + 1;
   const currentLine = content.slice(lineStart, insertion);
   const indent = /^\s*/.exec(currentLine)?.[0] ?? "  ";
@@ -326,15 +369,17 @@ function addIntegration(
     throw new Error(
       `Cannot safely upgrade ${path}: ${options.functionName} function was not found.`,
     );
-  const alreadyCalled =
-    functionCalls(functionNode, options.importName).length > 0;
+  if (imported && imported.module !== options.module)
+    throw new Error(
+      `Cannot safely upgrade ${path}: ${options.importName} is imported from ${imported.module}.`,
+    );
+  const callName = imported
+    ? (localName(imported.binding.local) ?? options.importName)
+    : options.importName;
+  const alreadyCalled = functionCalls(functionNode, callName).length > 0;
   if (alreadyCalled && !imported)
     throw new Error(
       `Cannot safely upgrade ${path}: ${options.importName} is called without a matching import.`,
-    );
-  if (!alreadyCalled && imported && imported.module !== options.module)
-    throw new Error(
-      `Cannot safely upgrade ${path}: ${options.importName} is imported from ${imported.module}.`,
     );
   if (alreadyCalled) return content;
   const withImport = addNamedImport(
@@ -347,7 +392,7 @@ function addIntegration(
     withImport,
     path,
     options.functionName,
-    options.importName,
+    callName,
     options.afterCallName,
   );
 }
