@@ -34,6 +34,18 @@ launchstack dev
 
 Fresh v3 projects include `launchstack.json` for desired LaunchStack state and `.launchstack/state.json` for LaunchStack-owned hashes, installed capabilities and stage metadata. Business and domain code remains user-owned.
 
+## Command reference
+
+- **Create and configure projects:** `create`, `init`, `validate`, `env`, `provider`, `doctor`.
+- **Manage project state:** `plan`, `apply`, `reconcile`, `diff`, `upgrade`.
+- **Add capabilities and plugins:** `add`, `plugin list`, `plugin validate`, `plugin add`, `plugin upgrade`, `plugin remove`.
+- **Develop and generate code:** `dev`, `client generate`, `generate module`, `generate resource`.
+- **Audit and manage preview stages:** `audit`, `preview`, `stage status`, `destroy`, `status --stage`, `deploy --stage`.
+- **Deployment and configuration workflows:** `deploy`, `status`, `history`, `rollback`, `secrets add`, `secrets list`, `secrets remove`, `docker init`, `github init`.
+- **CLI help:** `help`.
+
+This reference includes every top-level command and nested subcommand. Use `launchstack --help` to list them, `launchstack help <command>` for command help, or `launchstack <command> --help` to see that command's options. Use `launchstack --version` to print the installed version.
+
 ## Capabilities and lifecycle
 
 ### What v3.0.4 adds and improves
