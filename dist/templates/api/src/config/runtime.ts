@@ -12,6 +12,6 @@ export function getRuntimeInfo(): RuntimeInfo {
     nodeVersion: process.version,
     platform: process.platform,
     pid: process.pid,
-    startedAt
+    startedAt,
   };
 }

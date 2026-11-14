@@ -1,14 +1,13 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: {{PROJECT_NAME}}-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: launchstack
       POSTGRES_PASSWORD: launchstack
-      POSTGRES_DB: {{PROJECT_NAME}}
+      POSTGRES_DB: "{{PROJECT_NAME}}"
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${LAUNCHSTACK_POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +22,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: {{PROJECT_NAME}}-api
     restart: unless-stopped
     depends_on:
       postgres:
@@ -33,14 +31,14 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       LOG_LEVEL: info
-      CORS_ORIGIN: "*"
+      CORS_ORIGIN: ${CORS_ORIGIN:?Set an explicit production origin}
       DATABASE_URL: postgresql://launchstack:launchstack@postgres:5432/{{PROJECT_NAME}}?schema=public
-      JWT_ACCESS_SECRET: replace-with-a-production-access-secret-at-least-32-characters
-      JWT_REFRESH_SECRET: replace-with-a-production-refresh-secret-at-least-32-characters
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set a production access secret}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set a production refresh secret}
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d
     ports:
-      - "3000:3000"
+      - "127.0.0.1:${LAUNCHSTACK_API_PORT:-3000}:3000"
     healthcheck:
       test:
         - CMD

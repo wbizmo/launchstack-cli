@@ -9,9 +9,9 @@ const readinessResponseSchema = z.object({
     nodeVersion: z.string(),
     platform: z.string(),
     pid: z.number().int(),
-    startedAt: z.string().datetime()
+    startedAt: z.string().datetime(),
   }),
-  timestamp: z.string().datetime()
+  timestamp: z.string().datetime(),
 });
 
 export const readinessRoutes: FastifyPluginAsync = async (app) => {
@@ -25,9 +25,9 @@ export const readinessRoutes: FastifyPluginAsync = async (app) => {
           "Verifies that the API and database are ready to serve traffic.",
         response: {
           200: readinessResponseSchema,
-          503: readinessResponseSchema
-        }
-      }
+          503: readinessResponseSchema,
+        },
+      },
     },
     async (_request, reply) => {
       try {
@@ -37,16 +37,16 @@ export const readinessRoutes: FastifyPluginAsync = async (app) => {
           status: "ready" as const,
           database: "connected" as const,
           runtime: getRuntimeInfo(),
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
       } catch {
         return reply.status(503).send({
           status: "not_ready" as const,
           database: "unavailable" as const,
           runtime: getRuntimeInfo(),
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
       }
-    }
+    },
   );
 };

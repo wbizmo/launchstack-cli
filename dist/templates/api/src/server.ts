@@ -13,9 +13,9 @@ async function start(): Promise<void> {
 
     app.log.info(
       {
-        signal
+        signal,
       },
-      "Shutting down server"
+      "Shutting down server",
     );
 
     const forceShutdownTimer = setTimeout(() => {
@@ -46,9 +46,9 @@ async function start(): Promise<void> {
   process.on("unhandledRejection", (reason) => {
     app.log.error(
       {
-        reason
+        reason,
       },
-      "Unhandled rejection"
+      "Unhandled rejection",
     );
 
     void shutdown("unhandledRejection");
@@ -62,16 +62,16 @@ async function start(): Promise<void> {
   try {
     await app.listen({
       host: app.config.host,
-      port: app.config.port
+      port: app.config.port,
     });
 
     app.log.info(
       {
         host: app.config.host,
         port: app.config.port,
-        environment: app.config.nodeEnv
+        environment: app.config.nodeEnv,
       },
-      "{{PROJECT_DISPLAY_NAME}} API started"
+      "{{PROJECT_DISPLAY_NAME}} API started",
     );
   } catch (error) {
     app.log.error(error, "Failed to start API");

@@ -4,11 +4,11 @@ import fp from "fastify-plugin";
 export const corsPlugin = fp(
   async (app) => {
     await app.register(cors, {
-      origin: app.config.corsOrigin
+      origin: app.config.corsOrigin,
     });
   },
   {
     name: "cors",
-    dependencies: ["config"]
-  }
+    dependencies: ["config"],
+  },
 );

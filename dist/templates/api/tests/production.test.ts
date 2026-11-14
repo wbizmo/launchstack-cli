@@ -1,9 +1,4 @@
-import {
-  afterEach,
-  describe,
-  expect,
-  it
-} from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/app";
 
@@ -24,7 +19,7 @@ describe("production readiness", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: "/ready"
+      url: "/ready",
     });
 
     expect([200, 503]).toContain(response.statusCode);
