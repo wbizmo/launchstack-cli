@@ -32,7 +32,7 @@ export function readRegularFileNoFollow(
     throw new Error("File size limit must be a non-negative safe integer.");
   let descriptor: number;
   try {
-    // lgtm[js/insecure-temporary-file] Read-only open; no creation or write flags are set.
+    // lgtm [js/insecure-temporary-file] Read-only open; no creation or write flags are set.
     descriptor = openSync(
       path,
       constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),

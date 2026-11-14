@@ -73,9 +73,8 @@ async function main() {
       "--no-install",
     ]);
     run(docker, ["info"], { stdio: "pipe", timeoutMs: 5_000 });
-    const caFile =
-      process.env.NODE_EXTRA_CA_CERTS ?? "/etc/ssl/certs/ca-certificates.crt";
-    if (existsSync(caFile)) {
+    const caFile = process.env.NODE_EXTRA_CA_CERTS;
+    if (caFile && existsSync(caFile)) {
       const override = join(project, "docker-compose.smoke.yml");
       writeFileSync(
         override,
