@@ -8,6 +8,7 @@ import {
   applyModuleGeneration,
   applyReconciliation,
   applyUpgrade,
+  atomicWriteText,
   createDevPlan,
   createOrUpdateStage,
   currentLaunchStackVersion,
@@ -28,12 +29,14 @@ import {
   planModuleGeneration,
   planReconciliation,
   planUpgrade,
+  readJsonFile,
+  readRegularFileNoFollow,
   renderDockerIgnore,
   renderDockerfile,
   runProductionAudit,
   selectDevPlan,
   severityRank
-} from "./chunk-G6BWCO3K.mjs";
+} from "./chunk-M575OQIK.mjs";
 
 // src/cli.ts
 import { Command as Command22 } from "commander";
@@ -345,7 +348,7 @@ import { execSync } from "child_process";
 import { Command as Command6 } from "commander";
 
 // src/config.ts
-import { existsSync as existsSync4, readFileSync as readFileSync3 } from "fs";
+import { existsSync as existsSync3, readFileSync as readFileSync2 } from "fs";
 import { resolve as resolve3 } from "path";
 import { z } from "zod";
 
@@ -410,55 +413,6 @@ function providerHelpText() {
   return PROVIDER_IDS.join(", ");
 }
 
-// src/storage.ts
-import {
-  chmodSync,
-  existsSync as existsSync3,
-  mkdirSync as mkdirSync2,
-  readFileSync as readFileSync2,
-  renameSync,
-  rmSync,
-  writeFileSync as writeFileSync2
-} from "fs";
-import { basename, dirname as dirname2, join } from "path";
-import { randomUUID } from "crypto";
-function atomicWriteText(path, content, mode) {
-  const directory2 = dirname2(path);
-  mkdirSync2(directory2, { recursive: true });
-  const temporaryPath = join(
-    directory2,
-    `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`
-  );
-  try {
-    writeFileSync2(temporaryPath, content, {
-      encoding: "utf8",
-      flag: "wx",
-      ...mode === void 0 ? {} : { mode }
-    });
-    if (mode !== void 0) {
-      chmodSync(temporaryPath, mode);
-    }
-    renameSync(temporaryPath, path);
-    if (mode !== void 0) {
-      chmodSync(path, mode);
-    }
-  } finally {
-    if (existsSync3(temporaryPath)) {
-      rmSync(temporaryPath, { force: true });
-    }
-  }
-}
-function readJsonFile(path, fallback) {
-  if (!existsSync3(path)) {
-    return fallback;
-  }
-  try {
-    return JSON.parse(readFileSync2(path, "utf8"));
-  } catch {
-    throw new Error(`Invalid JSON in ${basename(path)}.`);
-  }
-}
-
 // src/config.ts
 var CONFIG_FILE_NAME = "launchstack.config.json";
 var launchStackConfigSchema = z.object({
@@ -473,7 +427,7 @@ function getConfigPath() {
   return resolve3(process.cwd(), CONFIG_FILE_NAME);
 }
 function configExists() {
-  return existsSync4(getConfigPath());
+  return existsSync3(getConfigPath());
 }
 function createDefaultConfig(appName) {
   return {
@@ -491,13 +445,13 @@ function writeConfig(config) {
 `);
 }
 function readConfig() {
-  const raw = readFileSync3(getConfigPath(), "utf-8");
+  const raw = readFileSync2(getConfigPath(), "utf-8");
   const parsed = JSON.parse(raw);
   return launchStackConfigSchema.parse(parsed);
 }
 
 // src/deployment.ts
-import { existsSync as existsSync5, statSync } from "fs";
+import { existsSync as existsSync4, statSync } from "fs";
 import { isAbsolute, relative as relative2, resolve as resolve4 } from "path";
 function resolveVerifiedOutputDirectory(projectDirectory, configuredOutputDirectory) {
   const projectRoot = resolve4(projectDirectory);
@@ -508,7 +462,7 @@ function resolveVerifiedOutputDirectory(projectDirectory, configuredOutputDirect
       "Configured output directory must stay inside the project directory."
     );
   }
-  if (!existsSync5(outputPath)) {
+  if (!existsSync4(outputPath)) {
     throw new Error(`Output directory not found: ${configuredOutputDirectory}`);
   }
   if (!statSync(outputPath).isDirectory()) {
@@ -748,11 +702,11 @@ var devCommand = new Command8("dev").description("Start LaunchStack-managed loca
 import { Command as Command9 } from "commander";
 
 // src/release/doctor.ts
-import { existsSync as existsSync6, readFileSync as readFileSync4 } from "fs";
+import { existsSync as existsSync5, readFileSync as readFileSync3 } from "fs";
 import { resolve as resolve6 } from "path";
 function checkFile(projectDirectory, file, label) {
   const path = resolve6(projectDirectory, file);
-  const passed = existsSync6(path);
+  const passed = existsSync5(path);
   return {
     name: label,
     passed,
@@ -761,14 +715,14 @@ function checkFile(projectDirectory, file, label) {
 }
 function checkPackageScripts(projectDirectory) {
   const packagePath = resolve6(projectDirectory, "package.json");
-  if (!existsSync6(packagePath)) {
+  if (!existsSync5(packagePath)) {
     return {
       name: "Package scripts",
       passed: false,
       detail: "package.json is missing"
     };
   }
-  const packageJson = JSON.parse(readFileSync4(packagePath, "utf8"));
+  const packageJson = JSON.parse(readFileSync3(packagePath, "utf8"));
   const requiredScripts = [
     "dev",
     "build",
@@ -790,14 +744,14 @@ function checkPackageScripts(projectDirectory) {
 }
 function checkEnvironmentExample(projectDirectory) {
   const path = resolve6(projectDirectory, ".env.example");
-  if (!existsSync6(path)) {
+  if (!existsSync5(path)) {
     return {
       name: "Environment example",
       passed: false,
       detail: ".env.example is missing"
     };
   }
-  const content = readFileSync4(path, "utf8");
+  const content = readFileSync3(path, "utf8");
   const requiredVariables = [
     "DATABASE_URL",
     "JWT_ACCESS_SECRET",
@@ -884,14 +838,14 @@ var doctorCommand = new Command9("doctor").description(
 });
 
 // src/commands/docker.ts
-import { existsSync as existsSync7, writeFileSync as writeFileSync3 } from "fs";
+import { existsSync as existsSync6, writeFileSync as writeFileSync2 } from "fs";
 import { Command as Command10 } from "commander";
 function writeFileIfAllowed(path, content, force) {
-  if (existsSync7(path) && !force) {
+  if (existsSync6(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  writeFileSync3(path, content);
+  writeFileSync2(path, content);
   console.log(`Created ${path}`);
 }
 var dockerCommand = new Command10("docker").description(
@@ -902,8 +856,8 @@ dockerCommand.command("init").description(
 ).option("-f, --force", "Overwrite existing Docker files").action((options) => {
   const config = readConfig();
   const force = Boolean(options.force);
-  const hasLockfile = existsSync7("package-lock.json");
-  const prisma = existsSync7("prisma/schema.prisma");
+  const hasLockfile = existsSync6("package-lock.json");
+  const prisma = existsSync6("prisma/schema.prisma");
   const dockerfile = renderDockerfile({
     buildCommand: config.buildCommand,
     outputDirectory: config.outputDirectory,
@@ -1001,15 +955,15 @@ function configure(kind) {
 var generateCommand = new Command12("generate").description("Generate architecture-aware modules and resources").addCommand(configure("module")).addCommand(configure("resource"));
 
 // src/commands/github.ts
-import { existsSync as existsSync8, mkdirSync as mkdirSync3 } from "fs";
-import { dirname as dirname3 } from "path";
+import { existsSync as existsSync7, mkdirSync as mkdirSync2 } from "fs";
+import { dirname as dirname2 } from "path";
 import { Command as Command13 } from "commander";
 function writeWorkflowFile(path, content, force) {
-  if (existsSync8(path) && !force) {
+  if (existsSync7(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  mkdirSync3(dirname3(path), { recursive: true });
+  mkdirSync2(dirname2(path), { recursive: true });
   atomicWriteText(path, content);
   console.log(`Created ${path}`);
 }
@@ -1103,8 +1057,8 @@ var initCommand = new Command15("init").description("Create a LaunchStack config
 import { Command as Command16 } from "commander";
 
 // src/extensions/plugins.ts
-import { existsSync as existsSync9, readFileSync as readFileSync5 } from "fs";
-import { isAbsolute as isAbsolute2, join as join2, resolve as resolve7 } from "path";
+import { existsSync as existsSync8, readFileSync as readFileSync4 } from "fs";
+import { isAbsolute as isAbsolute2, join, resolve as resolve7 } from "path";
 import { z as z2 } from "zod";
 var fileSchema = z2.object({
   path: z2.string().min(1).max(240),
@@ -1174,7 +1128,7 @@ function resolvePluginManifestPath(projectDirectory, specifier) {
   const segments = specifier.startsWith("@") ? specifier.split("/") : [specifier];
   if (segments.some((segment) => segment === ".." || segment === "." || !segment))
     throw new Error(`Invalid plugin package name: ${specifier}`);
-  return join2(
+  return join(
     resolve7(projectDirectory),
     "node_modules",
     ...segments,
@@ -1183,13 +1137,13 @@ function resolvePluginManifestPath(projectDirectory, specifier) {
 }
 function loadPluginManifest(projectDirectory, specifier, options = {}) {
   const path = resolvePluginManifestPath(projectDirectory, specifier);
-  if (!existsSync9(path))
+  if (!existsSync8(path))
     throw new Error(
       `Plugin manifest not found at ${path}. Install third-party packages with scripts disabled, review launchstack-plugin.json, then run launchstack plugin add.`
     );
   try {
     return parsePluginManifest(
-      JSON.parse(readFileSync5(path, "utf8")),
+      JSON.parse(readFileSync4(path, "utf8")),
       options.allowHooks ?? false
     );
   } catch (error) {
@@ -1381,13 +1335,7 @@ var rollbackCommand = new Command18("rollback").description("Show the latest suc
 import { Command as Command19 } from "commander";
 
 // src/secrets-store.ts
-import {
-  chmodSync as chmodSync2,
-  existsSync as existsSync10,
-  lstatSync,
-  mkdirSync as mkdirSync4,
-  readFileSync as readFileSync6
-} from "fs";
+import { chmodSync, existsSync as existsSync9, lstatSync, mkdirSync as mkdirSync3 } from "fs";
 import { resolve as resolve8 } from "path";
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
@@ -1408,7 +1356,7 @@ function validateSecretKey(key) {
 function readSecrets(projectDirectory = process.cwd()) {
   const path = getSecretsPath(projectDirectory);
   const directory2 = resolve8(projectDirectory, STORE_DIR2);
-  if (existsSync10(directory2)) {
+  if (existsSync9(directory2)) {
     const directoryStat = lstatSync(directory2);
     if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
       throw new Error(
@@ -1417,20 +1365,15 @@ function readSecrets(projectDirectory = process.cwd()) {
     }
   }
   let parsed = {};
-  if (existsSync10(path)) {
-    const secretStat = lstatSync(path);
-    if (secretStat.isSymbolicLink() || !secretStat.isFile()) {
-      throw new Error(
-        "secrets.json must be a regular file, not a link or special file."
-      );
-    }
-    if (process.platform !== "win32" && (secretStat.mode & 63) !== 0) {
+  if (existsSync9(path)) {
+    const secretFile = readRegularFileNoFollow(path, 1048576);
+    if (process.platform !== "win32" && (secretFile.mode & 63) !== 0) {
       throw new Error(
         "secrets.json permissions are too broad; expected owner-only access."
       );
     }
     try {
-      parsed = JSON.parse(readFileSync6(path, "utf8"));
+      parsed = JSON.parse(secretFile.content);
     } catch {
       throw new Error("Invalid JSON in secrets.json.");
     }
@@ -1450,12 +1393,12 @@ function readSecrets(projectDirectory = process.cwd()) {
 }
 function writeSecrets(secrets, projectDirectory = process.cwd()) {
   const storeDirectory = resolve8(projectDirectory, STORE_DIR2);
-  mkdirSync4(storeDirectory, { recursive: true, mode: 448 });
+  mkdirSync3(storeDirectory, { recursive: true, mode: 448 });
   const directoryStat = lstatSync(storeDirectory);
   if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
     throw new Error("LaunchStack secrets directory must be a real directory.");
   }
-  if (process.platform !== "win32") chmodSync2(storeDirectory, 448);
+  if (process.platform !== "win32") chmodSync(storeDirectory, 448);
   atomicWriteText(
     getSecretsPath(projectDirectory),
     `${JSON.stringify(secrets, null, 2)}
@@ -1585,8 +1528,8 @@ secretsCommand.command("remove").description("Remove a local secret").argument("
 });
 
 // src/commands/status.ts
-import { existsSync as existsSync11 } from "fs";
-import { join as join3 } from "path";
+import { existsSync as existsSync10 } from "fs";
+import { join as join2 } from "path";
 import { Command as Command20 } from "commander";
 var statusCommand = new Command20("status").description("Show LaunchStack project or stage status").option("--stage <stage>", "Show one named stage").option("--json").option("-d, --directory <path>").action((options) => {
   const directory2 = options.directory ?? process.cwd();
@@ -1611,7 +1554,7 @@ var statusCommand = new Command20("status").description("Show LaunchStack projec
         );
       return;
     }
-    if (existsSync11(join3(directory2, "launchstack.json"))) {
+    if (existsSync10(join2(directory2, "launchstack.json"))) {
       const manifest = loadProjectManifest(directory2);
       const state = loadProjectState(directory2, {
         templateVersion: manifest.project.templateVersion,

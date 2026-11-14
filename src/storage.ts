@@ -1,14 +1,78 @@
 import {
   chmodSync,
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
+  readSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
+
+export type SafeFileSnapshot = {
+  content: string;
+  size: number;
+  mode: number;
+  dev: number;
+  ino: number;
+};
+
+export function readRegularFileNoFollow(
+  path: string,
+  maxBytes: number,
+): SafeFileSnapshot {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
+    throw new Error("File size limit must be a non-negative safe integer.");
+  let descriptor: number;
+  try {
+    descriptor = openSync(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ELOOP")
+      throw new Error("Expected a regular file without following links.");
+    throw error;
+  }
+  try {
+    const before = fstatSync(descriptor);
+    if (!before.isFile())
+      throw new Error("Expected a regular file without following links.");
+    if (before.size > maxBytes)
+      throw new Error("File exceeds the configured size limit.");
+
+    const chunks: Buffer[] = [];
+    const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+    let total = 0;
+    while (total <= maxBytes) {
+      const length = Math.min(chunk.length, maxBytes + 1 - total);
+      const bytesRead = readSync(descriptor, chunk, 0, length, null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > maxBytes)
+        throw new Error("File exceeds the configured size limit.");
+      chunks.push(Buffer.from(chunk.subarray(0, bytesRead)));
+    }
+    const after = fstatSync(descriptor);
+    if (after.dev !== before.dev || after.ino !== before.ino)
+      throw new Error("Opened file identity changed while reading.");
+    return {
+      content: Buffer.concat(chunks, total).toString("utf8"),
+      size: after.size,
+      mode: after.mode,
+      dev: after.dev,
+      ino: after.ino,
+    };
+  } finally {
+    closeSync(descriptor);
+  }
+}
 
 export function atomicWriteText(
   path: string,

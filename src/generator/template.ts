@@ -1,11 +1,6 @@
-import {
-  existsSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { basename, extname, join } from "node:path";
+import { atomicWriteText, readRegularFileNoFollow } from "../storage";
 
 export type TemplateVariables = Record<string, string>;
 
@@ -66,7 +61,9 @@ export function renderDirectory(
 
   for (const entry of readdirSync(directory)) {
     const path = join(directory, entry);
-    const stats = statSync(path);
+    const stats = lstatSync(path);
+    if (stats.isSymbolicLink())
+      throw new Error("Template directory cannot contain symbolic links.");
 
     if (stats.isDirectory()) {
       renderDirectory(path, variables);
@@ -77,11 +74,11 @@ export function renderDirectory(
       continue;
     }
 
-    const content = readFileSync(path, "utf8");
+    const content = readRegularFileNoFollow(path, 16 * 1024 * 1024).content;
     const rendered = renderTemplate(content, variables);
 
     if (rendered !== content) {
-      writeFileSync(path, rendered);
+      atomicWriteText(path, rendered);
     }
   }
 }

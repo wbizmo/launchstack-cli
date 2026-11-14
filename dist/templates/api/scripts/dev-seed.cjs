@@ -1,5 +1,3 @@
-const bcrypt = require("bcryptjs");
-const { PrismaClient } = require("@prisma/client");
 const { URL } = require("node:url");
 
 async function main() {
@@ -20,6 +18,8 @@ async function main() {
     throw new Error(
       "Set LAUNCHSTACK_SEED_EMAIL and a LAUNCHSTACK_SEED_PASSWORD of at least 12 characters.",
     );
+  const bcrypt = require("bcryptjs");
+  const { PrismaClient } = require("@prisma/client");
   const prisma = new PrismaClient();
   try {
     const passwordHash = await bcrypt.hash(password, 12);

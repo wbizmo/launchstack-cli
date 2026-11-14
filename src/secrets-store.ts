@@ -1,12 +1,6 @@
-import {
-  chmodSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-} from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { atomicWriteText } from "./storage";
+import { atomicWriteText, readRegularFileNoFollow } from "./storage";
 
 const STORE_DIR = ".launchstack";
 const SECRETS_FILE = "secrets.json";
@@ -47,19 +41,14 @@ export function readSecrets(projectDirectory = process.cwd()): SecretStore {
   }
   let parsed: unknown = {};
   if (existsSync(path)) {
-    const secretStat = lstatSync(path);
-    if (secretStat.isSymbolicLink() || !secretStat.isFile()) {
-      throw new Error(
-        "secrets.json must be a regular file, not a link or special file.",
-      );
-    }
-    if (process.platform !== "win32" && (secretStat.mode & 0o077) !== 0) {
+    const secretFile = readRegularFileNoFollow(path, 1_048_576);
+    if (process.platform !== "win32" && (secretFile.mode & 0o077) !== 0) {
       throw new Error(
         "secrets.json permissions are too broad; expected owner-only access.",
       );
     }
     try {
-      parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+      parsed = JSON.parse(secretFile.content) as unknown;
     } catch {
       throw new Error("Invalid JSON in secrets.json.");
     }

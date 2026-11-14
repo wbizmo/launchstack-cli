@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import { dirname, join, resolve, relative, sep, isAbsolute } from "node:path";
 import { normalizeManagedPath, resolveProjectPath } from "./paths";
 import { hashFile, sha256 } from "./state";
+import { readRegularFileNoFollow } from "../storage";
 import type { FileMutation, ProjectState } from "./types";
 
 type Journal = {
@@ -146,13 +147,8 @@ function parseJournal(value: unknown): Journal {
 function readJournal(projectDirectory: string): Journal {
   ensureMetadataDirectory(projectDirectory);
   const path = journalPath(projectDirectory);
-  const stat = lstatSync(path);
-  if (stat.isSymbolicLink() || !stat.isFile() || stat.size > MAX_JOURNAL_BYTES)
-    throw new Error("Mutation recovery journal is not a bounded regular file.");
-  const contents = readFileSync(path, "utf8");
-  if (Buffer.byteLength(contents) > MAX_JOURNAL_BYTES)
-    throw new Error("Mutation recovery journal exceeds the size limit.");
-  return parseJournal(JSON.parse(contents) as unknown);
+  const file = readRegularFileNoFollow(path, MAX_JOURNAL_BYTES);
+  return parseJournal(JSON.parse(file.content) as unknown);
 }
 
 function processStartToken(pid: number): string | undefined {
@@ -270,7 +266,9 @@ function acquireLock(projectDirectory: string): () => void {
       syncDirectory(directory);
       return () => {
         try {
-          const current = JSON.parse(readFileSync(lockPath, "utf8")) as {
+          const current = JSON.parse(
+            readRegularFileNoFollow(lockPath, 4096).content,
+          ) as {
             id?: string;
           };
           if (current.id === lockId) unlinkSync(lockPath);
@@ -290,10 +288,8 @@ function acquireLock(projectDirectory: string): () => void {
       }
       let stale = false;
       try {
-        const stat = lstatSync(lockPath);
-        if (stat.isSymbolicLink() || !stat.isFile() || stat.size > 4096)
-          throw new Error("unsafe lock");
-        const contents = readFileSync(lockPath, "utf8");
+        const lockFile = readRegularFileNoFollow(lockPath, 4096);
+        const contents = lockFile.content;
         const lock = JSON.parse(contents) as {
           version?: number;
           id?: string;
@@ -311,8 +307,15 @@ function acquireLock(projectDirectory: string): () => void {
         )
           throw new Error("malformed lock");
         stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
-        if (stale && readFileSync(lockPath, "utf8") === contents)
-          unlinkSync(lockPath);
+        if (stale) {
+          const confirmed = readRegularFileNoFollow(lockPath, 4096);
+          if (
+            confirmed.content === contents &&
+            confirmed.dev === lockFile.dev &&
+            confirmed.ino === lockFile.ino
+          )
+            unlinkSync(lockPath);
+        }
       } catch {
         if (!existsSync(lockPath)) continue;
         throw new Error(

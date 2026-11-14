@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import {
   closeSync,
+  constants,
+  fstatSync,
   mkdtempSync,
   openSync,
   readFileSync,
@@ -38,6 +40,19 @@ function measure<T>(run: () => T, valid: (result: T) => boolean): number[] {
       throw new Error("Benchmark sample failed its integrity check.");
   }
   return samples;
+}
+function readWholeFileNoFollow(path: string): Buffer {
+  const descriptor = openSync(
+    path,
+    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+  );
+  try {
+    if (!fstatSync(descriptor).isFile())
+      throw new Error("Benchmark input must be a regular file.");
+    return readFileSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
 }
 function syntheticServices(size: number): DevService[] {
   const root: DevService = {
@@ -209,10 +224,13 @@ async function main(): Promise<void> {
         closeSync(descriptor);
       }
       const expected = createHash("sha256")
-        .update(readFileSync(path))
+        .update(readWholeFileNoFollow(path))
         .digest("hex");
       const before = measure(
-        () => createHash("sha256").update(readFileSync(path)).digest("hex"),
+        () =>
+          createHash("sha256")
+            .update(readWholeFileNoFollow(path))
+            .digest("hex"),
         (result) => result === expected,
       );
       const after = measure(

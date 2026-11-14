@@ -1,4 +1,3 @@
-import { readFileSync, statSync } from "node:fs";
 import {
   collectOperations,
   componentTypeNames,
@@ -9,6 +8,7 @@ import {
   type OpenApiDocument,
   type OpenApiParameter,
 } from "./openapi";
+import { readRegularFileNoFollow } from "../storage";
 export type ClientTarget = "typescript" | "react" | "react-native";
 const MAX_GENERATED_BYTES = 2_097_152;
 function boundedJoin<T>(
@@ -100,14 +100,10 @@ export async function loadOpenApiSource(
     }
     return parseOpenApiDocument(parsed);
   }
-  const stats = statSync(source);
-  if (!stats.isFile())
-    throw new Error("OpenAPI schema path must be a regular file.");
-  if (stats.size > 1_048_576)
-    throw new Error("OpenAPI file exceeds the 1 MiB size limit.");
+  const file = readRegularFileNoFollow(source, 1_048_576);
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(source, "utf8"));
+    parsed = JSON.parse(file.content);
   } catch (error) {
     if (error instanceof SyntaxError)
       throw new Error("OpenAPI file contains invalid JSON.");
@@ -306,7 +302,14 @@ export function generateTypeScriptClient(
   target: ClientTarget = "typescript",
 ): string {
   const names = componentTypeNames(document);
-  const operations = collectOperations(document);
+  const operations = collectOperations(document).map((operation) => {
+    const name = operation.name;
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name))
+      throw new Error(
+        "OpenAPI operation identifier is not a safe TypeScript name.",
+      );
+    return { ...operation, name };
+  });
   if (operations.length > 3000)
     throw new Error("OpenAPI document exceeds the 3000-operation limit.");
   const schemas = renderSchemas(document, names);

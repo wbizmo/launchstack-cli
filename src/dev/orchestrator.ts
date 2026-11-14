@@ -5,8 +5,6 @@ import {
   existsSync,
   lstatSync,
   openSync,
-  readFileSync,
-  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -14,6 +12,7 @@ import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { loadProjectManifest } from "../project/manifest";
+import { readRegularFileNoFollow } from "../storage";
 
 export type DevStatus = "started" | "ready" | "degraded" | "failed" | "stopped";
 export type DevService = {
@@ -62,7 +61,8 @@ export async function acquireHostPortLock(): Promise<() => void> {
       }
       return () => {
         try {
-          if (readFileSync(path, "utf8") === token) unlinkSync(path);
+          if (readRegularFileNoFollow(path, 512).content === token)
+            unlinkSync(path);
         } catch {
           /* Lock is already gone. */
         }
@@ -70,12 +70,8 @@ export async function acquireHostPortLock(): Promise<() => void> {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       try {
-        const stat = lstatSync(path);
-        if (stat.isSymbolicLink() || !stat.isFile())
-          throw new Error(
-            "Development port allocation lock is not a regular file.",
-          );
-        const ownerContents = readFileSync(path, "utf8");
+        const lockFile = readRegularFileNoFollow(path, 512);
+        const ownerContents = lockFile.content;
         if (!ownerContents.trim()) {
           await new Promise((done) => setTimeout(done, 50));
           continue;
@@ -93,8 +89,9 @@ export async function acquireHostPortLock(): Promise<() => void> {
             alive = false;
         }
         if (!alive) {
-          const current = statSync(path);
-          if (current.ino === stat.ino) unlinkSync(path);
+          const current = lstatSync(path);
+          if (current.dev === lockFile.dev && current.ino === lockFile.ino)
+            unlinkSync(path);
           continue;
         }
       } catch (readError) {
@@ -175,8 +172,8 @@ function readDotEnv(projectDirectory: string): Record<string, string> {
   const path = resolve(projectDirectory, ".env");
   if (!existsSync(path)) return {};
   return Object.fromEntries(
-    readFileSync(path, "utf8")
-      .split(/\r?\n/)
+    readRegularFileNoFollow(path, 1_048_576)
+      .content.split(/\r?\n/)
       .flatMap((line) => {
         const match = /^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
         if (!match) return [];

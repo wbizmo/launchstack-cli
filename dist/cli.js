@@ -311,10 +311,10 @@ function listFirstPartyExtensions() {
 }
 
 // src/extensions/engine.ts
-var import_node_fs5 = require("fs");
+var import_node_fs6 = require("fs");
 var import_node_child_process = require("child_process");
 var import_node_os = require("os");
-var import_node_path5 = require("path");
+var import_node_path6 = require("path");
 
 // src/project/manifest.ts
 var import_node_fs = require("fs");
@@ -564,41 +564,130 @@ function detectManagedDrift(projectDirectory, state) {
 }
 
 // src/project/transaction.ts
+var import_node_fs5 = require("fs");
+var import_node_crypto3 = require("crypto");
+var import_node_path5 = require("path");
+
+// src/storage.ts
 var import_node_fs4 = require("fs");
-var import_node_crypto2 = require("crypto");
 var import_node_path4 = require("path");
-var metadataDirectory = (projectDirectory) => (0, import_node_path4.join)((0, import_node_path4.resolve)(projectDirectory), ".launchstack");
-var journalPath = (projectDirectory) => (0, import_node_path4.join)(metadataDirectory(projectDirectory), "mutation-journal.json");
+var import_node_crypto2 = require("crypto");
+function readRegularFileNoFollow(path, maxBytes) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
+    throw new Error("File size limit must be a non-negative safe integer.");
+  let descriptor;
+  try {
+    descriptor = (0, import_node_fs4.openSync)(
+      path,
+      import_node_fs4.constants.O_RDONLY | (import_node_fs4.constants.O_NOFOLLOW ?? 0)
+    );
+  } catch (error) {
+    if (error.code === "ELOOP")
+      throw new Error("Expected a regular file without following links.");
+    throw error;
+  }
+  try {
+    const before = (0, import_node_fs4.fstatSync)(descriptor);
+    if (!before.isFile())
+      throw new Error("Expected a regular file without following links.");
+    if (before.size > maxBytes)
+      throw new Error("File exceeds the configured size limit.");
+    const chunks = [];
+    const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+    let total = 0;
+    while (total <= maxBytes) {
+      const length = Math.min(chunk.length, maxBytes + 1 - total);
+      const bytesRead = (0, import_node_fs4.readSync)(descriptor, chunk, 0, length, null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > maxBytes)
+        throw new Error("File exceeds the configured size limit.");
+      chunks.push(Buffer.from(chunk.subarray(0, bytesRead)));
+    }
+    const after = (0, import_node_fs4.fstatSync)(descriptor);
+    if (after.dev !== before.dev || after.ino !== before.ino)
+      throw new Error("Opened file identity changed while reading.");
+    return {
+      content: Buffer.concat(chunks, total).toString("utf8"),
+      size: after.size,
+      mode: after.mode,
+      dev: after.dev,
+      ino: after.ino
+    };
+  } finally {
+    (0, import_node_fs4.closeSync)(descriptor);
+  }
+}
+function atomicWriteText(path, content, mode) {
+  const directory2 = (0, import_node_path4.dirname)(path);
+  (0, import_node_fs4.mkdirSync)(directory2, { recursive: true });
+  const temporaryPath = (0, import_node_path4.join)(
+    directory2,
+    `.${(0, import_node_path4.basename)(path)}.${process.pid}.${(0, import_node_crypto2.randomUUID)()}.tmp`
+  );
+  try {
+    (0, import_node_fs4.writeFileSync)(temporaryPath, content, {
+      encoding: "utf8",
+      flag: "wx",
+      ...mode === void 0 ? {} : { mode }
+    });
+    if (mode !== void 0) {
+      (0, import_node_fs4.chmodSync)(temporaryPath, mode);
+    }
+    (0, import_node_fs4.renameSync)(temporaryPath, path);
+    if (mode !== void 0) {
+      (0, import_node_fs4.chmodSync)(path, mode);
+    }
+  } finally {
+    if ((0, import_node_fs4.existsSync)(temporaryPath)) {
+      (0, import_node_fs4.rmSync)(temporaryPath, { force: true });
+    }
+  }
+}
+function readJsonFile(path, fallback) {
+  if (!(0, import_node_fs4.existsSync)(path)) {
+    return fallback;
+  }
+  try {
+    return JSON.parse((0, import_node_fs4.readFileSync)(path, "utf8"));
+  } catch {
+    throw new Error(`Invalid JSON in ${(0, import_node_path4.basename)(path)}.`);
+  }
+}
+
+// src/project/transaction.ts
+var metadataDirectory = (projectDirectory) => (0, import_node_path5.join)((0, import_node_path5.resolve)(projectDirectory), ".launchstack");
+var journalPath = (projectDirectory) => (0, import_node_path5.join)(metadataDirectory(projectDirectory), "mutation-journal.json");
 var MAX_JOURNAL_BYTES = 2 * 1024 * 1024;
 var MAX_JOURNAL_MUTATIONS = 1e4;
 function ensureMetadataDirectory(projectDirectory) {
-  const root = (0, import_node_path4.resolve)(projectDirectory);
+  const root = (0, import_node_path5.resolve)(projectDirectory);
   const directory2 = metadataDirectory(root);
-  (0, import_node_fs4.mkdirSync)(directory2, { recursive: true, mode: 448 });
-  const stat = (0, import_node_fs4.lstatSync)(directory2);
+  (0, import_node_fs5.mkdirSync)(directory2, { recursive: true, mode: 448 });
+  const stat = (0, import_node_fs5.lstatSync)(directory2);
   if (stat.isSymbolicLink() || !stat.isDirectory()) {
     throw new Error("LaunchStack metadata directory must be a real directory.");
   }
-  const relativePath = (0, import_node_path4.relative)(root, (0, import_node_path4.resolve)(directory2));
-  if (relativePath !== ".launchstack" || (0, import_node_path4.isAbsolute)(relativePath) || relativePath.startsWith(`..${import_node_path4.sep}`)) {
+  const relativePath = (0, import_node_path5.relative)(root, (0, import_node_path5.resolve)(directory2));
+  if (relativePath !== ".launchstack" || (0, import_node_path5.isAbsolute)(relativePath) || relativePath.startsWith(`..${import_node_path5.sep}`)) {
     throw new Error("LaunchStack metadata directory escapes the project.");
   }
   return directory2;
 }
 function assertOwnedDirectory(directory2, metadata) {
-  const stat = (0, import_node_fs4.lstatSync)(directory2);
+  const stat = (0, import_node_fs5.lstatSync)(directory2);
   if (stat.isSymbolicLink() || !stat.isDirectory()) {
     throw new Error(
       "Mutation recovery directory is not a LaunchStack-owned directory."
     );
   }
-  const rel = (0, import_node_path4.relative)((0, import_node_path4.resolve)(metadata), (0, import_node_path4.resolve)(directory2));
+  const rel = (0, import_node_path5.relative)((0, import_node_path5.resolve)(metadata), (0, import_node_path5.resolve)(directory2));
   if (!rel.startsWith(".stage-") && !rel.startsWith(".backup-")) {
     throw new Error(
       "Mutation recovery directory escapes LaunchStack metadata."
     );
   }
-  if (rel.includes(import_node_path4.sep) || rel === ".." || (0, import_node_path4.isAbsolute)(rel)) {
+  if (rel.includes(import_node_path5.sep) || rel === ".." || (0, import_node_path5.isAbsolute)(rel)) {
     throw new Error(
       "Mutation recovery directory escapes LaunchStack metadata."
     );
@@ -649,18 +738,13 @@ function parseJournal(value) {
 function readJournal(projectDirectory) {
   ensureMetadataDirectory(projectDirectory);
   const path = journalPath(projectDirectory);
-  const stat = (0, import_node_fs4.lstatSync)(path);
-  if (stat.isSymbolicLink() || !stat.isFile() || stat.size > MAX_JOURNAL_BYTES)
-    throw new Error("Mutation recovery journal is not a bounded regular file.");
-  const contents = (0, import_node_fs4.readFileSync)(path, "utf8");
-  if (Buffer.byteLength(contents) > MAX_JOURNAL_BYTES)
-    throw new Error("Mutation recovery journal exceeds the size limit.");
-  return parseJournal(JSON.parse(contents));
+  const file = readRegularFileNoFollow(path, MAX_JOURNAL_BYTES);
+  return parseJournal(JSON.parse(file.content));
 }
 function processStartToken(pid) {
   if (process.platform !== "linux") return void 0;
   try {
-    const stat = (0, import_node_fs4.readFileSync)(`/proc/${pid}/stat`, "utf8");
+    const stat = (0, import_node_fs5.readFileSync)(`/proc/${pid}/stat`, "utf8");
     const close = stat.lastIndexOf(")");
     const fields = stat.slice(close + 2).trim().split(/\s+/);
     return fields[19];
@@ -680,11 +764,11 @@ function processIsAlive(pid, expectedStartToken) {
   }
 }
 function syncFile(path) {
-  const descriptor = (0, import_node_fs4.openSync)(path, "r");
+  const descriptor = (0, import_node_fs5.openSync)(path, "r");
   try {
-    (0, import_node_fs4.fsyncSync)(descriptor);
+    (0, import_node_fs5.fsyncSync)(descriptor);
   } finally {
-    (0, import_node_fs4.closeSync)(descriptor);
+    (0, import_node_fs5.closeSync)(descriptor);
   }
 }
 function waitForLockRetry() {
@@ -694,23 +778,23 @@ function syncDirectory(path) {
   if (process.platform === "win32") return;
   let descriptor;
   try {
-    descriptor = (0, import_node_fs4.openSync)(path, "r");
-    (0, import_node_fs4.fsyncSync)(descriptor);
+    descriptor = (0, import_node_fs5.openSync)(path, "r");
+    (0, import_node_fs5.fsyncSync)(descriptor);
   } catch (error) {
     const code = error.code;
     if (code !== "EINVAL" && code !== "ENOTSUP" && code !== "EISDIR")
       throw error;
   } finally {
-    if (descriptor !== void 0) (0, import_node_fs4.closeSync)(descriptor);
+    if (descriptor !== void 0) (0, import_node_fs5.closeSync)(descriptor);
   }
 }
 function collectDirectoryChain(directories, path, stopAt) {
-  const stop = (0, import_node_path4.resolve)(stopAt);
-  let current = (0, import_node_path4.resolve)(path);
-  while (current === stop || current.startsWith(`${stop}${import_node_path4.sep}`)) {
+  const stop = (0, import_node_path5.resolve)(stopAt);
+  let current = (0, import_node_path5.resolve)(path);
+  while (current === stop || current.startsWith(`${stop}${import_node_path5.sep}`)) {
     directories.add(current);
     if (current === stop) return;
-    current = (0, import_node_path4.dirname)(current);
+    current = (0, import_node_path5.dirname)(current);
   }
   throw new Error("Cannot sync a directory outside the transaction boundary.");
 }
@@ -722,23 +806,23 @@ function syncDirectories(directories) {
 }
 function writeJournal(projectDirectory, journal) {
   const path = journalPath(projectDirectory);
-  const temporary = `${path}.${(0, import_node_crypto2.randomUUID)()}.tmp`;
-  (0, import_node_fs4.writeFileSync)(temporary, JSON.stringify(journal, null, 2), {
+  const temporary = `${path}.${(0, import_node_crypto3.randomUUID)()}.tmp`;
+  (0, import_node_fs5.writeFileSync)(temporary, JSON.stringify(journal, null, 2), {
     mode: 384,
     flag: "wx"
   });
   syncFile(temporary);
-  (0, import_node_fs4.renameSync)(temporary, path);
+  (0, import_node_fs5.renameSync)(temporary, path);
   syncDirectory(metadataDirectory(projectDirectory));
 }
 function acquireLock(projectDirectory) {
   const directory2 = ensureMetadataDirectory(projectDirectory);
-  const lockPath = (0, import_node_path4.join)(directory2, "mutation.lock");
+  const lockPath = (0, import_node_path5.join)(directory2, "mutation.lock");
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    const lockId = (0, import_node_crypto2.randomUUID)();
-    const temporaryLockPath = (0, import_node_path4.join)(directory2, `.mutation-lock-${lockId}.tmp`);
+    const lockId = (0, import_node_crypto3.randomUUID)();
+    const temporaryLockPath = (0, import_node_path5.join)(directory2, `.mutation-lock-${lockId}.tmp`);
     const startToken = processStartToken(process.pid);
-    (0, import_node_fs4.writeFileSync)(
+    (0, import_node_fs5.writeFileSync)(
       temporaryLockPath,
       JSON.stringify({
         version: 1,
@@ -751,39 +835,42 @@ function acquireLock(projectDirectory) {
     );
     syncFile(temporaryLockPath);
     try {
-      (0, import_node_fs4.linkSync)(temporaryLockPath, lockPath);
-      (0, import_node_fs4.unlinkSync)(temporaryLockPath);
+      (0, import_node_fs5.linkSync)(temporaryLockPath, lockPath);
+      (0, import_node_fs5.unlinkSync)(temporaryLockPath);
       syncDirectory(directory2);
       return () => {
         try {
-          const current = JSON.parse((0, import_node_fs4.readFileSync)(lockPath, "utf8"));
-          if (current.id === lockId) (0, import_node_fs4.unlinkSync)(lockPath);
+          const current = JSON.parse(
+            readRegularFileNoFollow(lockPath, 4096).content
+          );
+          if (current.id === lockId) (0, import_node_fs5.unlinkSync)(lockPath);
         } catch {
         }
       };
     } catch (error) {
       try {
-        (0, import_node_fs4.unlinkSync)(temporaryLockPath);
+        (0, import_node_fs5.unlinkSync)(temporaryLockPath);
       } catch {
       }
-      if (!(0, import_node_fs4.existsSync)(lockPath)) {
+      if (!(0, import_node_fs5.existsSync)(lockPath)) {
         if (error.code === "EEXIST") continue;
         throw error;
       }
       let stale = false;
       try {
-        const stat = (0, import_node_fs4.lstatSync)(lockPath);
-        if (stat.isSymbolicLink() || !stat.isFile() || stat.size > 4096)
-          throw new Error("unsafe lock");
-        const contents = (0, import_node_fs4.readFileSync)(lockPath, "utf8");
+        const lockFile = readRegularFileNoFollow(lockPath, 4096);
+        const contents = lockFile.content;
         const lock = JSON.parse(contents);
         if (lock.version !== 1 || typeof lock.id !== "string" || !Number.isInteger(lock.pid) || !Number.isFinite(lock.createdAt) || lock.processStartToken !== void 0 && typeof lock.processStartToken !== "string")
           throw new Error("malformed lock");
         stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
-        if (stale && (0, import_node_fs4.readFileSync)(lockPath, "utf8") === contents)
-          (0, import_node_fs4.unlinkSync)(lockPath);
+        if (stale) {
+          const confirmed = readRegularFileNoFollow(lockPath, 4096);
+          if (confirmed.content === contents && confirmed.dev === lockFile.dev && confirmed.ino === lockFile.ino)
+            (0, import_node_fs5.unlinkSync)(lockPath);
+        }
       } catch {
-        if (!(0, import_node_fs4.existsSync)(lockPath)) continue;
+        if (!(0, import_node_fs5.existsSync)(lockPath)) continue;
         throw new Error(
           "Another LaunchStack mutation is already running; its lock identity cannot be verified."
         );
@@ -801,62 +888,62 @@ function acquireLock(projectDirectory) {
 }
 function restoreJournal(projectDirectory, journal) {
   const metadata = ensureMetadataDirectory(projectDirectory);
-  const stageDirectory = (0, import_node_path4.join)(metadata, `.stage-${journal.id}`);
-  const backupDirectory = (0, import_node_path4.join)(metadata, `.backup-${journal.id}`);
-  if ((0, import_node_fs4.existsSync)(stageDirectory))
+  const stageDirectory = (0, import_node_path5.join)(metadata, `.stage-${journal.id}`);
+  const backupDirectory = (0, import_node_path5.join)(metadata, `.backup-${journal.id}`);
+  if ((0, import_node_fs5.existsSync)(stageDirectory))
     assertOwnedDirectory(stageDirectory, metadata);
-  if ((0, import_node_fs4.existsSync)(backupDirectory))
+  if ((0, import_node_fs5.existsSync)(backupDirectory))
     assertOwnedDirectory(backupDirectory, metadata);
   if (journal.state === "committed") {
-    if ((0, import_node_fs4.existsSync)(stageDirectory))
-      (0, import_node_fs4.rmSync)(stageDirectory, { recursive: true, force: true });
-    if ((0, import_node_fs4.existsSync)(backupDirectory))
-      (0, import_node_fs4.rmSync)(backupDirectory, { recursive: true, force: true });
-    (0, import_node_fs4.rmSync)(journalPath(projectDirectory), { force: true });
+    if ((0, import_node_fs5.existsSync)(stageDirectory))
+      (0, import_node_fs5.rmSync)(stageDirectory, { recursive: true, force: true });
+    if ((0, import_node_fs5.existsSync)(backupDirectory))
+      (0, import_node_fs5.rmSync)(backupDirectory, { recursive: true, force: true });
+    (0, import_node_fs5.rmSync)(journalPath(projectDirectory), { force: true });
     syncDirectory(metadata);
     return;
   }
   for (const mutation of journal.mutations) {
     const target = resolveProjectPath(projectDirectory, mutation.path);
-    const backup = (0, import_node_path4.join)(backupDirectory, mutation.path);
-    if ((0, import_node_fs4.existsSync)(backup)) resolveProjectPath(backupDirectory, mutation.path);
-    if (mutation.hadOriginal && !(0, import_node_fs4.existsSync)(backup) && !(0, import_node_fs4.existsSync)(target)) {
+    const backup = (0, import_node_path5.join)(backupDirectory, mutation.path);
+    if ((0, import_node_fs5.existsSync)(backup)) resolveProjectPath(backupDirectory, mutation.path);
+    if (mutation.hadOriginal && !(0, import_node_fs5.existsSync)(backup) && !(0, import_node_fs5.existsSync)(target)) {
       throw new Error(`Cannot safely recover original file: ${mutation.path}`);
     }
   }
   const restoredDirectories = /* @__PURE__ */ new Set();
   for (const mutation of [...journal.mutations].reverse()) {
     const target = resolveProjectPath(projectDirectory, mutation.path);
-    const backup = (0, import_node_path4.join)(backupDirectory, mutation.path);
-    if ((0, import_node_fs4.existsSync)(backup)) {
-      if ((0, import_node_fs4.existsSync)(target)) (0, import_node_fs4.rmSync)(target, { recursive: true, force: true });
-      (0, import_node_fs4.mkdirSync)((0, import_node_path4.dirname)(target), { recursive: true });
-      (0, import_node_fs4.renameSync)(backup, target);
+    const backup = (0, import_node_path5.join)(backupDirectory, mutation.path);
+    if ((0, import_node_fs5.existsSync)(backup)) {
+      if ((0, import_node_fs5.existsSync)(target)) (0, import_node_fs5.rmSync)(target, { recursive: true, force: true });
+      (0, import_node_fs5.mkdirSync)((0, import_node_path5.dirname)(target), { recursive: true });
+      (0, import_node_fs5.renameSync)(backup, target);
       collectDirectoryChain(
         restoredDirectories,
-        (0, import_node_path4.dirname)(target),
+        (0, import_node_path5.dirname)(target),
         projectDirectory
       );
-    } else if (!mutation.hadOriginal && (0, import_node_fs4.existsSync)(target)) {
-      (0, import_node_fs4.rmSync)(target, { recursive: true, force: true });
+    } else if (!mutation.hadOriginal && (0, import_node_fs5.existsSync)(target)) {
+      (0, import_node_fs5.rmSync)(target, { recursive: true, force: true });
       collectDirectoryChain(
         restoredDirectories,
-        (0, import_node_path4.dirname)(target),
+        (0, import_node_path5.dirname)(target),
         projectDirectory
       );
     }
   }
   syncDirectories(restoredDirectories);
-  if ((0, import_node_fs4.existsSync)(stageDirectory))
-    (0, import_node_fs4.rmSync)(stageDirectory, { recursive: true, force: true });
-  if ((0, import_node_fs4.existsSync)(backupDirectory))
-    (0, import_node_fs4.rmSync)(backupDirectory, { recursive: true, force: true });
-  (0, import_node_fs4.rmSync)(journalPath(projectDirectory), { force: true });
+  if ((0, import_node_fs5.existsSync)(stageDirectory))
+    (0, import_node_fs5.rmSync)(stageDirectory, { recursive: true, force: true });
+  if ((0, import_node_fs5.existsSync)(backupDirectory))
+    (0, import_node_fs5.rmSync)(backupDirectory, { recursive: true, force: true });
+  (0, import_node_fs5.rmSync)(journalPath(projectDirectory), { force: true });
   syncDirectory(metadata);
 }
 function recoverInterruptedMutation(projectDirectory) {
   const path = journalPath(projectDirectory);
-  if (!(0, import_node_fs4.existsSync)(path)) return false;
+  if (!(0, import_node_fs5.existsSync)(path)) return false;
   restoreJournal(projectDirectory, readJournal(projectDirectory));
   return true;
 }
@@ -880,16 +967,16 @@ function withTrackedMutations(state, mutations) {
   return next;
 }
 function applyFileMutations(input) {
-  const projectDirectory = (0, import_node_path4.resolve)(input.projectDirectory);
+  const projectDirectory = (0, import_node_path5.resolve)(input.projectDirectory);
   const releaseLock = acquireLock(projectDirectory);
   try {
     recoverInterruptedMutation(projectDirectory);
-    const id = (0, import_node_crypto2.randomUUID)();
+    const id = (0, import_node_crypto3.randomUUID)();
     const metadata = ensureMetadataDirectory(projectDirectory);
-    const stageDirectory = (0, import_node_path4.join)(metadata, `.stage-${id}`);
-    const backupDirectory = (0, import_node_path4.join)(metadata, `.backup-${id}`);
-    (0, import_node_fs4.mkdirSync)(stageDirectory, { recursive: true, mode: 448 });
-    (0, import_node_fs4.mkdirSync)(backupDirectory, { recursive: true, mode: 448 });
+    const stageDirectory = (0, import_node_path5.join)(metadata, `.stage-${id}`);
+    const backupDirectory = (0, import_node_path5.join)(metadata, `.backup-${id}`);
+    (0, import_node_fs5.mkdirSync)(stageDirectory, { recursive: true, mode: 448 });
+    (0, import_node_fs5.mkdirSync)(backupDirectory, { recursive: true, mode: 448 });
     syncDirectory(metadata);
     const stagedDirectories = /* @__PURE__ */ new Set();
     try {
@@ -920,7 +1007,7 @@ function applyFileMutations(input) {
       }
       for (const mutation of input.mutations) {
         const target = resolveProjectPath(projectDirectory, mutation.path);
-        const exists = (0, import_node_fs4.existsSync)(target);
+        const exists = (0, import_node_fs5.existsSync)(target);
         if (mutation.type === "write") {
           if (mutation.expectedSha256 === null && exists) {
             throw new Error(
@@ -930,14 +1017,14 @@ function applyFileMutations(input) {
           if (typeof mutation.expectedSha256 === "string" && (!exists || hashFile(target) !== mutation.expectedSha256)) {
             throw new Error(`File changed since planning: ${mutation.path}`);
           }
-          const staged = (0, import_node_path4.join)(stageDirectory, mutation.path);
-          (0, import_node_fs4.mkdirSync)((0, import_node_path4.dirname)(staged), { recursive: true });
-          (0, import_node_fs4.writeFileSync)(staged, mutation.content, "utf8");
-          (0, import_node_fs4.chmodSync)(staged, mutation.executable ? 493 : 420);
+          const staged = (0, import_node_path5.join)(stageDirectory, mutation.path);
+          (0, import_node_fs5.mkdirSync)((0, import_node_path5.dirname)(staged), { recursive: true });
+          (0, import_node_fs5.writeFileSync)(staged, mutation.content, "utf8");
+          (0, import_node_fs5.chmodSync)(staged, mutation.executable ? 493 : 420);
           syncFile(staged);
           collectDirectoryChain(
             stagedDirectories,
-            (0, import_node_path4.dirname)(staged),
+            (0, import_node_path5.dirname)(staged),
             stageDirectory
           );
         } else if (!exists || hashFile(target) !== mutation.expectedSha256) {
@@ -948,8 +1035,8 @@ function applyFileMutations(input) {
       }
       syncDirectories(stagedDirectories);
     } catch (error) {
-      (0, import_node_fs4.rmSync)(stageDirectory, { recursive: true, force: true });
-      (0, import_node_fs4.rmSync)(backupDirectory, { recursive: true, force: true });
+      (0, import_node_fs5.rmSync)(stageDirectory, { recursive: true, force: true });
+      (0, import_node_fs5.rmSync)(backupDirectory, { recursive: true, force: true });
       throw error;
     }
     const journal = {
@@ -959,7 +1046,7 @@ function applyFileMutations(input) {
       mutations: input.mutations.map((mutation) => ({
         type: mutation.type,
         path: mutation.path,
-        hadOriginal: (0, import_node_fs4.existsSync)(
+        hadOriginal: (0, import_node_fs5.existsSync)(
           resolveProjectPath(projectDirectory, mutation.path)
         )
       }))
@@ -971,33 +1058,33 @@ function applyFileMutations(input) {
       const committedDirectories = /* @__PURE__ */ new Set();
       for (const mutation of input.mutations) {
         const target = resolveProjectPath(projectDirectory, mutation.path);
-        const backup = (0, import_node_path4.join)(backupDirectory, mutation.path);
-        if ((0, import_node_fs4.existsSync)(target)) {
-          (0, import_node_fs4.mkdirSync)((0, import_node_path4.dirname)(backup), { recursive: true });
-          (0, import_node_fs4.renameSync)(target, backup);
+        const backup = (0, import_node_path5.join)(backupDirectory, mutation.path);
+        if ((0, import_node_fs5.existsSync)(target)) {
+          (0, import_node_fs5.mkdirSync)((0, import_node_path5.dirname)(backup), { recursive: true });
+          (0, import_node_fs5.renameSync)(target, backup);
           collectDirectoryChain(
             committedDirectories,
-            (0, import_node_path4.dirname)(target),
+            (0, import_node_path5.dirname)(target),
             projectDirectory
           );
           collectDirectoryChain(
             committedDirectories,
-            (0, import_node_path4.dirname)(backup),
+            (0, import_node_path5.dirname)(backup),
             backupDirectory
           );
         }
         if (mutation.type === "write") {
-          const staged = (0, import_node_path4.join)(stageDirectory, mutation.path);
-          (0, import_node_fs4.mkdirSync)((0, import_node_path4.dirname)(target), { recursive: true });
-          (0, import_node_fs4.renameSync)(staged, target);
+          const staged = (0, import_node_path5.join)(stageDirectory, mutation.path);
+          (0, import_node_fs5.mkdirSync)((0, import_node_path5.dirname)(target), { recursive: true });
+          (0, import_node_fs5.renameSync)(staged, target);
           collectDirectoryChain(
             committedDirectories,
-            (0, import_node_path4.dirname)(staged),
+            (0, import_node_path5.dirname)(staged),
             stageDirectory
           );
           collectDirectoryChain(
             committedDirectories,
-            (0, import_node_path4.dirname)(target),
+            (0, import_node_path5.dirname)(target),
             projectDirectory
           );
         }
@@ -1007,9 +1094,9 @@ function applyFileMutations(input) {
       journal.state = "committed";
       writeJournal(projectDirectory, journal);
       try {
-        (0, import_node_fs4.rmSync)(stageDirectory, { recursive: true, force: true });
-        (0, import_node_fs4.rmSync)(backupDirectory, { recursive: true, force: true });
-        (0, import_node_fs4.rmSync)(journalPath(projectDirectory), { force: true });
+        (0, import_node_fs5.rmSync)(stageDirectory, { recursive: true, force: true });
+        (0, import_node_fs5.rmSync)(backupDirectory, { recursive: true, force: true });
+        (0, import_node_fs5.rmSync)(journalPath(projectDirectory), { force: true });
         syncDirectory(metadata);
       } catch {
       }
@@ -1095,11 +1182,11 @@ function packageMutations(projectDirectory, extensions) {
   if (!Object.keys(deps).length && !Object.keys(devDeps).length && !Object.keys(scripts).length)
     return [];
   const path = resolveProjectPath(projectDirectory, "package.json");
-  if (!(0, import_node_fs5.existsSync)(path))
+  if (!(0, import_node_fs6.existsSync)(path))
     throw new Error(
       "Cannot install package-backed capability without package.json"
     );
-  const existingText = (0, import_node_fs5.readFileSync)(path, "utf8");
+  const existingText = (0, import_node_fs6.readFileSync)(path, "utf8");
   const parsed = JSON.parse(existingText);
   const currentDeps = parsed.dependencies ?? {};
   const currentDev = parsed.devDependencies ?? {};
@@ -1125,13 +1212,13 @@ function packageMutations(projectDirectory, extensions) {
   const nextPackage = `${JSON.stringify({ ...parsed, ...Object.keys(scripts).length ? { scripts: sort({ ...currentScripts, ...scripts }) } : {}, ...Object.keys(deps).length ? { dependencies: sort({ ...currentDeps, ...deps }) } : {}, ...Object.keys(devDeps).length ? { devDependencies: sort({ ...currentDev, ...devDeps }) } : {} }, null, 2)}
 `;
   const lockPath = resolveProjectPath(projectDirectory, "package-lock.json");
-  const temporary = (0, import_node_fs5.mkdtempSync)((0, import_node_path5.join)((0, import_node_os.tmpdir)(), "launchstack-lock-"));
+  const temporary = (0, import_node_fs6.mkdtempSync)((0, import_node_path6.join)((0, import_node_os.tmpdir)(), "launchstack-lock-"));
   try {
-    (0, import_node_fs5.writeFileSync)((0, import_node_path5.join)(temporary, "package.json"), nextPackage);
-    if ((0, import_node_fs5.existsSync)(lockPath))
-      (0, import_node_fs5.writeFileSync)(
-        (0, import_node_path5.join)(temporary, "package-lock.json"),
-        (0, import_node_fs5.readFileSync)(lockPath)
+    (0, import_node_fs6.writeFileSync)((0, import_node_path6.join)(temporary, "package.json"), nextPackage);
+    if ((0, import_node_fs6.existsSync)(lockPath))
+      (0, import_node_fs6.writeFileSync)(
+        (0, import_node_path6.join)(temporary, "package-lock.json"),
+        (0, import_node_fs6.readFileSync)(lockPath)
       );
     const npm = process.platform === "win32" ? "npm.cmd" : "npm";
     const result = (0, import_node_child_process.spawnSync)(
@@ -1155,8 +1242,8 @@ function packageMutations(projectDirectory, extensions) {
       throw new Error(
         `Unable to resolve a matching package-lock.json${result.stderr ? `: ${result.stderr.trim()}` : ""}`
       );
-    const lockContent = (0, import_node_fs5.readFileSync)(
-      (0, import_node_path5.join)(temporary, "package-lock.json"),
+    const lockContent = (0, import_node_fs6.readFileSync)(
+      (0, import_node_path6.join)(temporary, "package-lock.json"),
       "utf8"
     );
     const mutations = [];
@@ -1169,7 +1256,7 @@ function packageMutations(projectDirectory, extensions) {
         version: currentLaunchStackVersion(),
         expectedSha256: hashFile(path)
       });
-    const existingLock = (0, import_node_fs5.existsSync)(lockPath) ? (0, import_node_fs5.readFileSync)(lockPath, "utf8") : null;
+    const existingLock = (0, import_node_fs6.existsSync)(lockPath) ? (0, import_node_fs6.readFileSync)(lockPath, "utf8") : null;
     if (lockContent !== existingLock)
       mutations.push({
         type: "write",
@@ -1177,11 +1264,11 @@ function packageMutations(projectDirectory, extensions) {
         content: lockContent,
         owner: "launchstack:metadata",
         version: currentLaunchStackVersion(),
-        expectedSha256: (0, import_node_fs5.existsSync)(lockPath) ? hashFile(lockPath) : null
+        expectedSha256: (0, import_node_fs6.existsSync)(lockPath) ? hashFile(lockPath) : null
       });
     return mutations;
   } finally {
-    (0, import_node_fs5.rmSync)(temporary, { recursive: true, force: true });
+    (0, import_node_fs6.rmSync)(temporary, { recursive: true, force: true });
   }
 }
 function composeMutation(projectDirectory, state, pending) {
@@ -1197,10 +1284,10 @@ function composeMutation(projectDirectory, state, pending) {
     if (mutation?.type === "write") fragments.set(path, mutation.content);
     else {
       const absolute2 = resolveProjectPath(projectDirectory, path);
-      if (!(0, import_node_fs5.existsSync)(absolute2)) continue;
+      if (!(0, import_node_fs6.existsSync)(absolute2)) continue;
       if (managed.sha256 !== hashFile(absolute2))
         throw new Error(`Compose fragment has local modifications: ${path}`);
-      fragments.set(path, (0, import_node_fs5.readFileSync)(absolute2, "utf8"));
+      fragments.set(path, (0, import_node_fs6.readFileSync)(absolute2, "utf8"));
     }
   }
   for (const mutation of pending)
@@ -1217,10 +1304,10 @@ function composeMutation(projectDirectory, state, pending) {
     networks: {}
   };
   const basePath = resolveProjectPath(projectDirectory, "docker-compose.yml");
-  if ((0, import_node_fs5.existsSync)(basePath)) {
+  if ((0, import_node_fs6.existsSync)(basePath)) {
     let base;
     try {
-      base = (0, import_yaml.parse)((0, import_node_fs5.readFileSync)(basePath, "utf8"));
+      base = (0, import_yaml.parse)((0, import_node_fs6.readFileSync)(basePath, "utf8"));
     } catch (error) {
       throw new Error(
         `Cannot parse docker-compose.yml: ${error instanceof Error ? error.message : String(error)}`
@@ -1289,12 +1376,12 @@ function composeMutation(projectDirectory, state, pending) {
   const target = "docker-compose.launchstack.yml";
   const absolute = resolveProjectPath(projectDirectory, target);
   const tracked = state.managedFiles[target];
-  if ((0, import_node_fs5.existsSync)(absolute) && (!tracked || tracked.owner !== "launchstack:compose" || tracked.sha256 !== hashFile(absolute)))
+  if ((0, import_node_fs6.existsSync)(absolute) && (!tracked || tracked.owner !== "launchstack:compose" || tracked.sha256 !== hashFile(absolute)))
     throw new Error(
       `Refusing to overwrite unmanaged or modified Compose file: ${target}`
     );
   if (!Object.keys(merged.services).length) {
-    if (!(0, import_node_fs5.existsSync)(absolute)) return null;
+    if (!(0, import_node_fs6.existsSync)(absolute)) return null;
     return {
       type: "delete",
       path: target,
@@ -1315,7 +1402,7 @@ function composeMutation(projectDirectory, state, pending) {
     2
   )}
 `;
-  if ((0, import_node_fs5.existsSync)(absolute) && (0, import_node_fs5.readFileSync)(absolute, "utf8") === content)
+  if ((0, import_node_fs6.existsSync)(absolute) && (0, import_node_fs6.readFileSync)(absolute, "utf8") === content)
     return null;
   return {
     type: "write",
@@ -1323,7 +1410,7 @@ function composeMutation(projectDirectory, state, pending) {
     content,
     owner: "launchstack:compose",
     version: currentLaunchStackVersion(),
-    expectedSha256: (0, import_node_fs5.existsSync)(absolute) ? hashFile(absolute) : null
+    expectedSha256: (0, import_node_fs6.existsSync)(absolute) ? hashFile(absolute) : null
   };
 }
 function envMutation(projectDirectory, extensions) {
@@ -1331,7 +1418,7 @@ function envMutation(projectDirectory, extensions) {
   if (!vars.length) return null;
   const path = ".env.example";
   const absolute = resolveProjectPath(projectDirectory, path);
-  const existing = (0, import_node_fs5.existsSync)(absolute) ? (0, import_node_fs5.readFileSync)(absolute, "utf8") : "";
+  const existing = (0, import_node_fs6.existsSync)(absolute) ? (0, import_node_fs6.readFileSync)(absolute, "utf8") : "";
   const known = new Set(
     existing.split(/\r?\n/).map((line) => line.match(/^([A-Z][A-Z0-9_]*)=/)?.[1]).filter((value) => Boolean(value))
   );
@@ -1346,7 +1433,7 @@ function envMutation(projectDirectory, extensions) {
 `,
     owner: "launchstack:metadata",
     version: currentLaunchStackVersion(),
-    expectedSha256: (0, import_node_fs5.existsSync)(absolute) ? hashFile(absolute) : null
+    expectedSha256: (0, import_node_fs6.existsSync)(absolute) ? hashFile(absolute) : null
   };
 }
 function fileMutations(projectDirectory, state, extensions) {
@@ -1357,7 +1444,7 @@ function fileMutations(projectDirectory, state, extensions) {
       const tracked = state.managedFiles[file.path];
       if (tracked && tracked.owner !== item.id)
         throw new Error(`File ${file.path} is owned by ${tracked.owner}`);
-      if ((0, import_node_fs5.existsSync)(absolute)) {
+      if ((0, import_node_fs6.existsSync)(absolute)) {
         const current = hashFile(absolute);
         if (!tracked)
           throw new Error(
@@ -1365,7 +1452,7 @@ function fileMutations(projectDirectory, state, extensions) {
           );
         if (tracked.sha256 !== current)
           throw new Error(`Managed file has local modifications: ${file.path}`);
-        if ((0, import_node_fs5.readFileSync)(absolute, "utf8") === file.content) continue;
+        if ((0, import_node_fs6.readFileSync)(absolute, "utf8") === file.content) continue;
         output.push({
           type: "write",
           path: file.path,
@@ -1390,18 +1477,18 @@ function fileMutations(projectDirectory, state, extensions) {
       const path = `.launchstack/generated/compose/${item.id}.json`;
       const absolute = resolveProjectPath(projectDirectory, path);
       const tracked = state.managedFiles[path];
-      if ((0, import_node_fs5.existsSync)(absolute) && (!tracked || tracked.owner !== item.id || tracked.sha256 !== hashFile(absolute)))
+      if ((0, import_node_fs6.existsSync)(absolute) && (!tracked || tracked.owner !== item.id || tracked.sha256 !== hashFile(absolute)))
         throw new Error(`Compose fragment has local modifications: ${path}`);
       const content = `${JSON.stringify({ services: item.composeServices }, null, 2)}
 `;
-      if (!(0, import_node_fs5.existsSync)(absolute) || (0, import_node_fs5.readFileSync)(absolute, "utf8") !== content)
+      if (!(0, import_node_fs6.existsSync)(absolute) || (0, import_node_fs6.readFileSync)(absolute, "utf8") !== content)
         output.push({
           type: "write",
           path,
           content,
           owner: item.id,
           version: item.version,
-          expectedSha256: (0, import_node_fs5.existsSync)(absolute) ? hashFile(absolute) : null
+          expectedSha256: (0, import_node_fs6.existsSync)(absolute) ? hashFile(absolute) : null
         });
     }
   }
@@ -1414,7 +1501,7 @@ function metadataMutations(projectDirectory, manifest, state) {
     { path: ".launchstack/state.json", content: serializeProjectState(state) }
   ]) {
     const absolute = resolveProjectPath(projectDirectory, item.path);
-    const existing = (0, import_node_fs5.existsSync)(absolute) ? (0, import_node_fs5.readFileSync)(absolute, "utf8") : null;
+    const existing = (0, import_node_fs6.existsSync)(absolute) ? (0, import_node_fs6.readFileSync)(absolute, "utf8") : null;
     if (existing === item.content) continue;
     output.push({
       type: "write",
@@ -1422,13 +1509,13 @@ function metadataMutations(projectDirectory, manifest, state) {
       content: item.content,
       owner: "launchstack:metadata",
       version: currentLaunchStackVersion(),
-      expectedSha256: (0, import_node_fs5.existsSync)(absolute) ? hashFile(absolute) : null
+      expectedSha256: (0, import_node_fs6.existsSync)(absolute) ? hashFile(absolute) : null
     });
   }
   return output;
 }
 function planExtensionInstall(input) {
-  const projectDirectory = (0, import_node_path5.resolve)(input.projectDirectory);
+  const projectDirectory = (0, import_node_path6.resolve)(input.projectDirectory);
   const manifest = loadProjectManifest(projectDirectory);
   const state = loadProjectState(projectDirectory, {
     templateVersion: manifest.project.templateVersion,
@@ -1594,12 +1681,12 @@ var addCommand = new import_commander.Command("add").description("Add a producti
 var import_commander2 = require("commander");
 
 // src/project/reconcile.ts
-var import_node_fs7 = require("fs");
-var import_node_path7 = require("path");
+var import_node_fs8 = require("fs");
+var import_node_path8 = require("path");
 
 // src/extensions/remove.ts
-var import_node_fs6 = require("fs");
-var import_node_path6 = require("path");
+var import_node_fs7 = require("fs");
+var import_node_path7 = require("path");
 function metadataWrite(projectDirectory, path, content) {
   const absolute = resolveProjectPath(projectDirectory, path);
   return {
@@ -1608,11 +1695,11 @@ function metadataWrite(projectDirectory, path, content) {
     content,
     owner: "launchstack:metadata",
     version: currentLaunchStackVersion(),
-    expectedSha256: (0, import_node_fs6.existsSync)(absolute) ? hashFile(absolute) : null
+    expectedSha256: (0, import_node_fs7.existsSync)(absolute) ? hashFile(absolute) : null
   };
 }
 function planExtensionRemoval(input) {
-  const projectDirectory = (0, import_node_path6.resolve)(input.projectDirectory);
+  const projectDirectory = (0, import_node_path7.resolve)(input.projectDirectory);
   const manifest = loadProjectManifest(projectDirectory);
   const state = loadProjectState(projectDirectory, {
     templateVersion: manifest.project.templateVersion,
@@ -1636,7 +1723,7 @@ function planExtensionRemoval(input) {
   for (const [path, managed] of Object.entries(state.managedFiles)) {
     if (managed.owner !== input.extension.id) continue;
     const absolute = resolveProjectPath(projectDirectory, path);
-    if (!(0, import_node_fs6.existsSync)(absolute))
+    if (!(0, import_node_fs7.existsSync)(absolute))
       throw new Error(`Managed plugin file is missing: ${path}`);
     const current = hashFile(absolute);
     if (current !== managed.sha256)
@@ -1650,8 +1737,8 @@ function planExtensionRemoval(input) {
   }
   if (input.extension.scripts) {
     const packagePath = resolveProjectPath(projectDirectory, "package.json");
-    if ((0, import_node_fs6.existsSync)(packagePath)) {
-      const packageText = (0, import_node_fs6.readFileSync)(packagePath, "utf8");
+    if ((0, import_node_fs7.existsSync)(packagePath)) {
+      const packageText = (0, import_node_fs7.readFileSync)(packagePath, "utf8");
       const packageJson2 = JSON.parse(packageText);
       const scripts = {
         ...packageJson2.scripts ?? {}
@@ -1738,7 +1825,7 @@ function applyExtensionRemoval(plan) {
 
 // src/project/reconcile.ts
 function planReconciliation(projectDirectoryInput, manifestInput) {
-  const projectDirectory = (0, import_node_path7.resolve)(projectDirectoryInput);
+  const projectDirectory = (0, import_node_path8.resolve)(projectDirectoryInput);
   const manifest = manifestInput ?? loadProjectManifest(projectDirectory);
   const state = loadProjectState(projectDirectory, {
     templateVersion: manifest.project.templateVersion,
@@ -1805,7 +1892,7 @@ function planReconciliation(projectDirectoryInput, manifestInput) {
   };
 }
 function applyReconciliation(input) {
-  const projectDirectory = (0, import_node_path7.resolve)(input.projectDirectory);
+  const projectDirectory = (0, import_node_path8.resolve)(input.projectDirectory);
   const manifest = loadProjectManifest(projectDirectory);
   let plan = planReconciliation(projectDirectory, manifest);
   if (plan.conflicts.length)
@@ -1855,8 +1942,8 @@ function applyReconciliation(input) {
 }
 
 // src/project/upgrade.ts
-var import_node_fs8 = require("fs");
-var import_node_path8 = require("path");
+var import_node_fs9 = require("fs");
+var import_node_path9 = require("path");
 var import_parser = require("@babel/parser");
 var V3_TEMPLATE_VERSION = "3.0.0";
 var LEGACY_V2_TEMPLATE_VERSION = "2.0.0";
@@ -1865,19 +1952,19 @@ var MIGRATIONS = [
 ];
 function readText(projectDirectory, path) {
   const absolute = resolveProjectPath(projectDirectory, path);
-  if (!(0, import_node_fs8.existsSync)(absolute))
+  if (!(0, import_node_fs9.existsSync)(absolute))
     throw new Error(`Expected project file is missing: ${path}`);
-  return { content: (0, import_node_fs8.readFileSync)(absolute, "utf8"), hash: hashFile(absolute) };
+  return { content: (0, import_node_fs9.readFileSync)(absolute, "utf8"), hash: hashFile(absolute) };
 }
 function inferLegacyProject(projectDirectory) {
   const packagePath = resolveProjectPath(projectDirectory, "package.json");
-  if (!(0, import_node_fs8.existsSync)(packagePath))
+  if (!(0, import_node_fs9.existsSync)(packagePath))
     throw new Error(
       "No launchstack.json or package.json was found; this does not look like a LaunchStack project."
     );
   let parsed;
   try {
-    parsed = JSON.parse((0, import_node_fs8.readFileSync)(packagePath, "utf8"));
+    parsed = JSON.parse((0, import_node_fs9.readFileSync)(packagePath, "utf8"));
   } catch {
     throw new Error("Legacy package.json is not valid JSON.");
   }
@@ -1885,7 +1972,7 @@ function inferLegacyProject(projectDirectory) {
     throw new Error(
       "Legacy package.json does not contain a valid name/version."
     );
-  if (!(0, import_node_fs8.existsSync)(resolveProjectPath(projectDirectory, "src/app.ts")) || !(0, import_node_fs8.existsSync)(resolveProjectPath(projectDirectory, "src/routes/index.ts")))
+  if (!(0, import_node_fs9.existsSync)(resolveProjectPath(projectDirectory, "src/app.ts")) || !(0, import_node_fs9.existsSync)(resolveProjectPath(projectDirectory, "src/routes/index.ts")))
     throw new Error(
       "Legacy project is missing LaunchStack architecture files."
     );
@@ -2064,7 +2151,7 @@ function migrationChain(from, to) {
 }
 function metadataMutation(projectDirectory, path, content) {
   const absolute = resolveProjectPath(projectDirectory, path);
-  const existing = (0, import_node_fs8.existsSync)(absolute) ? (0, import_node_fs8.readFileSync)(absolute, "utf8") : null;
+  const existing = (0, import_node_fs9.existsSync)(absolute) ? (0, import_node_fs9.readFileSync)(absolute, "utf8") : null;
   if (existing === content) return null;
   return {
     type: "write",
@@ -2072,7 +2159,7 @@ function metadataMutation(projectDirectory, path, content) {
     content,
     owner: "launchstack:metadata",
     version: currentLaunchStackVersion(),
-    expectedSha256: (0, import_node_fs8.existsSync)(absolute) ? hashFile(absolute) : null
+    expectedSha256: (0, import_node_fs9.existsSync)(absolute) ? hashFile(absolute) : null
   };
 }
 function migrationFiles(projectDirectory, migration, mutations, actions, conflicts) {
@@ -2098,7 +2185,7 @@ export async function registerLaunchStackCapabilities(app: FastifyInstance): Pro
   ];
   for (const file of generated) {
     const absolute = resolveProjectPath(projectDirectory, file.path);
-    if (!(0, import_node_fs8.existsSync)(absolute)) {
+    if (!(0, import_node_fs9.existsSync)(absolute)) {
       mutations.push({
         type: "write",
         path: file.path,
@@ -2117,7 +2204,7 @@ export async function registerLaunchStackCapabilities(app: FastifyInstance): Pro
       const exportedName = file.path === routeRegistry ? "registerGeneratedRoutes" : "registerLaunchStackCapabilities";
       try {
         if (!exportsFunction(
-          (0, import_node_fs8.readFileSync)(absolute, "utf8"),
+          (0, import_node_fs9.readFileSync)(absolute, "utf8"),
           file.path,
           exportedName
         ))
@@ -2175,7 +2262,7 @@ export async function registerLaunchStackCapabilities(app: FastifyInstance): Pro
 function makeDiff(projectDirectory, mutations) {
   return mutations.map((mutation) => ({
     path: mutation.path,
-    before: (0, import_node_fs8.existsSync)(resolveProjectPath(projectDirectory, mutation.path)) ? (0, import_node_fs8.readFileSync)(
+    before: (0, import_node_fs9.existsSync)(resolveProjectPath(projectDirectory, mutation.path)) ? (0, import_node_fs9.readFileSync)(
       resolveProjectPath(projectDirectory, mutation.path),
       "utf8"
     ) : null,
@@ -2183,8 +2270,8 @@ function makeDiff(projectDirectory, mutations) {
   }));
 }
 function planUpgrade(projectDirectoryInput) {
-  const projectDirectory = (0, import_node_path8.resolve)(projectDirectoryInput);
-  const hasManifest = (0, import_node_fs8.existsSync)(
+  const projectDirectory = (0, import_node_path9.resolve)(projectDirectoryInput);
+  const hasManifest = (0, import_node_fs9.existsSync)(
     resolveProjectPath(projectDirectory, "launchstack.json")
   );
   const legacy = hasManifest ? null : inferLegacyProject(projectDirectory);
@@ -2264,7 +2351,7 @@ function planUpgrade(projectDirectoryInput) {
 function applyUpgrade(plan) {
   if (plan.conflicts.length)
     throw new Error(`Upgrade conflicts: ${plan.conflicts.join("; ")}`);
-  const currentState = (0, import_node_fs8.existsSync)(
+  const currentState = (0, import_node_fs9.existsSync)(
     resolveProjectPath(plan.projectDirectory, ".launchstack/state.json")
   ) ? loadProjectState(plan.projectDirectory) : emptyProjectState(plan.fromVersion, currentLaunchStackVersion());
   return applyFileMutations({
@@ -2376,12 +2463,12 @@ var upgradeCommand = new import_commander2.Command("upgrade").description("Safel
 var import_commander3 = require("commander");
 
 // src/audit/run.ts
-var import_node_fs9 = require("fs");
+var import_node_fs10 = require("fs");
 var import_node_child_process2 = require("child_process");
-var import_node_path9 = require("path");
+var import_node_path10 = require("path");
 var readIfPresent = (root, path) => {
-  const absolute = (0, import_node_path9.join)(root, path);
-  return (0, import_node_fs9.existsSync)(absolute) ? (0, import_node_fs9.readFileSync)(absolute, "utf8") : void 0;
+  const absolute = (0, import_node_path10.join)(root, path);
+  return (0, import_node_fs10.existsSync)(absolute) ? (0, import_node_fs10.readFileSync)(absolute, "utf8") : void 0;
 };
 function packageJson(root) {
   const content = readIfPresent(root, "package.json");
@@ -2414,10 +2501,10 @@ var SECRET_FILE_PATTERNS = [
   /(^|\/)id_rsa$/i
 ];
 function runProductionAudit(projectDirectoryInput) {
-  const root = (0, import_node_path9.resolve)(projectDirectoryInput);
+  const root = (0, import_node_path10.resolve)(projectDirectoryInput);
   const findings = [];
   const pkg = packageJson(root);
-  if (!(0, import_node_fs9.existsSync)((0, import_node_path9.join)(root, "package-lock.json")))
+  if (!(0, import_node_fs10.existsSync)((0, import_node_path10.join)(root, "package-lock.json")))
     findings.push(
       finding(
         "LS001",
@@ -2587,7 +2674,7 @@ function runProductionAudit(projectDirectoryInput) {
         )
       );
   }
-  if (!(0, import_node_fs9.existsSync)((0, import_node_path9.join)(root, "src/routes/health.ts")) || !(0, import_node_fs9.existsSync)((0, import_node_path9.join)(root, "src/routes/readiness.ts")))
+  if (!(0, import_node_fs10.existsSync)((0, import_node_path10.join)(root, "src/routes/health.ts")) || !(0, import_node_fs10.existsSync)((0, import_node_path10.join)(root, "src/routes/readiness.ts")))
     findings.push(
       finding(
         "LS008",
@@ -2632,7 +2719,7 @@ function runProductionAudit(projectDirectoryInput) {
         ".env.example"
       )
     );
-  if ((0, import_node_fs9.existsSync)((0, import_node_path9.join)(root, "launchstack.json")))
+  if ((0, import_node_fs10.existsSync)((0, import_node_path10.join)(root, "launchstack.json")))
     try {
       const manifest = loadProjectManifest(root);
       const state = loadProjectState(root, {
@@ -2742,14 +2829,11 @@ var auditCommand = new import_commander3.Command("audit").description("Audit a L
 
 // src/commands/client-generate.ts
 var import_node_fs11 = require("fs");
-var import_node_path10 = require("path");
+var import_node_path11 = require("path");
 var import_commander4 = require("commander");
 
-// src/client/generate.ts
-var import_node_fs10 = require("fs");
-
 // src/client/openapi.ts
-var import_node_crypto3 = require("crypto");
+var import_node_crypto4 = require("crypto");
 var METHODS = /* @__PURE__ */ new Set([
   "get",
   "post",
@@ -3103,7 +3187,7 @@ function collectOperations(document) {
     counts.set(item.preferredName, (counts.get(item.preferredName) ?? 0) + 1);
   return raw.map(({ preferredName, ...item }) => ({
     ...item,
-    name: (counts.get(preferredName) ?? 0) > 1 ? preferredName + "_" + (0, import_node_crypto3.createHash)("sha256").update(item.method + " " + item.path).digest("hex").slice(0, 8) : preferredName
+    name: (counts.get(preferredName) ?? 0) > 1 ? preferredName + "_" + (0, import_node_crypto4.createHash)("sha256").update(item.method + " " + item.path).digest("hex").slice(0, 8) : preferredName
   }));
 }
 function decodeRefName(ref) {
@@ -3118,7 +3202,7 @@ function componentTypeNames(document) {
       candidate = "Schema_" + candidate;
     if (RESERVED.has(candidate)) candidate = "Schema_" + candidate;
     if (used.has(candidate))
-      candidate += "_" + (0, import_node_crypto3.createHash)("sha256").update(name).digest("hex").slice(0, 8);
+      candidate += "_" + (0, import_node_crypto4.createHash)("sha256").update(name).digest("hex").slice(0, 8);
     used.add(candidate);
     result[name] = candidate;
   }
@@ -3264,14 +3348,10 @@ async function loadOpenApiSource(source) {
     }
     return parseOpenApiDocument(parsed2);
   }
-  const stats = (0, import_node_fs10.statSync)(source);
-  if (!stats.isFile())
-    throw new Error("OpenAPI schema path must be a regular file.");
-  if (stats.size > 1048576)
-    throw new Error("OpenAPI file exceeds the 1 MiB size limit.");
+  const file = readRegularFileNoFollow(source, 1048576);
   let parsed;
   try {
-    parsed = JSON.parse((0, import_node_fs10.readFileSync)(source, "utf8"));
+    parsed = JSON.parse(file.content);
   } catch (error) {
     if (error instanceof SyntaxError)
       throw new Error("OpenAPI file contains invalid JSON.");
@@ -3345,7 +3425,14 @@ function renderMethod(item, names) {
 }
 function generateTypeScriptClient(document, target = "typescript") {
   const names = componentTypeNames(document);
-  const operations = collectOperations(document);
+  const operations = collectOperations(document).map((operation) => {
+    const name = operation.name;
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name))
+      throw new Error(
+        "OpenAPI operation identifier is not a safe TypeScript name."
+      );
+    return { ...operation, name };
+  });
   if (operations.length > 3e3)
     throw new Error("OpenAPI document exceeds the 3000-operation limit.");
   const schemas = renderSchemas(document, names);
@@ -3392,14 +3479,14 @@ var clientGenerateCommand = new import_commander4.Command("generate").descriptio
     try {
       if (!TARGETS.has(options.target))
         throw new Error(`Unsupported client target: ${options.target}`);
-      const source = /^https?:\/\//i.test(options.schema) ? options.schema : (0, import_node_path10.resolve)(options.schema);
+      const source = /^https?:\/\//i.test(options.schema) ? options.schema : (0, import_node_path11.resolve)(options.schema);
       if (/^http:\/\//i.test(source))
         throw new Error("Remote OpenAPI schemas must use HTTPS.");
       const generated = generateTypeScriptClient(
         await loadOpenApiSource(source),
         options.target
       );
-      const output = (0, import_node_path10.resolve)(options.output);
+      const output = (0, import_node_path11.resolve)(options.output);
       if (options.check) {
         if (!(0, import_node_fs11.existsSync)(output) || (0, import_node_fs11.readFileSync)(output, "utf8") !== generated) {
           console.error(`Generated client is stale: ${output}`);
@@ -3409,7 +3496,7 @@ var clientGenerateCommand = new import_commander4.Command("generate").descriptio
         console.log(`Generated client is current: ${output}`);
         return;
       }
-      (0, import_node_fs11.mkdirSync)((0, import_node_path10.dirname)(output), { recursive: true });
+      (0, import_node_fs11.mkdirSync)((0, import_node_path11.dirname)(output), { recursive: true });
       (0, import_node_fs11.writeFileSync)(output, generated, "utf8");
       console.log(`Generated ${options.target} client: ${output}`);
     } catch (error) {
@@ -3422,17 +3509,17 @@ var clientCommand = new import_commander4.Command("client").description("Generat
 
 // src/commands/create.ts
 var import_node_fs17 = require("fs");
-var import_node_path16 = require("path");
+var import_node_path17 = require("path");
 var import_commander5 = require("commander");
 
 // src/generator/generate.ts
 var import_node_fs16 = require("fs");
-var import_node_crypto4 = require("crypto");
-var import_node_path15 = require("path");
+var import_node_crypto5 = require("crypto");
+var import_node_path16 = require("path");
 
 // src/docker-assets.ts
 var import_node_fs12 = require("fs");
-var import_node_path11 = require("path");
+var import_node_path12 = require("path");
 function packageInstallCommand(hasLockfile, productionOnly = false) {
   if (hasLockfile) {
     return productionOnly ? "npm ci --omit=dev" : "npm ci";
@@ -3509,13 +3596,13 @@ docker-compose*.yml
 `;
 }
 function writeCanonicalDockerAssets(projectDirectory, options) {
-  const hasLockfile = options.hasLockfile ?? (0, import_node_fs12.existsSync)((0, import_node_path11.join)(projectDirectory, "package-lock.json"));
-  const prisma = options.prisma ?? (0, import_node_fs12.existsSync)((0, import_node_path11.join)(projectDirectory, "prisma", "schema.prisma"));
+  const hasLockfile = options.hasLockfile ?? (0, import_node_fs12.existsSync)((0, import_node_path12.join)(projectDirectory, "package-lock.json"));
+  const prisma = options.prisma ?? (0, import_node_fs12.existsSync)((0, import_node_path12.join)(projectDirectory, "prisma", "schema.prisma"));
   const healthcheck = (0, import_node_fs12.existsSync)(
-    (0, import_node_path11.join)(projectDirectory, "scripts", "healthcheck.cjs")
+    (0, import_node_path12.join)(projectDirectory, "scripts", "healthcheck.cjs")
   );
   (0, import_node_fs12.writeFileSync)(
-    (0, import_node_path11.join)(projectDirectory, "Dockerfile"),
+    (0, import_node_path12.join)(projectDirectory, "Dockerfile"),
     renderDockerfile({
       ...options,
       hasLockfile,
@@ -3523,12 +3610,12 @@ function writeCanonicalDockerAssets(projectDirectory, options) {
       healthcheck
     })
   );
-  (0, import_node_fs12.writeFileSync)((0, import_node_path11.join)(projectDirectory, ".dockerignore"), renderDockerIgnore());
+  (0, import_node_fs12.writeFileSync)((0, import_node_path12.join)(projectDirectory, ".dockerignore"), renderDockerIgnore());
 }
 
 // src/generator/files.ts
 var import_node_fs13 = require("fs");
-var import_node_path12 = require("path");
+var import_node_path13 = require("path");
 var RENAMED_TEMPLATE_FILES = {
   _gitignore: ".gitignore",
   _dockerignore: ".dockerignore",
@@ -3560,17 +3647,17 @@ function copyDirectory(sourceDirectory, destinationDirectory, overwriteRenamedFi
 }
 function renameTemplateFiles(directory2, overwriteRenamedFiles) {
   for (const entry of (0, import_node_fs13.readdirSync)(directory2)) {
-    const currentPath = (0, import_node_path12.resolve)(directory2, entry);
+    const currentPath = (0, import_node_path13.resolve)(directory2, entry);
     const stats = (0, import_node_fs13.statSync)(currentPath);
     if (stats.isDirectory()) {
       renameTemplateFiles(currentPath, overwriteRenamedFiles);
       continue;
     }
-    const replacementName = RENAMED_TEMPLATE_FILES[(0, import_node_path12.basename)(currentPath)];
+    const replacementName = RENAMED_TEMPLATE_FILES[(0, import_node_path13.basename)(currentPath)];
     if (!replacementName) {
       continue;
     }
-    const replacementPath = (0, import_node_path12.resolve)((0, import_node_path12.dirname)(currentPath), replacementName);
+    const replacementPath = (0, import_node_path13.resolve)((0, import_node_path13.dirname)(currentPath), replacementName);
     if ((0, import_node_fs13.existsSync)(replacementPath)) {
       if (overwriteRenamedFiles) {
         (0, import_node_fs13.unlinkSync)(replacementPath);
@@ -3609,7 +3696,7 @@ function toDisplayName(projectName) {
 
 // src/generator/paths.ts
 var import_node_fs14 = require("fs");
-var import_node_path13 = require("path");
+var import_node_path14 = require("path");
 function getRuntimeDirectory() {
   if (typeof __dirname === "string") {
     return __dirname;
@@ -3621,13 +3708,13 @@ function getPackageRoot() {
   const candidates = [
     process.cwd(),
     runtimeDirectory,
-    (0, import_node_path13.resolve)(runtimeDirectory, ".."),
-    (0, import_node_path13.resolve)(runtimeDirectory, "../.."),
-    (0, import_node_path13.resolve)(process.cwd(), ".."),
-    (0, import_node_path13.resolve)(process.cwd(), "../..")
+    (0, import_node_path14.resolve)(runtimeDirectory, ".."),
+    (0, import_node_path14.resolve)(runtimeDirectory, "../.."),
+    (0, import_node_path14.resolve)(process.cwd(), ".."),
+    (0, import_node_path14.resolve)(process.cwd(), "../..")
   ];
   for (const candidate of candidates) {
-    if ((0, import_node_fs14.existsSync)((0, import_node_path13.resolve)(candidate, "package.json"))) {
+    if ((0, import_node_fs14.existsSync)((0, import_node_path14.resolve)(candidate, "package.json"))) {
       return candidate;
     }
   }
@@ -3637,10 +3724,10 @@ function getTemplateDirectory(templateName) {
   const runtimeDirectory = getRuntimeDirectory();
   const packageRoot = getPackageRoot();
   const candidates = [
-    (0, import_node_path13.resolve)(runtimeDirectory, "templates", templateName),
-    (0, import_node_path13.resolve)(packageRoot, "dist", "templates", templateName),
-    (0, import_node_path13.resolve)(packageRoot, "src", "templates", templateName),
-    (0, import_node_path13.resolve)(packageRoot, "templates", templateName)
+    (0, import_node_path14.resolve)(runtimeDirectory, "templates", templateName),
+    (0, import_node_path14.resolve)(packageRoot, "dist", "templates", templateName),
+    (0, import_node_path14.resolve)(packageRoot, "src", "templates", templateName),
+    (0, import_node_path14.resolve)(packageRoot, "templates", templateName)
   ];
   const templateDirectory = candidates.find(
     (candidate) => (0, import_node_fs14.existsSync)(candidate)
@@ -3655,7 +3742,7 @@ function getTemplateDirectory(templateName) {
 
 // src/generator/template.ts
 var import_node_fs15 = require("fs");
-var import_node_path14 = require("path");
+var import_node_path15 = require("path");
 var TEXT_EXTENSIONS = /* @__PURE__ */ new Set([
   ".cjs",
   ".css",
@@ -3690,16 +3777,18 @@ function renderTemplate(content, variables) {
   );
 }
 function isTextTemplateFile(path) {
-  const name = (0, import_node_path14.basename)(path);
-  return TEXT_FILENAMES.has(name) || TEXT_EXTENSIONS.has((0, import_node_path14.extname)(name).toLowerCase());
+  const name = (0, import_node_path15.basename)(path);
+  return TEXT_FILENAMES.has(name) || TEXT_EXTENSIONS.has((0, import_node_path15.extname)(name).toLowerCase());
 }
 function renderDirectory(directory2, variables) {
   if (!(0, import_node_fs15.existsSync)(directory2)) {
     throw new Error(`Directory not found: ${directory2}`);
   }
   for (const entry of (0, import_node_fs15.readdirSync)(directory2)) {
-    const path = (0, import_node_path14.join)(directory2, entry);
-    const stats = (0, import_node_fs15.statSync)(path);
+    const path = (0, import_node_path15.join)(directory2, entry);
+    const stats = (0, import_node_fs15.lstatSync)(path);
+    if (stats.isSymbolicLink())
+      throw new Error("Template directory cannot contain symbolic links.");
     if (stats.isDirectory()) {
       renderDirectory(path, variables);
       continue;
@@ -3707,10 +3796,10 @@ function renderDirectory(directory2, variables) {
     if (!isTextTemplateFile(path)) {
       continue;
     }
-    const content = (0, import_node_fs15.readFileSync)(path, "utf8");
+    const content = readRegularFileNoFollow(path, 16 * 1024 * 1024).content;
     const rendered = renderTemplate(content, variables);
     if (rendered !== content) {
-      (0, import_node_fs15.writeFileSync)(path, rendered);
+      atomicWriteText(path, rendered);
     }
   }
 }
@@ -3732,14 +3821,14 @@ function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
     }
     throw new Error(`Destination already exists: ${destinationDirectory}`);
   }
-  if ((0, import_node_path15.resolve)(destinationDirectory) === (0, import_node_path15.resolve)(process.cwd())) {
+  if ((0, import_node_path16.resolve)(destinationDirectory) === (0, import_node_path16.resolve)(process.cwd())) {
     throw new Error(
       "Refusing to replace the current working directory with --force. Choose a parent directory instead."
     );
   }
-  const backupDirectory = (0, import_node_path15.join)(
-    (0, import_node_path15.dirname)(destinationDirectory),
-    `.${(0, import_node_path15.basename)(destinationDirectory)}.launchstack-backup-${(0, import_node_crypto4.randomUUID)()}`
+  const backupDirectory = (0, import_node_path16.join)(
+    (0, import_node_path16.dirname)(destinationDirectory),
+    `.${(0, import_node_path16.basename)(destinationDirectory)}.launchstack-backup-${(0, import_node_crypto5.randomUUID)()}`
   );
   (0, import_node_fs16.renameSync)(destinationDirectory, backupDirectory);
   try {
@@ -3761,16 +3850,16 @@ function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
 }
 function generateProject(options) {
   validateProjectName(options.projectName);
-  const destinationDirectory = (0, import_node_path15.resolve)(options.destinationDirectory);
+  const destinationDirectory = (0, import_node_path16.resolve)(options.destinationDirectory);
   const overwrite = options.overwrite ?? false;
   ensureDestinationAvailable(destinationDirectory, overwrite);
   const templateDirectory = getTemplateDirectory(options.template);
-  const parentDirectory = (0, import_node_path15.dirname)(destinationDirectory);
+  const parentDirectory = (0, import_node_path16.dirname)(destinationDirectory);
   (0, import_node_fs16.mkdirSync)(parentDirectory, { recursive: true });
   const stagedDirectory = (0, import_node_fs16.mkdtempSync)(
-    (0, import_node_path15.join)(
+    (0, import_node_path16.join)(
       parentDirectory,
-      `.${(0, import_node_path15.basename)(destinationDirectory)}.launchstack-stage-`
+      `.${(0, import_node_path16.basename)(destinationDirectory)}.launchstack-stage-`
     )
   );
   try {
@@ -3786,14 +3875,14 @@ function generateProject(options) {
       PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
     });
     if (options.template === "api") {
-      const environmentPath = (0, import_node_path15.join)(stagedDirectory, ".env");
+      const environmentPath = (0, import_node_path16.join)(stagedDirectory, ".env");
       const environment = (0, import_node_fs16.readFileSync)(environmentPath, "utf8");
       const securedEnvironment = environment.replace(
         /^JWT_ACCESS_SECRET=.*$/m,
-        `JWT_ACCESS_SECRET=${(0, import_node_crypto4.randomBytes)(48).toString("base64url")}`
+        `JWT_ACCESS_SECRET=${(0, import_node_crypto5.randomBytes)(48).toString("base64url")}`
       ).replace(
         /^JWT_REFRESH_SECRET=.*$/m,
-        `JWT_REFRESH_SECRET=${(0, import_node_crypto4.randomBytes)(48).toString("base64url")}`
+        `JWT_REFRESH_SECRET=${(0, import_node_crypto5.randomBytes)(48).toString("base64url")}`
       );
       (0, import_node_fs16.writeFileSync)(environmentPath, securedEnvironment, { mode: 384 });
       if (process.platform !== "win32") (0, import_node_fs16.chmodSync)(environmentPath, 384);
@@ -3840,7 +3929,7 @@ var createCommand = new import_commander5.Command("create").description("Create 
   "Allow replacing a non-empty destination after staging succeeds"
 ).option("--no-install", "Skip dependency installation").action((projectName, options) => {
   try {
-    const destinationDirectory = options.directory ? (0, import_node_path16.resolve)(options.directory) : (0, import_node_path16.resolve)(process.cwd(), projectName);
+    const destinationDirectory = options.directory ? (0, import_node_path17.resolve)(options.directory) : (0, import_node_path17.resolve)(process.cwd(), projectName);
     const destinationAlreadyExists = (0, import_node_fs17.existsSync)(destinationDirectory);
     console.log(`Creating ${projectName}...`);
     const generatedDirectory = generateProject({
@@ -3860,7 +3949,7 @@ var createCommand = new import_commander5.Command("create").description("Create 
     console.log("");
     console.log("Next steps:");
     if (!destinationAlreadyExists || destinationDirectory !== process.cwd()) {
-      const relativeDestination = (0, import_node_path16.relative)(process.cwd(), destinationDirectory) || ".";
+      const relativeDestination = (0, import_node_path17.relative)(process.cwd(), destinationDirectory) || ".";
       console.log(`  cd ${relativeDestination}`);
     }
     if (!options.install) {
@@ -3881,7 +3970,7 @@ var import_node_child_process7 = require("child_process");
 var import_commander6 = require("commander");
 
 // src/config.ts
-var import_node_fs19 = require("fs");
+var import_node_fs18 = require("fs");
 var import_node_path18 = require("path");
 var import_zod3 = require("zod");
 
@@ -3946,47 +4035,6 @@ function providerHelpText() {
   return PROVIDER_IDS.join(", ");
 }
 
-// src/storage.ts
-var import_node_fs18 = require("fs");
-var import_node_path17 = require("path");
-var import_node_crypto5 = require("crypto");
-function atomicWriteText(path, content, mode) {
-  const directory2 = (0, import_node_path17.dirname)(path);
-  (0, import_node_fs18.mkdirSync)(directory2, { recursive: true });
-  const temporaryPath = (0, import_node_path17.join)(
-    directory2,
-    `.${(0, import_node_path17.basename)(path)}.${process.pid}.${(0, import_node_crypto5.randomUUID)()}.tmp`
-  );
-  try {
-    (0, import_node_fs18.writeFileSync)(temporaryPath, content, {
-      encoding: "utf8",
-      flag: "wx",
-      ...mode === void 0 ? {} : { mode }
-    });
-    if (mode !== void 0) {
-      (0, import_node_fs18.chmodSync)(temporaryPath, mode);
-    }
-    (0, import_node_fs18.renameSync)(temporaryPath, path);
-    if (mode !== void 0) {
-      (0, import_node_fs18.chmodSync)(path, mode);
-    }
-  } finally {
-    if ((0, import_node_fs18.existsSync)(temporaryPath)) {
-      (0, import_node_fs18.rmSync)(temporaryPath, { force: true });
-    }
-  }
-}
-function readJsonFile(path, fallback) {
-  if (!(0, import_node_fs18.existsSync)(path)) {
-    return fallback;
-  }
-  try {
-    return JSON.parse((0, import_node_fs18.readFileSync)(path, "utf8"));
-  } catch {
-    throw new Error(`Invalid JSON in ${(0, import_node_path17.basename)(path)}.`);
-  }
-}
-
 // src/config.ts
 var CONFIG_FILE_NAME = "launchstack.config.json";
 var launchStackConfigSchema = import_zod3.z.object({
@@ -4001,7 +4049,7 @@ function getConfigPath() {
   return (0, import_node_path18.resolve)(process.cwd(), CONFIG_FILE_NAME);
 }
 function configExists() {
-  return (0, import_node_fs19.existsSync)(getConfigPath());
+  return (0, import_node_fs18.existsSync)(getConfigPath());
 }
 function createDefaultConfig(appName) {
   return {
@@ -4019,13 +4067,13 @@ function writeConfig(config) {
 `);
 }
 function readConfig() {
-  const raw = (0, import_node_fs19.readFileSync)(getConfigPath(), "utf-8");
+  const raw = (0, import_node_fs18.readFileSync)(getConfigPath(), "utf-8");
   const parsed = JSON.parse(raw);
   return launchStackConfigSchema.parse(parsed);
 }
 
 // src/deployment.ts
-var import_node_fs20 = require("fs");
+var import_node_fs19 = require("fs");
 var import_node_path19 = require("path");
 function resolveVerifiedOutputDirectory(projectDirectory, configuredOutputDirectory) {
   const projectRoot = (0, import_node_path19.resolve)(projectDirectory);
@@ -4036,10 +4084,10 @@ function resolveVerifiedOutputDirectory(projectDirectory, configuredOutputDirect
       "Configured output directory must stay inside the project directory."
     );
   }
-  if (!(0, import_node_fs20.existsSync)(outputPath)) {
+  if (!(0, import_node_fs19.existsSync)(outputPath)) {
     throw new Error(`Output directory not found: ${configuredOutputDirectory}`);
   }
-  if (!(0, import_node_fs20.statSync)(outputPath).isDirectory()) {
+  if (!(0, import_node_fs19.statSync)(outputPath).isDirectory()) {
     throw new Error(
       `Configured output path is not a directory: ${configuredOutputDirectory}`
     );
@@ -4106,13 +4154,13 @@ function addDeploymentRecord(record, projectDirectory = process.cwd()) {
 
 // src/stages/manager.ts
 var import_node_crypto8 = require("crypto");
-var import_node_fs23 = require("fs");
+var import_node_fs22 = require("fs");
 var import_node_path23 = require("path");
 
 // src/stages/docker.ts
 var import_node_child_process6 = require("child_process");
 var import_node_crypto7 = require("crypto");
-var import_node_fs22 = require("fs");
+var import_node_fs21 = require("fs");
 var import_node_os3 = require("os");
 var import_node_path22 = require("path");
 var import_node_net2 = require("net");
@@ -4120,7 +4168,7 @@ var import_node_net2 = require("net");
 // src/dev/orchestrator.ts
 var import_node_crypto6 = require("crypto");
 var import_node_child_process5 = require("child_process");
-var import_node_fs21 = require("fs");
+var import_node_fs20 = require("fs");
 var import_node_net = require("net");
 var import_node_path21 = require("path");
 var import_node_os2 = require("os");
@@ -4130,27 +4178,24 @@ async function acquireHostPortLock() {
   const deadline = Date.now() + 3e5;
   while (Date.now() < deadline) {
     try {
-      const descriptor = (0, import_node_fs21.openSync)(path, "wx", 384);
+      const descriptor = (0, import_node_fs20.openSync)(path, "wx", 384);
       try {
-        (0, import_node_fs21.writeFileSync)(descriptor, token, "utf8");
+        (0, import_node_fs20.writeFileSync)(descriptor, token, "utf8");
       } finally {
-        (0, import_node_fs21.closeSync)(descriptor);
+        (0, import_node_fs20.closeSync)(descriptor);
       }
       return () => {
         try {
-          if ((0, import_node_fs21.readFileSync)(path, "utf8") === token) (0, import_node_fs21.unlinkSync)(path);
+          if (readRegularFileNoFollow(path, 512).content === token)
+            (0, import_node_fs20.unlinkSync)(path);
         } catch {
         }
       };
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
       try {
-        const stat = (0, import_node_fs21.lstatSync)(path);
-        if (stat.isSymbolicLink() || !stat.isFile())
-          throw new Error(
-            "Development port allocation lock is not a regular file."
-          );
-        const ownerContents = (0, import_node_fs21.readFileSync)(path, "utf8");
+        const lockFile = readRegularFileNoFollow(path, 512);
+        const ownerContents = lockFile.content;
         if (!ownerContents.trim()) {
           await new Promise((done) => setTimeout(done, 50));
           continue;
@@ -4168,8 +4213,9 @@ async function acquireHostPortLock() {
             alive = false;
         }
         if (!alive) {
-          const current = (0, import_node_fs21.statSync)(path);
-          if (current.ino === stat.ino) (0, import_node_fs21.unlinkSync)(path);
+          const current = (0, import_node_fs20.lstatSync)(path);
+          if (current.dev === lockFile.dev && current.ino === lockFile.ino)
+            (0, import_node_fs20.unlinkSync)(path);
           continue;
         }
       } catch (readError) {
@@ -4238,9 +4284,9 @@ function safeProjectNamespace(name, directory2) {
 }
 function readDotEnv(projectDirectory) {
   const path = (0, import_node_path21.resolve)(projectDirectory, ".env");
-  if (!(0, import_node_fs21.existsSync)(path)) return {};
+  if (!(0, import_node_fs20.existsSync)(path)) return {};
   return Object.fromEntries(
-    (0, import_node_fs21.readFileSync)(path, "utf8").split(/\r?\n/).flatMap((line) => {
+    readRegularFileNoFollow(path, 1048576).content.split(/\r?\n/).flatMap((line) => {
       const match = /^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
       if (!match) return [];
       const value = match[2].replace(/^(['"])(.*)\1$/, "$2");
@@ -4345,7 +4391,7 @@ function createDevPlan(projectDirectoryInput) {
     projectDirectory
   );
   const composeArgs2 = ["compose", "-p", namespace, "-f", "docker-compose.yml"];
-  if ((0, import_node_fs21.existsSync)((0, import_node_path21.resolve)(projectDirectory, "docker-compose.launchstack.yml")))
+  if ((0, import_node_fs20.existsSync)((0, import_node_path21.resolve)(projectDirectory, "docker-compose.launchstack.yml")))
     composeArgs2.push("-f", "docker-compose.launchstack.yml");
   const services = [
     {
@@ -4700,7 +4746,7 @@ var DevOrchestrator = class {
           "-f",
           "docker-compose.yml"
         ];
-        if ((0, import_node_fs21.existsSync)(
+        if ((0, import_node_fs20.existsSync)(
           (0, import_node_path21.resolve)(
             this.plan.projectDirectory,
             "docker-compose.launchstack.yml"
@@ -4744,7 +4790,7 @@ function run2(projectDirectory, args, environment = {}) {
 }
 function composeArgs(projectDirectory, resourceId) {
   const args = ["compose", "-p", resourceId, "-f", "docker-compose.yml"];
-  if ((0, import_node_fs22.existsSync)((0, import_node_path22.join)(projectDirectory, "docker-compose.launchstack.yml")))
+  if ((0, import_node_fs21.existsSync)((0, import_node_path22.join)(projectDirectory, "docker-compose.launchstack.yml")))
     args.push("-f", "docker-compose.launchstack.yml");
   return args;
 }
@@ -4776,7 +4822,7 @@ var dockerStageAdapter = {
     let buildOverrideDirectory;
     try {
       const postgresPort = Number(input.environment.LAUNCHSTACK_POSTGRES_PORT) || await allocatePort(postgresStart);
-      const hasCapabilities = (0, import_node_fs22.existsSync)(
+      const hasCapabilities = (0, import_node_fs21.existsSync)(
         (0, import_node_path22.join)(input.projectDirectory, "docker-compose.launchstack.yml")
       );
       const redisPort = hasCapabilities ? Number(input.environment.LAUNCHSTACK_REDIS_PORT) || await allocatePort(redisStart) : void 0;
@@ -4793,15 +4839,15 @@ var dockerStageAdapter = {
       const caFile = process.env.NODE_EXTRA_CA_CERTS;
       if (caFile) {
         try {
-          if ((0, import_node_fs22.statSync)(caFile).isFile()) {
-            buildOverrideDirectory = (0, import_node_fs22.mkdtempSync)(
+          if ((0, import_node_fs21.statSync)(caFile).isFile()) {
+            buildOverrideDirectory = (0, import_node_fs21.mkdtempSync)(
               (0, import_node_path22.join)((0, import_node_os3.tmpdir)(), "launchstack-stage-build-")
             );
             const override = {
               services: { api: { build: { secrets: ["npmca"] } } },
               secrets: { npmca: { file: caFile } }
             };
-            (0, import_node_fs22.writeFileSync)(
+            (0, import_node_fs21.writeFileSync)(
               (0, import_node_path22.join)(buildOverrideDirectory, "compose.yml"),
               JSON.stringify(override),
               { mode: 384 }
@@ -4819,7 +4865,7 @@ var dockerStageAdapter = {
       };
     } finally {
       if (buildOverrideDirectory)
-        (0, import_node_fs22.rmSync)(buildOverrideDirectory, { recursive: true, force: true });
+        (0, import_node_fs21.rmSync)(buildOverrideDirectory, { recursive: true, force: true });
       releasePortLock();
     }
   },
@@ -4893,7 +4939,7 @@ function stateMutation(projectDirectory, state) {
     content: serializeProjectState(state),
     owner: "launchstack:metadata",
     version: currentLaunchStackVersion(),
-    expectedSha256: (0, import_node_fs23.existsSync)(absolute) ? hashFile(absolute) : null
+    expectedSha256: (0, import_node_fs22.existsSync)(absolute) ? hashFile(absolute) : null
   };
 }
 function persist(projectDirectory, previous, next) {
@@ -5275,11 +5321,11 @@ var devCommand = new import_commander8.Command("dev").description("Start LaunchS
 var import_commander9 = require("commander");
 
 // src/release/doctor.ts
-var import_node_fs24 = require("fs");
+var import_node_fs23 = require("fs");
 var import_node_path24 = require("path");
 function checkFile(projectDirectory, file, label) {
   const path = (0, import_node_path24.resolve)(projectDirectory, file);
-  const passed = (0, import_node_fs24.existsSync)(path);
+  const passed = (0, import_node_fs23.existsSync)(path);
   return {
     name: label,
     passed,
@@ -5288,14 +5334,14 @@ function checkFile(projectDirectory, file, label) {
 }
 function checkPackageScripts(projectDirectory) {
   const packagePath = (0, import_node_path24.resolve)(projectDirectory, "package.json");
-  if (!(0, import_node_fs24.existsSync)(packagePath)) {
+  if (!(0, import_node_fs23.existsSync)(packagePath)) {
     return {
       name: "Package scripts",
       passed: false,
       detail: "package.json is missing"
     };
   }
-  const packageJson2 = JSON.parse((0, import_node_fs24.readFileSync)(packagePath, "utf8"));
+  const packageJson2 = JSON.parse((0, import_node_fs23.readFileSync)(packagePath, "utf8"));
   const requiredScripts = [
     "dev",
     "build",
@@ -5317,14 +5363,14 @@ function checkPackageScripts(projectDirectory) {
 }
 function checkEnvironmentExample(projectDirectory) {
   const path = (0, import_node_path24.resolve)(projectDirectory, ".env.example");
-  if (!(0, import_node_fs24.existsSync)(path)) {
+  if (!(0, import_node_fs23.existsSync)(path)) {
     return {
       name: "Environment example",
       passed: false,
       detail: ".env.example is missing"
     };
   }
-  const content = (0, import_node_fs24.readFileSync)(path, "utf8");
+  const content = (0, import_node_fs23.readFileSync)(path, "utf8");
   const requiredVariables = [
     "DATABASE_URL",
     "JWT_ACCESS_SECRET",
@@ -5411,14 +5457,14 @@ var doctorCommand = new import_commander9.Command("doctor").description(
 });
 
 // src/commands/docker.ts
-var import_node_fs25 = require("fs");
+var import_node_fs24 = require("fs");
 var import_commander10 = require("commander");
 function writeFileIfAllowed(path, content, force) {
-  if ((0, import_node_fs25.existsSync)(path) && !force) {
+  if ((0, import_node_fs24.existsSync)(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  (0, import_node_fs25.writeFileSync)(path, content);
+  (0, import_node_fs24.writeFileSync)(path, content);
   console.log(`Created ${path}`);
 }
 var dockerCommand = new import_commander10.Command("docker").description(
@@ -5429,8 +5475,8 @@ dockerCommand.command("init").description(
 ).option("-f, --force", "Overwrite existing Docker files").action((options) => {
   const config = readConfig();
   const force = Boolean(options.force);
-  const hasLockfile = (0, import_node_fs25.existsSync)("package-lock.json");
-  const prisma = (0, import_node_fs25.existsSync)("prisma/schema.prisma");
+  const hasLockfile = (0, import_node_fs24.existsSync)("package-lock.json");
+  const prisma = (0, import_node_fs24.existsSync)("prisma/schema.prisma");
   const dockerfile = renderDockerfile({
     buildCommand: config.buildCommand,
     outputDirectory: config.outputDirectory,
@@ -5484,7 +5530,7 @@ var envCommand = new import_commander11.Command("env").description("View or upda
 var import_commander12 = require("commander");
 
 // src/generator/module.ts
-var import_node_fs26 = require("fs");
+var import_node_fs25 = require("fs");
 var import_node_path25 = require("path");
 var RESERVED_FIELDS = /* @__PURE__ */ new Set([
   "id",
@@ -5693,7 +5739,7 @@ function planModuleGeneration(input) {
   for (const [path, content] of Object.entries(files)) {
     if (path.startsWith(".__launchstack_model_")) continue;
     const absolute = resolveProjectPath(projectDirectory, path);
-    if ((0, import_node_fs26.existsSync)(absolute))
+    if ((0, import_node_fs25.existsSync)(absolute))
       throw new Error(`Generation collision: ${path} already exists.`);
     mutations.push({
       type: "write",
@@ -5706,7 +5752,7 @@ function planModuleGeneration(input) {
   }
   const registryPath = "src/routes/launchstack.generated.ts";
   const registryAbsolute = resolveProjectPath(projectDirectory, registryPath);
-  const registryCurrent = (0, import_node_fs26.existsSync)(registryAbsolute) ? (0, import_node_fs26.readFileSync)(registryAbsolute, "utf8") : `import type { FastifyInstance } from "fastify";
+  const registryCurrent = (0, import_node_fs25.existsSync)(registryAbsolute) ? (0, import_node_fs25.readFileSync)(registryAbsolute, "utf8") : `import type { FastifyInstance } from "fastify";
 
 /* launchstack-routes: [] */
 export async function registerGeneratedRoutes(app: FastifyInstance): Promise<void> { void app; }
@@ -5729,17 +5775,17 @@ export async function registerGeneratedRoutes(app: FastifyInstance): Promise<voi
       content: nextRegistry,
       owner: "launchstack:metadata",
       version: currentLaunchStackVersion(),
-      expectedSha256: (0, import_node_fs26.existsSync)(registryAbsolute) ? hashFile(registryAbsolute) : null
+      expectedSha256: (0, import_node_fs25.existsSync)(registryAbsolute) ? hashFile(registryAbsolute) : null
     });
   let migrationCommand;
   if (input.kind === "resource") {
     const schemaPath = "prisma/schema.prisma";
     const schemaAbsolute = resolveProjectPath(projectDirectory, schemaPath);
-    if (!(0, import_node_fs26.existsSync)(schemaAbsolute))
+    if (!(0, import_node_fs25.existsSync)(schemaAbsolute))
       throw new Error(
         "Cannot generate a CRUD resource without prisma/schema.prisma."
       );
-    const schema = (0, import_node_fs26.readFileSync)(schemaAbsolute, "utf8");
+    const schema = (0, import_node_fs25.readFileSync)(schemaAbsolute, "utf8");
     const model = files[`.__launchstack_model_${name}`] ?? "";
     if (new RegExp(`\\bmodel\\s+${pascal(name)}\\b`).test(schema))
       throw new Error(`Prisma model ${pascal(name)} already exists.`);
@@ -5765,7 +5811,7 @@ ${model}`,
     content: serializeProjectState(nextState),
     owner: "launchstack:metadata",
     version: currentLaunchStackVersion(),
-    expectedSha256: (0, import_node_fs26.existsSync)(stateAbsolute) ? hashFile(stateAbsolute) : null
+    expectedSha256: (0, import_node_fs25.existsSync)(stateAbsolute) ? hashFile(stateAbsolute) : null
   });
   return {
     projectDirectory,
@@ -5833,15 +5879,15 @@ function configure(kind) {
 var generateCommand = new import_commander12.Command("generate").description("Generate architecture-aware modules and resources").addCommand(configure("module")).addCommand(configure("resource"));
 
 // src/commands/github.ts
-var import_node_fs27 = require("fs");
+var import_node_fs26 = require("fs");
 var import_node_path26 = require("path");
 var import_commander13 = require("commander");
 function writeWorkflowFile(path, content, force) {
-  if ((0, import_node_fs27.existsSync)(path) && !force) {
+  if ((0, import_node_fs26.existsSync)(path) && !force) {
     console.log(`${path} already exists. Use --force to overwrite.`);
     return;
   }
-  (0, import_node_fs27.mkdirSync)((0, import_node_path26.dirname)(path), { recursive: true });
+  (0, import_node_fs26.mkdirSync)((0, import_node_path26.dirname)(path), { recursive: true });
   atomicWriteText(path, content);
   console.log(`Created ${path}`);
 }
@@ -5935,7 +5981,7 @@ var initCommand = new import_commander15.Command("init").description("Create a L
 var import_commander16 = require("commander");
 
 // src/extensions/plugins.ts
-var import_node_fs28 = require("fs");
+var import_node_fs27 = require("fs");
 var import_node_path27 = require("path");
 var import_zod4 = require("zod");
 var fileSchema = import_zod4.z.object({
@@ -6015,13 +6061,13 @@ function resolvePluginManifestPath(projectDirectory, specifier) {
 }
 function loadPluginManifest(projectDirectory, specifier, options = {}) {
   const path = resolvePluginManifestPath(projectDirectory, specifier);
-  if (!(0, import_node_fs28.existsSync)(path))
+  if (!(0, import_node_fs27.existsSync)(path))
     throw new Error(
       `Plugin manifest not found at ${path}. Install third-party packages with scripts disabled, review launchstack-plugin.json, then run launchstack plugin add.`
     );
   try {
     return parsePluginManifest(
-      JSON.parse((0, import_node_fs28.readFileSync)(path, "utf8")),
+      JSON.parse((0, import_node_fs27.readFileSync)(path, "utf8")),
       options.allowHooks ?? false
     );
   } catch (error) {
@@ -6213,7 +6259,7 @@ var rollbackCommand = new import_commander18.Command("rollback").description("Sh
 var import_commander19 = require("commander");
 
 // src/secrets-store.ts
-var import_node_fs29 = require("fs");
+var import_node_fs28 = require("fs");
 var import_node_path28 = require("path");
 var STORE_DIR2 = ".launchstack";
 var SECRETS_FILE = "secrets.json";
@@ -6234,8 +6280,8 @@ function validateSecretKey(key) {
 function readSecrets(projectDirectory = process.cwd()) {
   const path = getSecretsPath(projectDirectory);
   const directory2 = (0, import_node_path28.resolve)(projectDirectory, STORE_DIR2);
-  if ((0, import_node_fs29.existsSync)(directory2)) {
-    const directoryStat = (0, import_node_fs29.lstatSync)(directory2);
+  if ((0, import_node_fs28.existsSync)(directory2)) {
+    const directoryStat = (0, import_node_fs28.lstatSync)(directory2);
     if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
       throw new Error(
         "LaunchStack secrets directory must be a real directory."
@@ -6243,20 +6289,15 @@ function readSecrets(projectDirectory = process.cwd()) {
     }
   }
   let parsed = {};
-  if ((0, import_node_fs29.existsSync)(path)) {
-    const secretStat = (0, import_node_fs29.lstatSync)(path);
-    if (secretStat.isSymbolicLink() || !secretStat.isFile()) {
-      throw new Error(
-        "secrets.json must be a regular file, not a link or special file."
-      );
-    }
-    if (process.platform !== "win32" && (secretStat.mode & 63) !== 0) {
+  if ((0, import_node_fs28.existsSync)(path)) {
+    const secretFile = readRegularFileNoFollow(path, 1048576);
+    if (process.platform !== "win32" && (secretFile.mode & 63) !== 0) {
       throw new Error(
         "secrets.json permissions are too broad; expected owner-only access."
       );
     }
     try {
-      parsed = JSON.parse((0, import_node_fs29.readFileSync)(path, "utf8"));
+      parsed = JSON.parse(secretFile.content);
     } catch {
       throw new Error("Invalid JSON in secrets.json.");
     }
@@ -6276,12 +6317,12 @@ function readSecrets(projectDirectory = process.cwd()) {
 }
 function writeSecrets(secrets, projectDirectory = process.cwd()) {
   const storeDirectory = (0, import_node_path28.resolve)(projectDirectory, STORE_DIR2);
-  (0, import_node_fs29.mkdirSync)(storeDirectory, { recursive: true, mode: 448 });
-  const directoryStat = (0, import_node_fs29.lstatSync)(storeDirectory);
+  (0, import_node_fs28.mkdirSync)(storeDirectory, { recursive: true, mode: 448 });
+  const directoryStat = (0, import_node_fs28.lstatSync)(storeDirectory);
   if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
     throw new Error("LaunchStack secrets directory must be a real directory.");
   }
-  if (process.platform !== "win32") (0, import_node_fs29.chmodSync)(storeDirectory, 448);
+  if (process.platform !== "win32") (0, import_node_fs28.chmodSync)(storeDirectory, 448);
   atomicWriteText(
     getSecretsPath(projectDirectory),
     `${JSON.stringify(secrets, null, 2)}
@@ -6411,7 +6452,7 @@ secretsCommand.command("remove").description("Remove a local secret").argument("
 });
 
 // src/commands/status.ts
-var import_node_fs30 = require("fs");
+var import_node_fs29 = require("fs");
 var import_node_path29 = require("path");
 var import_commander20 = require("commander");
 var statusCommand = new import_commander20.Command("status").description("Show LaunchStack project or stage status").option("--stage <stage>", "Show one named stage").option("--json").option("-d, --directory <path>").action((options) => {
@@ -6437,7 +6478,7 @@ var statusCommand = new import_commander20.Command("status").description("Show L
         );
       return;
     }
-    if ((0, import_node_fs30.existsSync)((0, import_node_path29.join)(directory2, "launchstack.json"))) {
+    if ((0, import_node_fs29.existsSync)((0, import_node_path29.join)(directory2, "launchstack.json"))) {
       const manifest = loadProjectManifest(directory2);
       const state = loadProjectState(directory2, {
         templateVersion: manifest.project.templateVersion,
