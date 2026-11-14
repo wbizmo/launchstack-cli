@@ -61,7 +61,8 @@ export const clientGenerateCommand = new Command("generate")
         writeFileSync(output, generated, "utf8");
         console.log(`Generated ${options.target} client: ${output}`);
       } catch (error) {
-        console.error(error instanceof Error ? error.message : String(error));
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(message.replace(/[\u0000-\u001f\u007f-\u009f]/g, " "));
         process.exitCode = 1;
       }
     },

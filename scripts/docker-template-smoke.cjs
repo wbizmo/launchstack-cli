@@ -162,9 +162,10 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+main().catch(() => {
+  // Child-process errors may include values inherited from the environment.
   console.error(
-    error instanceof Error ? error.message : "Docker smoke failed.",
+    "Docker smoke failed; details are suppressed to protect secrets.",
   );
   process.exitCode = 1;
 });

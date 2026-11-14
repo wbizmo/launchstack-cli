@@ -242,6 +242,6 @@ async function run(): Promise<void> {
 }
 
 run().catch((error: unknown) => {
-  console.error(error);
+  console.error("Security fuzz worker failed.");
   process.exitCode = 1;
 });

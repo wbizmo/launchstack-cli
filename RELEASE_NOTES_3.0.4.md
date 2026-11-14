@@ -19,6 +19,7 @@
 - Replaces the root Docker image with a non-root Node 24 CLI image that invokes `dist/cli.js`; the Docker smoke checks both the CLI image and generated API production health/readiness.
 - Adds bounded deterministic security corpus checks under a 128 MiB V8 heap and 15 second timeout. The recorded 1,290-case run is in `docs/benchmarks/issue-31-security-fuzz.md`; it is not coverage-guided fuzzing.
 - Documents that generated API rate limiting uses an in-memory per-process store by default; multi-replica deployments need shared storage.
+- Sanitizes generated operation-key literals and CLI error logs, and suppresses smoke-test exception details that may include inherited environment values.
 - Uses a versioned crash-recovery journal, durable file and directory flushes, lock identity checks, compare-and-swap preconditions and one transaction for multi-capability installs.
 - Retries transient lock identity changes when one writer releases and another acquires the project lock; independent 8/32 process writer tests cover the handoff.
 - Measures 100 / 1,000 / 10,000 file mutations against v3.0.0 and verifies 8 / 32 concurrent writer processes. The measured durability latency cost is documented in `docs/benchmarks/issue-32-transactions.md`.

@@ -190,6 +190,28 @@ describe("v3 OpenAPI client generation", () => {
     expect(code).not.toContain("localStorage");
   });
 
+  test("escapes HTML-sensitive and line-separator characters in generated keys", () => {
+    const code = generateTypeScriptClient(
+      parseOpenApiDocument({
+        openapi: "3.1.0",
+        paths: {
+          "/x</script>\u2028": {
+            get: {
+              operationId: "read",
+              responses: { "200": { description: "ok" } },
+            },
+          },
+        },
+      }),
+      "react",
+    );
+    const queryKeyLine = code
+      .split("\n")
+      .find((line) => line.includes("operationQueryKey0"));
+    expect(queryKeyLine).toContain("\\u003c/script\\u003e\\u2028");
+    expect(queryKeyLine).not.toContain("</script>");
+  });
+
   test.each(["3.0.3", "3.1.0"])(
     "resolves local refs and preserves schema semantics for OpenAPI %s",
     (version) => {

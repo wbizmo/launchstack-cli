@@ -36,7 +36,7 @@ import {
   runProductionAudit,
   selectDevPlan,
   severityRank
-} from "./chunk-TKZZOJLL.mjs";
+} from "./chunk-YJ2SLDUG.mjs";
 
 // src/cli.ts
 import { Command as Command22 } from "commander";
@@ -293,7 +293,8 @@ var clientGenerateCommand = new Command4("generate").description("Generate a typ
       writeFileSync(output, generated, "utf8");
       console.log(`Generated ${options.target} client: ${output}`);
     } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(message.replace(/[\u0000-\u001f\u007f-\u009f]/g, " "));
       process.exitCode = 1;
     }
   }

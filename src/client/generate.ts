@@ -171,6 +171,14 @@ function renderSchemas(
 function property(name: string): string {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
 }
+function javascriptStringLiteral(value: string): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
 function access(name: string): string {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)
     ? "." + name
@@ -364,7 +372,7 @@ export function generateTypeScriptClient(
       ? `\n${boundedJoin(
           operations.map(
             (item, index) =>
-              `export const operationQueryKey${index} = (baseUrl: string | URL, cacheScope: string, input: unknown) => ["launchstack", new URL(baseUrl).href, cacheScope, ${JSON.stringify(`${item.method} ${item.path}`)}, input] as const;`,
+              `export const operationQueryKey${index} = (baseUrl: string | URL, cacheScope: string, input: unknown) => ["launchstack", new URL(baseUrl).href, cacheScope, ${javascriptStringLiteral(`${item.method} ${item.path}`)}, input] as const;`,
           ),
           "\n",
           (line) => line,
