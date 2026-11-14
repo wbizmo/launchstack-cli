@@ -1,9 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { loadProjectManifest } from "../project/manifest";
 import { detectManagedDrift, loadProjectState } from "../project/state";
-import type { AuditFinding, AuditReport, AuditSeverity } from "./types";
+import {
+  AUDIT_SEVERITIES,
+  severityRank,
+  type AuditFinding,
+  type AuditReport,
+  type AuditSeverity,
+} from "./types";
 const readIfPresent = (root: string, path: string) => {
   const absolute = join(root, path);
   return existsSync(absolute) ? readFileSync(absolute, "utf8") : undefined;
@@ -21,6 +27,171 @@ function packageJson(root: string): Record<string, unknown> | undefined {
   }
 }
 const MAX_GIT_TRACKED_PATH_BYTES = 16 * 1024 * 1024;
+const MAX_NPM_AUDIT_OUTPUT_BYTES = 2 * 1024 * 1024;
+
+type NpmAuditAdvisory = {
+  name?: unknown;
+  severity?: unknown;
+  range?: unknown;
+  via?: unknown;
+};
+
+export function parseNpmAuditAdvisories(output: string): AuditFinding[] {
+  let parsed: { vulnerabilities?: unknown; error?: unknown };
+  try {
+    parsed = JSON.parse(output) as {
+      vulnerabilities?: unknown;
+      error?: unknown;
+    };
+  } catch {
+    return [
+      finding(
+        "LS024",
+        "medium",
+        "Dependency advisory check returned invalid data",
+        "npm audit did not return valid JSON advisory evidence; rerun the check and inspect npm/registry availability.",
+        false,
+        "package-lock.json",
+      ),
+    ];
+  }
+  if (parsed.error)
+    return [
+      finding(
+        "LS024",
+        "medium",
+        "Dependency advisory check could not complete",
+        "npm audit reported a registry or lockfile error; advisory coverage is incomplete.",
+        false,
+        "package-lock.json",
+      ),
+    ];
+  if (
+    !parsed.vulnerabilities ||
+    typeof parsed.vulnerabilities !== "object" ||
+    Array.isArray(parsed.vulnerabilities)
+  )
+    return [
+      finding(
+        "LS024",
+        "medium",
+        "Dependency advisory check returned invalid data",
+        "npm audit did not return a vulnerability map; advisory coverage is incomplete.",
+        false,
+        "package-lock.json",
+      ),
+    ];
+
+  const safeText = (value: string) =>
+    value.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 200);
+  const vulnerabilities = Object.entries(
+    parsed.vulnerabilities as Record<string, NpmAuditAdvisory | null>,
+  )
+    .map(([packageName, advisory]) => {
+      const record = advisory && typeof advisory === "object" ? advisory : {};
+      const severity =
+        typeof record.severity === "string" &&
+        (AUDIT_SEVERITIES as readonly string[]).includes(record.severity)
+          ? (record.severity as AuditSeverity)
+          : "medium";
+      const sources = Array.isArray(record.via)
+        ? record.via
+            .filter((item): item is Record<string, unknown> =>
+              Boolean(item && typeof item === "object" && !Array.isArray(item)),
+            )
+            .map((item) =>
+              typeof item.source === "number"
+                ? `npm:${item.source}`
+                : typeof item.name === "string"
+                  ? safeText(item.name)
+                  : typeof item.title === "string"
+                    ? safeText(item.title)
+                    : "advisory",
+            )
+            .sort()
+        : [];
+      const range =
+        typeof record.range === "string"
+          ? safeText(record.range)
+          : "unspecified affected range";
+      return {
+        packageName: safeText(packageName),
+        severity,
+        source: sources.length
+          ? sources.join(", ")
+          : "advisory source unspecified",
+        range,
+      };
+    })
+    .sort((left, right) => left.packageName.localeCompare(right.packageName));
+  if (!vulnerabilities.length)
+    return [
+      finding(
+        "LS023",
+        "info",
+        "No production dependency advisories found",
+        "npm audit returned no vulnerable production dependencies.",
+        true,
+        "package-lock.json",
+      ),
+    ];
+
+  const severity = vulnerabilities.reduce<AuditSeverity>(
+    (highest, advisory) =>
+      severityRank(advisory.severity) > severityRank(highest)
+        ? advisory.severity
+        : highest,
+    "info",
+  );
+  const details = vulnerabilities.map(
+    (item) =>
+      `${item.packageName}: ${item.severity}, ${item.range}; evidence: ${item.source}`,
+  );
+  return [
+    finding(
+      "LS023",
+      severity,
+      "Production dependency advisories detected",
+      details.join("\n"),
+      true,
+      "package-lock.json",
+    ),
+  ];
+}
+
+function npmAdvisoryFindings(root: string): AuditFinding[] {
+  const result = spawnSync(
+    "npm",
+    [
+      "audit",
+      "--json",
+      "--omit=dev",
+      "--package-lock-only",
+      "--audit-level=none",
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30_000,
+      maxBuffer: MAX_NPM_AUDIT_OUTPUT_BYTES,
+      windowsHide: true,
+      shell: process.platform === "win32",
+      stdio: ["ignore", "pipe", "ignore"],
+    },
+  );
+  if (result.error || result.signal || result.stdout.length === 0)
+    return [
+      finding(
+        "LS024",
+        "medium",
+        "Dependency advisory check could not complete",
+        "npm audit did not complete within its 30-second limit or could not reach a registry; advisory coverage is incomplete.",
+        false,
+        "package-lock.json",
+      ),
+    ];
+  return parseNpmAuditAdvisories(result.stdout);
+}
 
 function gitTrackedFiles(
   root: string,
@@ -58,7 +229,10 @@ const SECRET_FILE_PATTERNS = [
   /(^|\/).*\.p12$/i,
   /(^|\/)id_rsa$/i,
 ];
-export function runProductionAudit(projectDirectoryInput: string): AuditReport {
+export function runProductionAudit(
+  projectDirectoryInput: string,
+  options: { dependencyAdvisories?: boolean } = {},
+): AuditReport {
   const root = resolve(projectDirectoryInput);
   const findings: AuditFinding[] = [];
   const pkg = packageJson(root);
@@ -186,7 +360,9 @@ export function runProductionAudit(projectDirectoryInput: string): AuditReport {
           "package.json",
         ),
       );
-    else if (/(?:^|[^0-9])(?:1[0-9]|20)(?:\.x|\b)/i.test(engines.node))
+    else if (
+      /(?:^|[\s<>=~^|])v?(?:1[0-9]|20)(?=\.|[\s|]|$)/i.test(engines.node)
+    )
       findings.push(
         finding(
           "LS018",
@@ -369,6 +545,7 @@ export function runProductionAudit(projectDirectoryInput: string): AuditReport {
         ),
       );
     }
+  if (options.dependencyAdvisories) findings.push(...npmAdvisoryFindings(root));
   findings.sort((a, b) => a.ruleId.localeCompare(b.ruleId));
   const summary: AuditReport["summary"] = {
     info: 0,

@@ -3,8 +3,66 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { runProductionAudit } from "../src/audit/run";
+import { parseNpmAuditAdvisories, runProductionAudit } from "../src/audit/run";
 describe("v3 production audit", () => {
+  test("normalizes npm advisory evidence into stable verified findings", () => {
+    const findings = parseNpmAuditAdvisories(
+      JSON.stringify({
+        vulnerabilities: {
+          zlib: {
+            severity: "high",
+            range: "<1.2.13",
+            via: [{ source: 123, title: "Buffer\nissue" }],
+          },
+          alpha: {
+            severity: "low",
+            range: "<2.0.0",
+            via: ["transitive dependency", { name: "GHSA-example" }],
+          },
+        },
+      }),
+    );
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      ruleId: "LS023",
+      severity: "high",
+      verified: true,
+      path: "package-lock.json",
+    });
+    expect(findings[0]?.detail).toContain("alpha: low");
+    expect(findings[0]?.detail).toContain("npm:123");
+    expect(findings[0]?.detail).not.toContain("Buffer\nissue");
+  });
+
+  test("reports advisory registry failures as incomplete, not clean", () => {
+    expect(parseNpmAuditAdvisories("not json")[0]).toMatchObject({
+      ruleId: "LS024",
+      verified: false,
+    });
+    expect(
+      parseNpmAuditAdvisories(
+        JSON.stringify({ error: { code: "ENOAUDIT" } }),
+      )[0],
+    ).toMatchObject({ ruleId: "LS024", verified: false });
+  });
+
+  test("records a successful clean production advisory lookup", () => {
+    expect(
+      parseNpmAuditAdvisories(
+        JSON.stringify({
+          vulnerabilities: {},
+          metadata: { vulnerabilities: { total: 0 } },
+        }),
+      )[0],
+    ).toMatchObject({
+      ruleId: "LS023",
+      severity: "info",
+      title: "No production dependency advisories found",
+      verified: true,
+    });
+  });
+
   test("reports insecure defaults without printing secret values", () => {
     const root = mkdtempSync(join(tmpdir(), "launchstack-audit-"));
     mkdirSync(join(root, "src", "plugins"), { recursive: true });
@@ -58,6 +116,19 @@ describe("v3 production audit", () => {
     expect(
       report.findings.find((item) => item.ruleId === "LS018")?.verified,
     ).toBe(false);
+  });
+
+  test("does not mistake Node minor versions for unsupported major lines", () => {
+    const root = mkdtempSync(join(tmpdir(), "launchstack-audit-node-range-"));
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({
+        engines: { node: ">=24.22.3 <25 || >=26.13.1 <27" },
+      }),
+    );
+
+    const report = runProductionAudit(root);
+    expect(report.findings.map((item) => item.ruleId)).not.toContain("LS018");
   });
 
   test("classifies tracked secret-like paths as heuristic without exposing contents", () => {

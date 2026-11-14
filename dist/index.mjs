@@ -34,6 +34,7 @@ import {
   loadProjectManifest,
   loadProjectState,
   parseFieldSpec,
+  parseNpmAuditAdvisories,
   parseOpenApiDocument,
   parseProjectManifest,
   parseProjectState,
@@ -60,7 +61,7 @@ import {
   toDisplayName,
   validateProjectName,
   validateStageName
-} from "./chunk-ARZ367C5.mjs";
+} from "./chunk-Z2ZXMOPQ.mjs";
 
 // src/errors.ts
 var LaunchStackError = class extends Error {
@@ -211,6 +212,7 @@ export {
   loadProjectManifest,
   loadProjectState,
   parseFieldSpec,
+  parseNpmAuditAdvisories,
   parseOpenApiDocument,
   parseProjectManifest,
   parseProjectState,

@@ -35,7 +35,7 @@
 - Validate and size-limit recovery journals, reject unrecognized fields and reconstruct all staging/backup paths inside `.launchstack` before recovery.
 - Keep malformed locks active, verify a lock token before release, and reject symlinked secret files/directories or permissive POSIX secret modes.
 - Give generated projects distinct JWT development secrets, loopback host/origin defaults, and loopback Compose port bindings. Production Compose requires explicit origin and JWT settings.
-- Extend production audit findings to cover runtime policy, npm lock consistency and production Compose requirements; unsupported-runtime findings are marked heuristic.
+- Extend production audit findings to cover runtime policy, npm lock consistency and production Compose requirements; `launchstack audit --advisories` adds npm registry evidence for production dependencies, with LS024 when that check cannot complete. Unsupported-runtime findings are marked heuristic.
 - Mark secret-looking tracked filenames as heuristic findings, bound Git path enumeration at 16 MiB / 10 seconds, and emit LS022 when enumeration cannot complete. Add a 1k–100k path traversal benchmark; it records that file contents are not scanned.
 - Final v3.0.0-to-candidate upgrade scans at 100k and 250k files show higher candidate latency and sampled RSS after file/path safety checks. The one-sample comparison is in `docs/benchmarks/issue-38-qualification.md`; no performance target is claimed.
 - Mark secret-looking tracked filenames as heuristic findings, bound Git path enumeration at 16 MiB / 10 seconds, and emit LS022 when enumeration cannot complete. Add a 1k–100k path traversal benchmark; it records that file contents are not scanned.
@@ -84,6 +84,7 @@
 - Generates resource updates with the owner predicate in the database mutation, keeping the existing 404 non-disclosure behavior. Resource list endpoints now use bounded `(createdAt, id)` keyset pagination and an owner/time/id index.
 - Rejects invalid Prisma/resource identifiers, duplicate generated route prefixes and unsafe field names before writing generated files.
 - Supports bounded OpenAPI 3.0/3.1 schema loading, local references, nullable/composed/enum types, parameter groups and successful response variants. TypeScript, React and React Native outputs are compiled and exercised against request fixtures.
+- Scopes generated React query keys by canonical API base URL, operation method/path and caller-provided cache identity.
 - Records PostgreSQL query counts, concurrent owner checks and SDK fixture verification in `docs/benchmarks/issue-36-generators.md`.
 - Orders development services with a deterministic min-heap and resolves extension dependencies with an explicit DFS stack, preserving cycle paths without recursive path copies.
 - Streams SHA-256 file hashing in fixed 64 KiB chunks and reuses the validated manifest and sorted OpenAPI operation list within a single planning/rendering operation.

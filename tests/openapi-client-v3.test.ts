@@ -161,7 +161,9 @@ describe("v3 OpenAPI client generation", () => {
         const generated = generateTypeScriptClient(document, target);
         if (target === "react") {
           expect(generated).toContain("export const operationQueryKey0");
-          expect(generated).toContain('["operation-0", input]');
+          expect(generated).toContain(
+            '["launchstack", new URL(baseUrl).href, cacheScope, "PUT /pets/{pet-id}", input]',
+          );
           expect(generated).not.toContain("export const updatePetQueryKey");
         }
         writeFileSync(file, generated);
@@ -186,6 +188,48 @@ describe("v3 OpenAPI client generation", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   }, 30_000);
+
+  test("React query keys are scoped by API, operation, and caller identity", () => {
+    const keyFor = (path: string, baseUrl: string, cacheScope: string) => {
+      const generated = generateTypeScriptClient(
+        parseOpenApiDocument({
+          openapi: "3.1.0",
+          paths: {
+            [path]: {
+              get: {
+                operationId: "read",
+                responses: { "200": { description: "ok" } },
+              },
+            },
+          },
+        }),
+        "react",
+      );
+      const javascript = ts.transpile(generated, {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      });
+      const sandbox = { exports: {} as Record<string, unknown>, URL };
+      vm.runInNewContext(javascript, sandbox);
+      const queryKey = sandbox.exports.operationQueryKey0 as (
+        url: string,
+        scope: string,
+        input: unknown,
+      ) => readonly unknown[];
+      return queryKey(baseUrl, cacheScope, { id: "same-input" });
+    };
+
+    const first = keyFor("/pets", "https://api.example.test", "tenant-a");
+    expect(first).not.toEqual(
+      keyFor("/users", "https://api.example.test", "tenant-a"),
+    );
+    expect(first).not.toEqual(
+      keyFor("/pets", "https://preview.example.test", "tenant-a"),
+    );
+    expect(first).not.toEqual(
+      keyFor("/pets", "https://api.example.test", "tenant-b"),
+    );
+  });
 
   test("makes fixture requests with encoded path, repeated query, auth, JSON body and typed responses", async () => {
     const document = parseOpenApiDocument(fixtureDocument());

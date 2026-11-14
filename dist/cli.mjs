@@ -36,7 +36,7 @@ import {
   runProductionAudit,
   selectDevPlan,
   severityRank
-} from "./chunk-ARZ367C5.mjs";
+} from "./chunk-Z2ZXMOPQ.mjs";
 
 // src/cli.ts
 import { Command as Command22 } from "commander";
@@ -209,10 +209,15 @@ var upgradeCommand = new Command2("upgrade").description("Safely adopt or upgrad
 
 // src/commands/audit.ts
 import { Command as Command3 } from "commander";
-var auditCommand = new Command3("audit").description("Audit a LaunchStack project for production-readiness risks").option("-d, --directory <path>").option("--production", "Enable the production policy profile").option("--json").option("--fail-on <severity>", "low, medium, high, critical", "none").action(
+var auditCommand = new Command3("audit").description("Audit a LaunchStack project for production-readiness risks").option("-d, --directory <path>").option("--production", "Enable the production policy profile").option(
+  "--advisories",
+  "Query the npm registry for production dependency advisory evidence"
+).option("--json").option("--fail-on <severity>", "low, medium, high, critical", "none").action(
   (options) => {
     try {
-      const report = runProductionAudit(options.directory ?? process.cwd());
+      const report = runProductionAudit(options.directory ?? process.cwd(), {
+        dependencyAdvisories: options.advisories
+      });
       const output = {
         ...report,
         profile: options.production ? "production" : "standard"

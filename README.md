@@ -87,6 +87,8 @@ OpenAPI generation accepts bounded OpenAPI 3.0/3.1 JSON with local references, r
 
 Generated resource CRUD applies the owner predicate in each database read, update and delete. Updates use a single owner-scoped `updateManyAndReturn` statement. Resource lists use an indexed `(ownerId, createdAt, id)` keyset order, a limit from 1 to 100 (default 50), and return `items`, `hasNext` and `nextCursor`. See the [issue #36 query-count and SDK checks](docs/benchmarks/issue-36-generators.md) for PostgreSQL measurements and fixture coverage.
 
+Generated React SDK query-key helpers include the API base URL, operation method/path and a caller-provided cache scope, so apps can separate API environments and user or tenant caches.
+
 ### Architecture-aware modules and CRUD resources
 
 ```bash
@@ -104,11 +106,14 @@ launchstack audit
 launchstack audit --production
 launchstack audit --json
 launchstack audit --fail-on high
+launchstack audit --advisories --json
 ```
 
 Generated API projects bind local PostgreSQL and API ports to loopback by default. Each new project receives distinct 48-byte access and refresh secrets in its ignored `.env`; `.env.example` contains replaceable placeholders. Production Compose requires explicit CORS and JWT values and binds the API to loopback for use behind a host reverse proxy. Change the published port binding deliberately when remote access is required.
 
 Audit findings have stable rule IDs and severities. Local deterministic checks cover lockfiles, CORS, auth throttling, JWT placeholders, Git-tracked secret-like files, container users, migrations, health/readiness, generated drift, source maps and capability state. Suppressions live in `launchstack.json` and require a reason. Secret values are never emitted.
+
+`--advisories` explicitly queries the npm registry for production dependency advisories and adds stable LS023 findings. If npm or the registry cannot return valid evidence, LS024 marks the advisory check incomplete instead of reporting a clean result. This network check is opt-in; the default audit stays local.
 
 The LS005 secret-path check is heuristic: it matches tracked filenames and does not inspect file contents. Git path enumeration is capped at 16 MiB and 10 seconds; LS022 reports an incomplete scan when enumeration fails or exceeds either bound. See the [issue #31 security benchmark](docs/benchmarks/issue-31-security.md) for measured 1k–100k traversal results and classification limits.
 

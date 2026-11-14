@@ -9,17 +9,24 @@ export const auditCommand = new Command("audit")
   .description("Audit a LaunchStack project for production-readiness risks")
   .option("-d, --directory <path>")
   .option("--production", "Enable the production policy profile")
+  .option(
+    "--advisories",
+    "Query the npm registry for production dependency advisory evidence",
+  )
   .option("--json")
   .option("--fail-on <severity>", "low, medium, high, critical", "none")
   .action(
     (options: {
       directory?: string;
       production?: boolean;
+      advisories?: boolean;
       json?: boolean;
       failOn: string;
     }) => {
       try {
-        const report = runProductionAudit(options.directory ?? process.cwd());
+        const report = runProductionAudit(options.directory ?? process.cwd(), {
+          dependencyAdvisories: options.advisories,
+        });
         const output = {
           ...report,
           profile: options.production ? "production" : "standard",

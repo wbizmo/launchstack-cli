@@ -12,7 +12,7 @@
 - Pins production Node images by digest and carries the generated healthcheck script into the nonroot runtime image.
 - Keeps Prisma at 6.19.3, the latest Prisma 6 release. Prisma 7's new client and datasource configuration need a separately tested migration to preserve current generated-project compatibility.
 - Rejects malformed recovery journals before touching project or external paths, protects the secret store from symlinks and permissive POSIX modes, and gives new projects unique development JWT secrets.
-- Binds generated local services to loopback and expands audit checks for runtime policies, lockfiles and production Compose settings.
+- Binds generated local services to loopback and expands audit checks for runtime policies, lockfiles and production Compose settings. `launchstack audit --advisories` adds npm registry evidence for production dependencies and reports LS024 when the check cannot complete.
 - Marks secret-looking tracked filenames as heuristic findings, bounds Git path enumeration to 16 MiB / 10 seconds and emits LS022 when enumeration is incomplete. LS005 does not inspect file contents. The measured 1k–100k audit results are in `docs/benchmarks/issue-31-security.md`.
 - Marks secret-looking tracked filenames as heuristic findings, bounds Git path enumeration to 16 MiB / 10 seconds and emits LS022 when enumeration is incomplete. LS005 does not inspect file contents. The measured 1k–100k audit results are in `docs/benchmarks/issue-31-security.md`.
 - Uses a versioned crash-recovery journal, durable file and directory flushes, lock identity checks, compare-and-swap preconditions and one transaction for multi-capability installs.
@@ -36,6 +36,7 @@
 - Makes generated resource updates atomic with the owner predicate at the database mutation. Read/update/delete continue to return non-disclosing not-found responses for another owner. Lists use a bounded indexed keyset and return `items`, `hasNext` and `nextCursor`; tied timestamps and deletion between pages are covered against PostgreSQL.
 - Validates resource names, Prisma fields and generated route-prefix collisions before applying writes.
 - Generates SDKs from bounded OpenAPI 3.0/3.1 documents with local references, nullable and composed schemas, enums, parameter groups and response variants. All three targets are compiled and exercised with a fixture request server.
+- Scopes generated React query keys by canonical API base URL, operation method/path and caller-provided cache identity.
 - Issue #36's observed database query counts and limits are recorded in `docs/benchmarks/issue-36-generators.md`.
 - Keeps deterministic service ordering with heap-based scheduling at O((V+E) log V), and resolves extension dependency graphs in O(V+E) using an explicit stack that retains actionable cycle paths.
 - Hashes managed files in fixed 64 KiB chunks, records the file-byte cost and drift-report sorting in the README, and reuses one operation list while rendering OpenAPI client sections.
