@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement issues #19–#27 as a coherent, secure lifecycle platform and ship LaunchStack CLI 3.0.0.
+**Goal:** Implement the v3 lifecycle roadmap as a coherent, secure lifecycle platform and ship LaunchStack CLI 3.0.0.
 
 **Architecture:** A versioned `launchstack.json` manifest and `.launchstack/state.json` feed a shared transactional extension engine. Every lifecycle command consumes these primitives, so add/plugin/reconcile/upgrade/dev/audit/generation/stages share validation, ownership and rollback semantics instead of maintaining parallel state machines.
 
@@ -183,11 +183,11 @@
 - [ ] Update version to 3.0.0 and document migration/new workflows, command reference, security model and plugin trust boundary.
 - [ ] Refresh lockfiles and committed `dist` from a clean CI build.
 
-### Task 13: Full verification, PR, merge and publish
+### Task 13: Full verification, merge and publish
 
 - [ ] Run exact-head CI with lint, typecheck, all unit/integration tests, `verify:dist`, packed-tarball smoke, generated API Postgres/concurrency tests and production audits.
 - [ ] Fix only diagnosed failures, using targeted tests before re-running the complete gate.
-- [ ] Open PR closing #19–#27 and require the PR exact-head gate to pass.
+- [ ] Submit the completed work for review and require the exact-commit gate to pass.
 - [ ] Merge only the verified SHA, then require `main` CI to pass.
 - [ ] Let the publish workflow verify release notes/tag, publish `launchstack-cli@3.0.0` with `LAUNCHSTACK_NPM_TOKEN` and provenance, and create GitHub Release `LaunchStack CLI v3.0.0`.
 - [ ] Verify npm registry and GitHub release state before reporting completion.

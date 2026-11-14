@@ -9,13 +9,13 @@ LaunchStack releases are produced from a reviewed, verified `main` commit. v3.0.
 3. Refresh root/template lockfiles and committed `dist/` from the exact source.
 4. Run `npm ci`, then `npm run release:check` on each supported Node line. CI also performs Windows portability checks, CodeQL analysis and Linux/PostgreSQL release checks.
 5. Run the applicable benchmark suites and Docker production smoke separately. Record an infrastructure gate as unverified when its runner/daemon is unavailable.
-6. Open one PR and keep it draft while implementation, CI and CodeRabbit review are being resolved. Confirm the final PR head has green required checks and no unresolved high-priority findings.
+6. Submit one draft for review while implementation, CI and automated review are being resolved. Confirm the final reviewed commit has green required checks and no unresolved high-priority findings.
 
 ## Explicit publication gate
 
 `.github/workflows/publish.yml` runs only through manual `workflow_dispatch` on `main` with `authorize_publication=true`. The job is also attached to the `npm-publish` GitHub environment, where repository administrators should configure required reviewers and the npm credential. Ordinary pushes to `main` and tag pushes cannot publish. The workflow verifies that the package is exactly v3.0.4, confirms the version is not already published, reruns `release:check`, checks tag consistency, then creates the matching tag, publishes with npm provenance and creates the GitHub Release.
 
-The boolean workflow input is an explicit release authorization. The protected environment is an additional repository-side check. A draft PR must be approved and merged by its maintainers before workflow dispatch; the publish workflow does not merge or change pull request state.
+The boolean workflow input is an explicit release authorization. The protected environment is an additional repository-side check. The draft review must be approved by maintainers before workflow dispatch; the publish workflow does not merge code or change review state.
 
 ## npm credential
 

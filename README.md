@@ -38,7 +38,7 @@ Fresh v3 projects include `launchstack.json` for desired LaunchStack state and `
 
 ### What v3.0.4 adds and improves
 
-Version 3.0.4 hardens the CLI, generated API and release tooling across issues #30–#39. It updates supported runtimes to Node.js 24 and 26, updates security-sensitive dependencies, keeps the generated API compatible with Prisma 6, and aligns Docker images and CI with the supported Node versions. Security improvements cover managed paths, secret files, transaction journals and locks, remote OpenAPI DNS validation, bounded audit inputs and generated SDK output. Lifecycle changes add durable mutation recovery, explicit project migrations, safer concurrent capability updates, improved capability assembly, isolated local orchestration and preview stages, bounded owner-scoped resource pagination, and streaming/hash and graph complexity checks. Release qualification adds Windows portability, CodeQL, SBOM validation, generated-project and Docker checks, and reproducible benchmark reports.
+Version 3.0.4 hardens the CLI, generated API and release tooling. It updates supported runtimes to Node.js 24 and 26, updates security-sensitive dependencies, keeps the generated API compatible with Prisma 6, and aligns Docker images and CI with the supported Node versions. Security improvements cover managed paths, secret files, transaction journals and locks, remote OpenAPI DNS validation, bounded audit inputs and generated SDK output. Lifecycle changes add durable mutation recovery, explicit project migrations, safer concurrent capability updates, improved capability assembly, isolated local orchestration and preview stages, bounded owner-scoped resource pagination, and streaming/hash and graph complexity checks. Release qualification adds Windows portability, CodeQL, SBOM validation, generated-project and Docker checks, and reproducible benchmark reports.
 
 The Node 20 support removal is a breaking runtime-policy change despite the patch version. Prisma 7 migration is not included; generated projects remain on Prisma 6. Benchmark measurements and their limitations are summarized below and documented in full in [`docs/benchmarks`](docs/benchmarks/).
 
@@ -109,10 +109,10 @@ Generated resource reads, updates and deletes apply the owner predicate at the d
 ```bash
 launchstack audit --production
 launchstack audit --json
-launchstack preview pr-142
-launchstack deploy --stage pr-142
-launchstack status --stage pr-142 --json
-launchstack destroy --stage pr-142
+launchstack preview preview-demo
+launchstack deploy --stage preview-demo
+launchstack status --stage preview-demo --json
+launchstack destroy --stage preview-demo
 ```
 
 Audit findings have stable rule IDs and severities. The optional `--advisories` mode queries the npm registry; if that evidence cannot be obtained, the audit reports it as incomplete. Secret-looking tracked paths are heuristic findings: LaunchStack checks filenames, not file contents. Git path enumeration is capped at 16 MiB and 10 seconds.
@@ -125,23 +125,9 @@ Generated APIs include database-enforced single-use refresh-token rotation, dupl
 
 The generated API exposes Swagger UI at `/docs`, health at `/health` and readiness at `/ready`.
 
-## v3.0.4 benchmark results
+## v3.0.4 benchmarks
 
-These are measured diagnostics from the v3.0.4 qualification work. The reports contain full methodology, environment, raw JSON and comparison limits; all are included in the public [`v3.0.4` source tag](https://github.com/wbizmo/launchstack-cli/tree/v3.0.4/docs/benchmarks).
-
-| Area                                                                                                               | Recorded result                                                                                                                                                                         | Reproduction                                                                                                         |
-| ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| [Runtime](docs/benchmarks/issue-30-runtime.md)                                                                     | No consistent startup speedup: warm `--version` p50 was 5.7% slower, while `--help` p50 was 1.4% faster in this sample.                                                                 | `npm run bench:cli`                                                                                                  |
-| [Audit and fuzz](docs/benchmarks/issue-31-security.md) · [fuzz results](docs/benchmarks/issue-31-security-fuzz.md) | 100k tracked paths: 111.1 ms p50 / 141.7 ms p95. The bounded 1,290-case hostile-input corpus passed.                                                                                    | `npm run bench:security` and `npm run security:fuzz`                                                                 |
-| [Transactions](docs/benchmarks/issue-32-transactions.md)                                                           | 10k-file apply p50 was 6.27 s vs 1.98 s on v3.0.0. The added time reflects durable staging and flushes. 8- and 32-process writer tests had no lost writes.                              | `npm run bench:transactions`                                                                                         |
-| [Upgrades](docs/benchmarks/issue-33-upgrades.md)                                                                   | At 10k files, plan p50 was 82.1 ms vs 46.9 ms on v3.0.0; no speedup is claimed.                                                                                                         | `npm run bench:upgrades`                                                                                             |
-| [Capabilities](docs/benchmarks/issue-34-capabilities.md)                                                           | Dense 10k-node / 99,945-edge graph p50 was 9.19 ms. Ten BullMQ jobs completed at 2.00 ms p50 / 6.65 ms p95.                                                                             | `npm run bench:capabilities`; live Redis checks require Docker Compose and `redis:8-alpine`.                         |
-| [Orchestration](docs/benchmarks/issue-35-orchestration.md)                                                         | Two projects reached readiness in 19.96 s; two warm preview stages in 68.28 s. These are single-host observations.                                                                      | Follow the packed CLI and Docker Compose steps in the report; no standalone script is provided.                      |
-| [Generators](docs/benchmarks/issue-36-generators.md)                                                               | Concurrent owned/cross-owner updates used two owner-scoped `UPDATE`s and no pre-read. Each keyset page used one bounded `SELECT`. This is a query-count check, not a latency benchmark. | `npm run template:smoke`; PostgreSQL required.                                                                       |
-| [Complexity](docs/benchmarks/issue-37-complexity.md)                                                               | Service scheduling: O((V+E) log V). Extension ordering: O(V+E). Streaming file hashing: O(B) time with a bounded buffer.                                                                | `npm run bench:complexity`                                                                                           |
-| [Release qualification](docs/benchmarks/issue-38-qualification.md)                                                 | At 250k files, candidate drift p50 was 36.41 s vs 2.53 s on v3.0.0 (14.41× slower on this host). No general performance gain is claimed.                                                | `npm run build && npm run bench:qualification`; PostgreSQL, Docker and temporary disk for up to 250k files required. |
-
-Optional 128-writer and 1,000-fault-trial stress targets were not run and are not claimed as achieved. For baseline comparisons, the reports document how to set `LAUNCHSTACK_BENCH_REPO` or `LAUNCHSTACK_BENCH_BASELINE_REPO` to a local v3.0.0 checkout.
+v3.0.4 includes runtime, security, transaction, upgrade, capability, orchestration, generator, complexity and release qualification benchmarks. The [benchmark documentation](docs/benchmarks/README.md) contains the reports, results, methodology, reproduction commands and limitations.
 
 ## Development and release checks
 
@@ -154,7 +140,7 @@ npm run docker:template:smoke
 
 `release:check` runs formatting, lint, strict typechecking, tests, bounded security fuzzing, reproducible distribution checks, package inspection, runtime dependency audit, SBOM validation, packed CLI smoke and a PostgreSQL-backed generated-project smoke. `docker:template:smoke` builds and checks the generated production container.
 
-Publishing is guarded by a manually dispatched workflow on `main`, requires `authorize_publication=true` and uses the protected `npm-publish` environment. A merge or tag push alone does not publish. Read [the release process](docs/RELEASING.md) and [the full issue ledger](docs/release/ISSUES_30_39.md).
+Publishing is guarded by a manually dispatched workflow on `main`, requires `authorize_publication=true` and uses the protected `npm-publish` environment. A merge or tag push alone does not publish. Read [the release process](docs/RELEASING.md) and [the engineering summary](docs/release/V3.0.4_RELEASE_SUMMARY.md).
 
 ## Maintainers
 

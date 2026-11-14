@@ -1,6 +1,6 @@
 # LaunchStack v3 Lifecycle Platform Design
 
-**Issues:** #19–#27
+**Scope:** v3 lifecycle platform
 
 ## Intent
 

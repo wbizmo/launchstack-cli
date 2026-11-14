@@ -1,4 +1,4 @@
-# Issue #37 complexity and bounded I/O measurements
+# Complexity and bounded I/O measurements
 
 Implementation commit: [`6f87296`](https://github.com/wbizmo/launchstack-cli/commit/6f87296b9c3b0e28f8fd3e10fd138d7372fc2326)
 
@@ -7,12 +7,12 @@ Implementation commit: [`6f87296`](https://github.com/wbizmo/launchstack-cli/com
 Run `NPM_CONFIG_CACHE=/workspace/.npm-cache npm run bench:complexity` on Node.js 24.22.3. For a V8 CPU profile and machine-readable output, run:
 
 ```sh
-node --cpu-prof --cpu-prof-dir=/tmp/launchstack-37-profile --import tsx bench/complexity.ts > docs/benchmarks/issue-37-complexity.json
+node --cpu-prof --cpu-prof-dir=/tmp/launchstack-37-profile --import tsx bench/complexity.ts > docs/benchmarks/complexity.json
 ```
 
 The recorded run used Linux 6.18.57 x86_64 on an AMD EPYC 9V74 (4 CPUs available, 35,743,748,096 bytes reported by the OS). Each timing case had one warmup and five samples. The benchmark uses a deterministic root-with-many-dependents service graph, a deterministic linear extension chain, and temporary files filled in 64 KiB blocks. Baseline comparisons reproduce the prior sort/shift scheduler, recursive path-copy resolver and whole-file SHA-256 read. They run on the same runtime and fixture shape as their candidate functions. The data files are warm in the page cache for hash timing; disk throughput is not claimed.
 
-The JSON report includes p50/p95 samples, process CPU time, process memory, isolated 50 MiB hash-worker peak RSS, and the open descriptor count before and after repeated hashing. The recorded V8 profile is [`issue-37-complexity.cpuprofile`](issue-37-complexity.cpuprofile).
+The JSON report includes p50/p95 samples, process CPU time, process memory, isolated 50 MiB hash-worker peak RSS, and the open descriptor count before and after repeated hashing. The recorded V8 profile is [`complexity.cpuprofile`](complexity.cpuprofile).
 
 ## Measured results
 
@@ -37,4 +37,4 @@ The isolated one-shot 50 MiB hash workers reported 130,125,824 bytes peak RSS fo
 
 The root `npm run check` gate passed on Node 24.22.3: lint, typecheck, 39 test files / 148 tests, reproducible distribution build and npm pack dry run. The structural suite includes 10,000 ready services, a 12,000-node extension chain, large-file digest checks and file-descriptor leak checks. The benchmark's overall process peak RSS includes whole-file baseline allocations; the separate worker peak RSS values isolate that comparison.
 
-Machine-readable results are in [`issue-37-complexity.json`](issue-37-complexity.json). This report does not attempt the larger managed-file and API workloads assigned to issue #38.
+Machine-readable results are in [`complexity.json`](complexity.json). This report does not attempt the larger managed-file and API workloads assigned to qualification work.
