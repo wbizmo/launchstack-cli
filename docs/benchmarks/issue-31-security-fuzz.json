@@ -19,6 +19,6 @@
     "heapMiB": 128,
     "timeoutMs": 15000
   },
-  "peakRssMiB": 91.8,
+  "peakRssMiB": 91.6,
   "outsideSentinelPreserved": true
 }

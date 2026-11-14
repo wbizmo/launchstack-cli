@@ -54,17 +54,17 @@
 - Adds the issues #30–#39 completion ledger and compatibility policy in `docs/release/ISSUES_30_39.md` and `docs/COMPATIBILITY.md`.
 - Adds Prettier, SBOM, Windows portability and CodeQL release/CI checks. npm publishing is restricted to a manually dispatched workflow on `main` with `authorize_publication=true` and the protected `npm-publish` environment.
 - Fixes generated Compose and Render project-name placeholders and uses a Compose reset override to remove the development PostgreSQL host port from production. The local generated production image now passes its container health check and PostgreSQL readiness request.
-- Local combined `release:check` passes on Node 24.22.3 and 26.13.1. The production Docker image builds and passes health/readiness checks. GitHub PR review and CI remain to be verified on the pushed head; this release is still a draft.
+- Local combined `release:check` passes on Node 24.22.3 and 26.13.1. The production Docker image builds and passes health/readiness checks. Final-head GitHub CI, Windows portability, TypeScript analysis and CodeQL pass; CodeRabbit skips the full diff at its 100-file limit. This release remains a draft.
 
 ## Verification
 
-- Forensic follow-up release checks passed on Node 24.22.3/PostgreSQL 16 and Node 26.13.1/PostgreSQL 17: 42 root files / 179 tests and 9 generated-project files / 28 tests on each runtime. The 1,290-case security corpus peaked at 107.3 MiB and 112.7 MiB observed RSS respectively.
+- Forensic follow-up release checks passed on Node 24.22.3/PostgreSQL 16 and Node 26.13.1/PostgreSQL 17: 42 root files / 179 tests and 9 generated-project files / 28 tests on each runtime. The 1,290-case security corpus peaked at 91.6 MiB and 95.9 MiB observed RSS respectively.
 
 - Root `release:check` passed on Node 24.22.3 and 26.13.1; generated API integration checks passed on PostgreSQL 16 and 17 respectively.
 - After issue #35, full `release:check` passed on both runtimes with 38 root test files / 137 tests and 8 generated API test files / 26 tests; both production dependency audits reported zero vulnerabilities.
 - Production dependency audits reported zero vulnerabilities for both the CLI and generated API.
 - The generated production Docker image passed its healthcheck and `/health` request.
-- The v3.0.0-to-candidate CLI comparison is recorded in `docs/benchmarks/issue-30-runtime.md`. It shows no consistent startup speedup.
+- Final CodeQL and GitHub CI pass on the release branch. The v3.0.0-to-candidate CLI comparison is recorded in `docs/benchmarks/issue-30-runtime.md`. It shows no consistent startup speedup.
 - At 100k and 250k managed files, the candidate upgrade drift scan is substantially slower than the single-sample v3.0.0 baseline on this host after file/path safety checks. The direct comparison and limitations are recorded in `docs/benchmarks/issue-38-qualification.md`; no speedup is claimed.
 - At 100k and 250k managed files, the candidate upgrade drift scan is slower than the single-sample v3.0.0 baseline on this host. The direct comparison and limitations are recorded in `docs/benchmarks/issue-38-qualification.md`; no speedup is claimed.
 - The Node 24.22.3 full release check passed with PostgreSQL 16, including 36 CLI test files / 119 tests and 8 generated API test files / 26 tests.
