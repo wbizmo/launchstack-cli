@@ -1,5 +1,7 @@
 # Changelog
 
+Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.md`](docs/RELEASE_HISTORY.md).
+
 ## [3.0.4] - 2026-11-14
 
 ### Qualification and release controls (issues #38–#39)
@@ -10,7 +12,7 @@
 - Add a v3.0.4 issue ledger and compatibility/migration table, including the Node 20 support break, Prisma 6 compatibility and the explicit v2.0.0-to-v3.0.0 project migration edge.
 - Extend the release gate with Prettier, CycloneDX production SBOM validation and Windows portability CI; add CodeQL security analysis.
 - Restrict npm publication to manual workflow dispatch on `main` with the explicit authorization input and protected `npm-publish` environment. Ordinary branch/tag pushes cannot publish.
-- The release candidate passed post-merge `release:check` on Node 24.22.3 and 26.13.1; generated production Docker smoke, main CI and CodeQL passed. PR #40 was merged and the GitHub release was published. npm publication remains pending separate user approval. The README and [`RELEASE_NOTES_3.0.4.md`](RELEASE_NOTES_3.0.4.md) contain measured benchmark summaries, reproduction commands and links to the reports and machine-readable results.
+- v3.0.4 is released as [LaunchStack CLI v3.0.4](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.4). Post-merge `release:check` passed on Node 24.22.3 and 26.13.1; generated production Docker smoke, main CI and CodeQL passed. The README and [`RELEASE_NOTES_3.0.4.md`](RELEASE_NOTES_3.0.4.md) contain measured benchmark summaries, reproduction commands and links to the reports and machine-readable results.
 
 ### Changed
 
@@ -132,7 +134,18 @@
 ## 2.0.2
 
 - Security source hardening for LaunchStack API credential forwarding.
+- Improve installation, Quick Start and command documentation, package/template metadata consistency, and release audits.
+
+## 2.0.1 - 2026-07-11
+
+- Redesign the README and improve installation, Quick Start, command, generated-project quality, production workflow and developer documentation.
+- No runtime or API changes; generated v2.0.0 projects remain compatible.
 
 ## 2.0.0
 
 - Expanded LaunchStack from deployment workflow tooling into a production Fastify/TypeScript/Prisma API scaffolder.
+- Added PostgreSQL, JWT authentication, validation, layered architecture, health/readiness checks, Docker/Compose, CI workflows, deployment presets and `launchstack doctor`.
+
+## 1.0.0 - 2026-06-18
+
+- Initial release with project configuration and validation, environment switching, deployment providers/workflows/history, rollback lookup, local secrets, Git metadata, Docker scaffolding and GitHub Actions generation.

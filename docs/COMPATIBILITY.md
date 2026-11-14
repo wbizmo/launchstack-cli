@@ -9,7 +9,7 @@
 | Package manager | npm lockfile version committed by each package             | Use `npm ci` for deterministic installs.                                 |
 | Database        | PostgreSQL; generated Prisma client stays on Prisma 6.19.3 | Prisma 7 changes are deferred pending datasource/client migration tests. |
 
-Dropping Node 20 is a breaking support change despite the requested package version 3.0.4. Consumers must remain on their current compatible release or move their runtime before upgrading.
+Dropping Node 20 is a breaking support change despite the 3.0.4 patch version. Consumers must use a supported runtime to run v3.0.4.
 
 ## Project metadata and upgrades
 
@@ -21,4 +21,4 @@ Lifecycle and capability changes preserve files outside LaunchStack ownership. S
 
 Existing CLI command names and JSON plan output remain available. Project mutations now reject unsafe paths, malformed journals, stale preconditions and user-owned-file overwrites. The capability registry reports complete local integrations separately from helper-only primitives; see [CAPABILITIES.md](CAPABILITIES.md). Plugin manifests are declarative by default; executable extension hooks require explicit opt-in.
 
-No v2 CLI compatibility guarantee is made for the new Node engine range. The 3.0.4 patch version contains a documented support-policy break and should be reviewed as such before release.
+No v2 CLI compatibility guarantee is made for the new Node engine range. The 3.0.4 patch version contains a documented support-policy break; review this impact when planning an upgrade.

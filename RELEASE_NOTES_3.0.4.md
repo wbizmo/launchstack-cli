@@ -1,6 +1,6 @@
 # LaunchStack CLI 3.0.4
 
-**GitHub release published 2026-11-14; npm publication is pending separate approval.**
+**Released:** 2026-11-14
 
 ## Verified changes
 
@@ -54,7 +54,7 @@
 - Adds the issues #30–#39 completion ledger and compatibility policy in `docs/release/ISSUES_30_39.md` and `docs/COMPATIBILITY.md`.
 - Adds Prettier, SBOM, Windows portability and CodeQL release/CI checks. npm publishing is restricted to a manually dispatched workflow on `main` with `authorize_publication=true` and the protected `npm-publish` environment.
 - Fixes generated Compose and Render project-name placeholders and uses a Compose reset override to remove the development PostgreSQL host port from production. The local generated production image now passes its container health check and PostgreSQL readiness request.
-- The merged release candidate passed local `release:check` on Node 24.22.3 and 26.13.1, and the production Docker image passed health/readiness checks. GitHub CI, Windows portability, TypeScript analysis and CodeQL passed. CodeRabbit skipped the full diff at its 100-file limit. The two documented limitations below are accepted for v3.0.4. GitHub release: [LaunchStack CLI v3.0.4](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.4). npm publication remains pending separate approval.
+- The merged release passed local `release:check` on Node 24.22.3 and 26.13.1, and the production Docker image passed health/readiness checks. GitHub CI, Windows portability, TypeScript analysis and CodeQL passed. CodeRabbit skipped the full diff at its 100-file limit. The two documented limitations below are accepted for v3.0.4. See [LaunchStack CLI v3.0.4](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.4).
 
 ## Verification
 
