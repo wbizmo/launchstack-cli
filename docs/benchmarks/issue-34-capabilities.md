@@ -1,17 +1,17 @@
 # Issue #34 capability lifecycle benchmark
 
-**Baseline:** published v3.0.0, `c27e7f6ff06ac33b2b8c877ab57966e5f19ceb9`
+**Baseline:** published v3.0.0, `f76996cc0c3d125abcb1e6f998d2cc037c02b140`
 **Candidate:** issue #34 implementation; exact commit is recorded in the JSON result.
 **Runtime and host:** Node 24.22.3, Linux x64, AMD EPYC 9V74, 5 visible CPUs. Both graph runs used `/tmp` on the same host.
 
 The synthetic dependency benchmark uses seeded acyclic graphs. It warms each case once, measures five runs, and verifies the resolver returns all nodes. Results are diagnostic; they do not include npm resolution or filesystem writes.
 
-| Nodes | Edges | v3.0.0 p50 / p95 | Candidate p50 / p95 |
-|---:|---:|---:|---:|
-| 1,000 | 999 | 0.219 / 3.725 ms | 0.447 / 0.637 ms |
-| 1,000 | 9,945 | 6.121 / 7.062 ms | 0.694 / 2.562 ms |
-| 10,000 | 9,999 | 6.379 / 10.598 ms | 3.639 / 8.252 ms |
-| 10,000 | 99,945 | 11.097 / 12.117 ms | 9.188 / 10.694 ms |
+|  Nodes |  Edges |   v3.0.0 p50 / p95 | Candidate p50 / p95 |
+| -----: | -----: | -----------------: | ------------------: |
+|  1,000 |    999 |   0.219 / 3.725 ms |    0.447 / 0.637 ms |
+|  1,000 |  9,945 |   6.121 / 7.062 ms |    0.694 / 2.562 ms |
+| 10,000 |  9,999 |  6.379 / 10.598 ms |    3.639 / 8.252 ms |
+| 10,000 | 99,945 | 11.097 / 12.117 ms |   9.188 / 10.694 ms |
 
 The full graph output, including process RSS and user CPU totals, is in [`issue-34-capabilities.json`](issue-34-capabilities.json). The latest resolver's results are faster in the three denser/larger cases measured and slower at 1,000 nodes / 999 edges. These five-sample timings are sensitive to process and host noise and are not throughput claims.
 

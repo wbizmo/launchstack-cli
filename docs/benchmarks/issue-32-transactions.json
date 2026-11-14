@@ -2,7 +2,7 @@
   "issue": 32,
   "baseline": {
     "version": "v3.0.0",
-    "commit": "c27e7f6ff06ac33b2b8c877ab57966e5f19ceb9"
+    "commit": "f76996cc0c3d125abcb1e6f998d2cc037c02b140"
   },
   "candidate_commit": "d268dc84d2cf058b66a1653b8b7604dcb38c5d63",
   "node": "v24.22.3",
@@ -14,11 +14,7 @@
   "workload": {
     "mutation": "new small files with expectedSha256=null in an isolated temporary project",
     "bytes_per_file": 10,
-    "sizes": [
-      100,
-      1000,
-      10000
-    ],
+    "sizes": [100, 1000, 10000],
     "repetitions_per_size": 3,
     "warmup": 0,
     "network": "none",
@@ -93,10 +89,7 @@
     ]
   },
   "concurrency": {
-    "writers": [
-      8,
-      32
-    ],
+    "writers": [8, 32],
     "result": "all processes completed; unique files from every writer were present and intact",
     "test": "tests/project-lifecycle-v3.test.ts"
   }

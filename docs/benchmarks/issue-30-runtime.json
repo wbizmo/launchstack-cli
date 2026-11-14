@@ -1,5 +1,5 @@
 {
-  "baseline_commit": "c27e7f6ff06ac33b2b8c877ab57966e5f19ceb9",
+  "baseline_commit": "f76996cc0c3d125abcb1e6f998d2cc037c02b140",
   "candidate_commit": "bec7880e94d7f298d474a78a030ccd0908a31157",
   "node": "v24.22.3",
   "platform": "linux 6.18.57 x64",

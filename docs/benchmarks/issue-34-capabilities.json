@@ -1,12 +1,64 @@
 {
   "issue": 34,
-  "baseline": { "version": "v3.0.0", "commit": "c27e7f6ff06ac33b2b8c877ab57966e5f19ceb9" },
+  "baseline": {
+    "version": "v3.0.0",
+    "commit": "f76996cc0c3d125abcb1e6f998d2cc037c02b140"
+  },
   "candidate_commit": "681c8c713130c465830ab2779a21dd028a98f3a9",
   "node": "v24.22.3",
   "platform": "linux x64",
   "cpu": "AMD EPYC 9V74 80-Core Processor",
   "visible_cpus": 5,
   "filesystem": "same /tmp filesystem",
-  "graph_workload": { "seed": 34, "warmup": 1, "repetitions": 5, "method": "build deterministic DAGs with 1 or 10 dependency edges per node; call resolveExtensionOrder and verify every node is returned", "baseline": { "rss_bytes_after": 139575296, "cpu_user_microseconds": 454865, "results": [ { "nodes": 1000, "edges": 999, "p50_ms": 0.219, "p95_ms": 3.725 }, { "nodes": 1000, "edges": 9945, "p50_ms": 6.121, "p95_ms": 7.062 }, { "nodes": 10000, "edges": 9999, "p50_ms": 6.379, "p95_ms": 10.598 }, { "nodes": 10000, "edges": 99945, "p50_ms": 11.097, "p95_ms": 12.117 } ] }, "candidate": { "rss_bytes_after": 123527168, "cpu_user_microseconds": 438070, "results": [ { "nodes": 1000, "edges": 999, "p50_ms": 0.447, "p95_ms": 0.637 }, { "nodes": 1000, "edges": 9945, "p50_ms": 0.694, "p95_ms": 2.562 }, { "nodes": 10000, "edges": 9999, "p50_ms": 3.639, "p95_ms": 8.252 }, { "nodes": 10000, "edges": 99945, "p50_ms": 9.188, "p95_ms": 10.694 } ] } },
-  "integration_workload": { "packed_cli": true, "generated_project": true, "npm_ci_after_add": "passed after queue and cron additions", "typescript_check": "passed", "compose_config_validation": "passed", "compose_image": "redis:8-alpine; cached before measured repetitions", "redis_health_ready_ms": [6067.394, 5996.936, 5996.049], "redis_shutdown_ms": [341.598, 318.455, 368.497], "queue_roundtrip": { "jobs": 10, "p50_ms": 1.998, "p95_ms": 6.647, "min_ms": 1.364, "max_ms": 6.647, "integrity_errors": 0 }, "scheduler": { "interval_ms": 1000, "observed_ticks": 2, "termination_signal": "SIGTERM", "exit": "passed" }, "notes": "Compose timings include container creation and Docker health readiness on this host. The image was cached. Queue timing begins after Redis and Worker/QueueEvents readiness. The baseline does not assemble capability Compose or provide the generated worker entrypoint, so no like-for-like integration readiness comparison exists." }
+  "graph_workload": {
+    "seed": 34,
+    "warmup": 1,
+    "repetitions": 5,
+    "method": "build deterministic DAGs with 1 or 10 dependency edges per node; call resolveExtensionOrder and verify every node is returned",
+    "baseline": {
+      "rss_bytes_after": 139575296,
+      "cpu_user_microseconds": 454865,
+      "results": [
+        { "nodes": 1000, "edges": 999, "p50_ms": 0.219, "p95_ms": 3.725 },
+        { "nodes": 1000, "edges": 9945, "p50_ms": 6.121, "p95_ms": 7.062 },
+        { "nodes": 10000, "edges": 9999, "p50_ms": 6.379, "p95_ms": 10.598 },
+        { "nodes": 10000, "edges": 99945, "p50_ms": 11.097, "p95_ms": 12.117 }
+      ]
+    },
+    "candidate": {
+      "rss_bytes_after": 123527168,
+      "cpu_user_microseconds": 438070,
+      "results": [
+        { "nodes": 1000, "edges": 999, "p50_ms": 0.447, "p95_ms": 0.637 },
+        { "nodes": 1000, "edges": 9945, "p50_ms": 0.694, "p95_ms": 2.562 },
+        { "nodes": 10000, "edges": 9999, "p50_ms": 3.639, "p95_ms": 8.252 },
+        { "nodes": 10000, "edges": 99945, "p50_ms": 9.188, "p95_ms": 10.694 }
+      ]
+    }
+  },
+  "integration_workload": {
+    "packed_cli": true,
+    "generated_project": true,
+    "npm_ci_after_add": "passed after queue and cron additions",
+    "typescript_check": "passed",
+    "compose_config_validation": "passed",
+    "compose_image": "redis:8-alpine; cached before measured repetitions",
+    "redis_health_ready_ms": [6067.394, 5996.936, 5996.049],
+    "redis_shutdown_ms": [341.598, 318.455, 368.497],
+    "queue_roundtrip": {
+      "jobs": 10,
+      "p50_ms": 1.998,
+      "p95_ms": 6.647,
+      "min_ms": 1.364,
+      "max_ms": 6.647,
+      "integrity_errors": 0
+    },
+    "scheduler": {
+      "interval_ms": 1000,
+      "observed_ticks": 2,
+      "termination_signal": "SIGTERM",
+      "exit": "passed"
+    },
+    "notes": "Compose timings include container creation and Docker health readiness on this host. The image was cached. Queue timing begins after Redis and Worker/QueueEvents readiness. The baseline does not assemble capability Compose or provide the generated worker entrypoint, so no like-for-like integration readiness comparison exists."
+  }
 }
