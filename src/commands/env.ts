@@ -15,12 +15,18 @@ export const envCommand = new Command("env")
         return;
       }
 
-      if (!allowedEnvironments.includes(environment as typeof allowedEnvironments[number])) {
-        console.log("Invalid environment. Use development, staging, or production.");
+      if (
+        !allowedEnvironments.includes(
+          environment as (typeof allowedEnvironments)[number],
+        )
+      ) {
+        console.log(
+          "Invalid environment. Use development, staging, or production.",
+        );
         process.exit(1);
       }
 
-      config.environment = environment as typeof allowedEnvironments[number];
+      config.environment = environment as (typeof allowedEnvironments)[number];
       writeConfig(config);
 
       console.log(`Environment updated to ${config.environment}`);

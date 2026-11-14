@@ -12,7 +12,7 @@ export const launchStackConfigSchema = z.object({
   provider: z.enum(PROVIDER_IDS),
   buildCommand: z.string().min(1),
   outputDirectory: z.string().min(1),
-  deployTarget: z.string().min(1)
+  deployTarget: z.string().min(1),
 });
 
 export type LaunchStackProjectConfig = z.infer<typeof launchStackConfigSchema>;
@@ -32,16 +32,13 @@ export function createDefaultConfig(appName: string): LaunchStackProjectConfig {
     provider: "custom",
     buildCommand: "npm run build",
     outputDirectory: "dist",
-    deployTarget: "https://example.com"
+    deployTarget: "https://example.com",
   };
 }
 
 export function writeConfig(config: LaunchStackProjectConfig) {
   const validated = launchStackConfigSchema.parse(config);
-  atomicWriteText(
-    getConfigPath(),
-    `${JSON.stringify(validated, null, 2)}\n`
-  );
+  atomicWriteText(getConfigPath(), `${JSON.stringify(validated, null, 2)}\n`);
 }
 
 export function readConfig(): LaunchStackProjectConfig {

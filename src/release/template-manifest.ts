@@ -14,5 +14,5 @@ export const TEMPLATE_FEATURES = [
   "GitHub Actions",
   "Render preset",
   "Railway preset",
-  "Fly.io preset"
+  "Fly.io preset",
 ] as const;

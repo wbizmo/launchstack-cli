@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  toDisplayName,
-  validateProjectName
-} from "../../src/generator/names";
+import { toDisplayName, validateProjectName } from "../../src/generator/names";
 
 describe("project naming utilities", () => {
   it("accepts valid package-style project names", () => {
