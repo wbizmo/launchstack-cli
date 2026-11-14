@@ -1,6 +1,6 @@
 # Changelog
 
-## [3.0.4] - Draft / Unreleased
+## [3.0.4] - 2026-11-14
 
 ### Qualification and release controls (issues #38–#39)
 
@@ -10,7 +10,7 @@
 - Add a v3.0.4 issue ledger and compatibility/migration table, including the Node 20 support break, Prisma 6 compatibility and the explicit v2.0.0-to-v3.0.0 project migration edge.
 - Extend the release gate with Prettier, CycloneDX production SBOM validation and Windows portability CI; add CodeQL security analysis.
 - Restrict npm publication to manual workflow dispatch on `main` with the explicit authorization input and protected `npm-publish` environment. Ordinary branch/tag pushes cannot publish.
-- Local #38 qualification completed with zero benchmark errors. Combined `release:check` passes on Node 24.22.3 and 26.13.1; generated production Docker smoke passes. GitHub PR review/CI and publication remain pending.
+- The release candidate passed post-merge `release:check` on Node 24.22.3 and 26.13.1; generated production Docker smoke, main CI and CodeQL passed. PR #40 was merged and the GitHub release was published. npm publication remains pending separate user approval. The README and [`RELEASE_NOTES_3.0.4.md`](RELEASE_NOTES_3.0.4.md) contain measured benchmark summaries, reproduction commands and links to the reports and machine-readable results.
 
 ### Changed
 
@@ -41,7 +41,6 @@
 - Escape HTML-sensitive characters and Unicode line separators in generated SDK operation-key literals, use a fixed client-generation failure message, and suppress environment-derived smoke-test errors.
 - Give generated projects distinct JWT development secrets, loopback host/origin defaults, and loopback Compose port bindings. Production Compose requires explicit origin and JWT settings.
 - Extend production audit findings to cover runtime policy, npm lock consistency and production Compose requirements; `launchstack audit --advisories` adds npm registry evidence for production dependencies, with LS024 when that check cannot complete. Unsupported-runtime findings are marked heuristic.
-- Mark secret-looking tracked filenames as heuristic findings, bound Git path enumeration at 16 MiB / 10 seconds, and emit LS022 when enumeration cannot complete. Add a 1k–100k path traversal benchmark; it records that file contents are not scanned.
 - Final v3.0.0-to-candidate upgrade scans at 100k and 250k files show higher candidate latency and sampled RSS after file/path safety checks. The one-sample comparison is in `docs/benchmarks/issue-38-qualification.md`; no performance target is claimed.
 - Mark secret-looking tracked filenames as heuristic findings, bound Git path enumeration at 16 MiB / 10 seconds, and emit LS022 when enumeration cannot complete. Add a 1k–100k path traversal benchmark; it records that file contents are not scanned.
 - Security regression checks passed: lint, strict typecheck and 4 focused files / 17 tests.
