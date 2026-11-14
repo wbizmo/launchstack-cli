@@ -36,7 +36,7 @@ import {
   runProductionAudit,
   selectDevPlan,
   severityRank
-} from "./chunk-S4V7VTT5.mjs";
+} from "./chunk-DVANW34L.mjs";
 
 // src/cli.ts
 import { Command as Command22 } from "commander";

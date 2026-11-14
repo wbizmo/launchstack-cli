@@ -491,16 +491,46 @@ var STATE_FILENAME = "state.json";
 function sha256(content) {
   return (0, import_node_crypto.createHash)("sha256").update(content).digest("hex");
 }
+var MAX_MANAGED_FILE_BYTES = 256 * 1024 * 1024;
 function hashFile(path) {
-  const descriptor = (0, import_node_fs3.openSync)(path, "r");
+  let descriptor;
+  try {
+    descriptor = (0, import_node_fs3.openSync)(
+      path,
+      import_node_fs3.constants.O_RDONLY | (import_node_fs3.constants.O_NOFOLLOW ?? 0) | (import_node_fs3.constants.O_NONBLOCK ?? 0)
+    );
+  } catch (error) {
+    if (error.code === "ELOOP")
+      throw new Error("Refusing to hash a symbolic-link managed file.");
+    throw error;
+  }
   const hash = (0, import_node_crypto.createHash)("sha256");
   const chunk = Buffer.allocUnsafe(64 * 1024);
   try {
-    while (true) {
-      const bytes = (0, import_node_fs3.readSync)(descriptor, chunk, 0, chunk.length, null);
-      if (bytes === 0) break;
+    const before = (0, import_node_fs3.fstatSync)(descriptor);
+    if (!before.isFile())
+      throw new Error("Managed file is not a regular file.");
+    if (before.size > MAX_MANAGED_FILE_BYTES)
+      throw new Error("Managed file exceeds the 256 MiB hashing limit.");
+    let remaining = before.size;
+    while (remaining > 0) {
+      const bytes = (0, import_node_fs3.readSync)(
+        descriptor,
+        chunk,
+        0,
+        Math.min(chunk.length, remaining),
+        null
+      );
+      if (bytes === 0)
+        throw new Error("Managed file changed while it was being hashed.");
       hash.update(chunk.subarray(0, bytes));
+      remaining -= bytes;
     }
+    const current = (0, import_node_fs3.lstatSync)(path);
+    if (current.isSymbolicLink() || !current.isFile() || current.dev !== before.dev || current.ino !== before.ino || current.size !== before.size || current.mtimeMs !== before.mtimeMs || current.ctimeMs !== before.ctimeMs)
+      throw new Error(
+        "Managed file identity changed while it was being hashed."
+      );
     return hash.digest("hex");
   } finally {
     (0, import_node_fs3.closeSync)(descriptor);
@@ -512,6 +542,11 @@ function parseProjectState(input) {
     throw new Error(
       `Invalid LaunchStack state: ${result.error.issues.map((issue) => `${issue.path.join(".") || "state"}: ${issue.message}`).join("; ")}`
     );
+  for (const path of Object.keys(result.data.managedFiles))
+    if (normalizeManagedPath(path) !== path)
+      throw new Error(
+        `Invalid managed file path in LaunchStack state: ${path}`
+      );
   return result.data;
 }
 function loadProjectState(projectDirectory, defaults) {
@@ -541,6 +576,10 @@ function detectManagedDrift(projectDirectory, state) {
   const root = (0, import_node_path3.resolve)(projectDirectory);
   const entries = [];
   for (const [path, managed] of Object.entries(state.managedFiles)) {
+    if (normalizeManagedPath(path) !== path)
+      throw new Error(
+        `Invalid managed file path in LaunchStack state: ${path}`
+      );
     const absolute = (0, import_node_path3.join)(root, path);
     if (!(0, import_node_fs3.existsSync)(absolute)) {
       entries.push({
@@ -2482,15 +2521,21 @@ function packageJson(root) {
     return void 0;
   }
 }
+var MAX_GIT_TRACKED_PATH_BYTES = 16 * 1024 * 1024;
 function gitTrackedFiles(root) {
   try {
-    return (0, import_node_child_process2.execFileSync)("git", ["ls-files", "-z"], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).split("\0").filter(Boolean);
+    return {
+      paths: (0, import_node_child_process2.execFileSync)("git", ["ls-files", "-z"], {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: MAX_GIT_TRACKED_PATH_BYTES,
+        timeout: 1e4,
+        stdio: ["ignore", "pipe", "ignore"]
+      }).split("\0").filter(Boolean),
+      complete: true
+    };
   } catch {
-    return [];
+    return { paths: [], complete: false };
   }
 }
 var finding = (ruleId, severity, title, detail, verified, path) => ({ ruleId, severity, title, detail, verified, path });
@@ -2558,7 +2603,18 @@ function runProductionAudit(projectDirectoryInput) {
           entry.path
         )
       );
-  const tracked = gitTrackedFiles(root).filter(
+  const trackedResult = gitTrackedFiles(root);
+  if (!trackedResult.complete)
+    findings.push(
+      finding(
+        "LS022",
+        "high",
+        "Tracked paths could not be fully audited",
+        "Git path enumeration failed or exceeded the 16 MiB audit bound; secret-path results are incomplete.",
+        true
+      )
+    );
+  const tracked = trackedResult.paths.filter(
     (path) => SECRET_FILE_PATTERNS.some((pattern) => pattern.test(path)) && !/(^|\/)\.env\.example$/.test(path)
   );
   if (tracked.length)
@@ -2568,7 +2624,7 @@ function runProductionAudit(projectDirectoryInput) {
         "critical",
         "Potential secret material is tracked by Git",
         `Sensitive-looking tracked paths: ${tracked.join(", ")}. Secret contents were not inspected or printed.`,
-        true
+        false
       )
     );
   const dockerfile = readIfPresent(root, "Dockerfile");

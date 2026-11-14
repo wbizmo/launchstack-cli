@@ -396,13 +396,56 @@ function createProjectManifest(input) {
 import { createHash } from "crypto";
 import {
   closeSync,
-  existsSync,
+  constants,
+  existsSync as existsSync2,
+  fstatSync,
+  lstatSync as lstatSync2,
   openSync,
   readFileSync as readFileSync2,
   readSync
 } from "fs";
-import { join as join2, resolve as resolve2 } from "path";
+import { join as join2, resolve as resolve3 } from "path";
 import { z as z2 } from "zod";
+
+// src/project/paths.ts
+import { existsSync, lstatSync, realpathSync } from "fs";
+import { dirname, isAbsolute, relative, resolve as resolve2, sep } from "path";
+function normalizeManagedPath(path) {
+  if (!path || path.includes("\0") || isAbsolute(path))
+    throw new Error(`Unsafe managed path: ${JSON.stringify(path)}`);
+  const segments = path.split(/[\\/]+/).filter(Boolean);
+  if (segments.length === 0 || segments.some((segment) => segment === ".." || segment === "."))
+    throw new Error(`Unsafe managed path: ${JSON.stringify(path)}`);
+  return segments.join("/");
+}
+function resolveProjectPath(projectDirectory, path) {
+  const root = resolve2(projectDirectory);
+  const normalized = normalizeManagedPath(path);
+  const target = resolve2(root, ...normalized.split("/"));
+  const fromRoot = relative(root, target);
+  if (fromRoot === "" || fromRoot.startsWith(`..${sep}`) || fromRoot === ".." || isAbsolute(fromRoot))
+    throw new Error(`Managed path escapes project root: ${path}`);
+  let cursor = root;
+  for (const segment of normalized.split("/")) {
+    cursor = resolve2(cursor, segment);
+    if (existsSync(cursor) && lstatSync(cursor).isSymbolicLink())
+      throw new Error(`Refusing to mutate symbolic-link path: ${path}`);
+  }
+  if (existsSync(root)) {
+    const realRoot = realpathSync(root);
+    let current = dirname(target);
+    while (!existsSync(current) && current !== realRoot)
+      current = dirname(current);
+    if (existsSync(current)) {
+      const relativeParent = relative(realRoot, realpathSync(current));
+      if (relativeParent.startsWith(`..${sep}`) || relativeParent === ".." || isAbsolute(relativeParent))
+        throw new Error(`Managed path resolves outside project root: ${path}`);
+    }
+  }
+  return target;
+}
+
+// src/project/state.ts
 var managedFileSchema = z2.object({
   owner: z2.string().min(1),
   sha256: z2.string().regex(/^[a-f0-9]{64}$/),
@@ -442,16 +485,46 @@ var STATE_FILENAME = "state.json";
 function sha256(content) {
   return createHash("sha256").update(content).digest("hex");
 }
+var MAX_MANAGED_FILE_BYTES = 256 * 1024 * 1024;
 function hashFile(path) {
-  const descriptor = openSync(path, "r");
+  let descriptor;
+  try {
+    descriptor = openSync(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0)
+    );
+  } catch (error) {
+    if (error.code === "ELOOP")
+      throw new Error("Refusing to hash a symbolic-link managed file.");
+    throw error;
+  }
   const hash = createHash("sha256");
   const chunk = Buffer.allocUnsafe(64 * 1024);
   try {
-    while (true) {
-      const bytes = readSync(descriptor, chunk, 0, chunk.length, null);
-      if (bytes === 0) break;
+    const before = fstatSync(descriptor);
+    if (!before.isFile())
+      throw new Error("Managed file is not a regular file.");
+    if (before.size > MAX_MANAGED_FILE_BYTES)
+      throw new Error("Managed file exceeds the 256 MiB hashing limit.");
+    let remaining = before.size;
+    while (remaining > 0) {
+      const bytes = readSync(
+        descriptor,
+        chunk,
+        0,
+        Math.min(chunk.length, remaining),
+        null
+      );
+      if (bytes === 0)
+        throw new Error("Managed file changed while it was being hashed.");
       hash.update(chunk.subarray(0, bytes));
+      remaining -= bytes;
     }
+    const current = lstatSync2(path);
+    if (current.isSymbolicLink() || !current.isFile() || current.dev !== before.dev || current.ino !== before.ino || current.size !== before.size || current.mtimeMs !== before.mtimeMs || current.ctimeMs !== before.ctimeMs)
+      throw new Error(
+        "Managed file identity changed while it was being hashed."
+      );
     return hash.digest("hex");
   } finally {
     closeSync(descriptor);
@@ -463,15 +536,20 @@ function parseProjectState(input) {
     throw new Error(
       `Invalid LaunchStack state: ${result.error.issues.map((issue) => `${issue.path.join(".") || "state"}: ${issue.message}`).join("; ")}`
     );
+  for (const path of Object.keys(result.data.managedFiles))
+    if (normalizeManagedPath(path) !== path)
+      throw new Error(
+        `Invalid managed file path in LaunchStack state: ${path}`
+      );
   return result.data;
 }
 function loadProjectState(projectDirectory, defaults) {
   const statePath = join2(
-    resolve2(projectDirectory),
+    resolve3(projectDirectory),
     STATE_DIRECTORY,
     STATE_FILENAME
   );
-  if (!existsSync(statePath))
+  if (!existsSync2(statePath))
     return emptyProjectState(
       defaults?.templateVersion ?? "unknown",
       defaults?.cliVersion ?? "unknown"
@@ -489,11 +567,15 @@ function serializeProjectState(state) {
 `;
 }
 function detectManagedDrift(projectDirectory, state) {
-  const root = resolve2(projectDirectory);
+  const root = resolve3(projectDirectory);
   const entries = [];
   for (const [path, managed] of Object.entries(state.managedFiles)) {
+    if (normalizeManagedPath(path) !== path)
+      throw new Error(
+        `Invalid managed file path in LaunchStack state: ${path}`
+      );
     const absolute = join2(root, path);
-    if (!existsSync(absolute)) {
+    if (!existsSync2(absolute)) {
       entries.push({
         path,
         kind: "missing",
@@ -533,51 +615,13 @@ import { spawnSync } from "child_process";
 import { tmpdir } from "os";
 import { join as join5, resolve as resolve5 } from "path";
 
-// src/project/paths.ts
-import { existsSync as existsSync2, lstatSync, realpathSync } from "fs";
-import { dirname, isAbsolute, relative, resolve as resolve3, sep } from "path";
-function normalizeManagedPath(path) {
-  if (!path || path.includes("\0") || isAbsolute(path))
-    throw new Error(`Unsafe managed path: ${JSON.stringify(path)}`);
-  const segments = path.split(/[\\/]+/).filter(Boolean);
-  if (segments.length === 0 || segments.some((segment) => segment === ".." || segment === "."))
-    throw new Error(`Unsafe managed path: ${JSON.stringify(path)}`);
-  return segments.join("/");
-}
-function resolveProjectPath(projectDirectory, path) {
-  const root = resolve3(projectDirectory);
-  const normalized = normalizeManagedPath(path);
-  const target = resolve3(root, ...normalized.split("/"));
-  const fromRoot = relative(root, target);
-  if (fromRoot === "" || fromRoot.startsWith(`..${sep}`) || fromRoot === ".." || isAbsolute(fromRoot))
-    throw new Error(`Managed path escapes project root: ${path}`);
-  let cursor = root;
-  for (const segment of normalized.split("/")) {
-    cursor = resolve3(cursor, segment);
-    if (existsSync2(cursor) && lstatSync(cursor).isSymbolicLink())
-      throw new Error(`Refusing to mutate symbolic-link path: ${path}`);
-  }
-  if (existsSync2(root)) {
-    const realRoot = realpathSync(root);
-    let current = dirname(target);
-    while (!existsSync2(current) && current !== realRoot)
-      current = dirname(current);
-    if (existsSync2(current)) {
-      const relativeParent = relative(realRoot, realpathSync(current));
-      if (relativeParent.startsWith(`..${sep}`) || relativeParent === ".." || isAbsolute(relativeParent))
-        throw new Error(`Managed path resolves outside project root: ${path}`);
-    }
-  }
-  return target;
-}
-
 // src/project/transaction.ts
 import {
   chmodSync as chmodSync2,
   closeSync as closeSync3,
   existsSync as existsSync4,
   fsyncSync,
-  lstatSync as lstatSync3,
+  lstatSync as lstatSync4,
   linkSync,
   mkdirSync as mkdirSync2,
   openSync as openSync3,
@@ -594,10 +638,10 @@ import { dirname as dirname3, join as join4, resolve as resolve4, relative as re
 import {
   chmodSync,
   closeSync as closeSync2,
-  constants,
+  constants as constants2,
   existsSync as existsSync3,
-  fstatSync,
-  lstatSync as lstatSync2,
+  fstatSync as fstatSync2,
+  lstatSync as lstatSync3,
   mkdirSync,
   openSync as openSync2,
   readFileSync as readFileSync3,
@@ -615,7 +659,7 @@ function readRegularFileNoFollow(path, maxBytes) {
   try {
     descriptor = openSync2(
       path,
-      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+      constants2.O_RDONLY | (constants2.O_NOFOLLOW ?? 0),
       384
     );
   } catch (error) {
@@ -624,8 +668,8 @@ function readRegularFileNoFollow(path, maxBytes) {
     throw error;
   }
   try {
-    const before = fstatSync(descriptor);
-    const pathStat = lstatSync2(path);
+    const before = fstatSync2(descriptor);
+    const pathStat = lstatSync3(path);
     if (!before.isFile() || pathStat.isSymbolicLink() || !pathStat.isFile() || before.dev !== pathStat.dev || before.ino !== pathStat.ino)
       throw new Error("Expected a regular file without following links.");
     if (before.size > maxBytes)
@@ -642,7 +686,7 @@ function readRegularFileNoFollow(path, maxBytes) {
         throw new Error("File exceeds the configured size limit.");
       chunks.push(Buffer.from(chunk.subarray(0, bytesRead)));
     }
-    const after = fstatSync(descriptor);
+    const after = fstatSync2(descriptor);
     if (after.dev !== before.dev || after.ino !== before.ino)
       throw new Error("Opened file identity changed while reading.");
     return {
@@ -702,7 +746,7 @@ function ensureMetadataDirectory(projectDirectory) {
   const root = resolve4(projectDirectory);
   const directory = metadataDirectory(root);
   mkdirSync2(directory, { recursive: true, mode: 448 });
-  const stat = lstatSync3(directory);
+  const stat = lstatSync4(directory);
   if (stat.isSymbolicLink() || !stat.isDirectory()) {
     throw new Error("LaunchStack metadata directory must be a real directory.");
   }
@@ -713,7 +757,7 @@ function ensureMetadataDirectory(projectDirectory) {
   return directory;
 }
 function assertOwnedDirectory(directory, metadata) {
-  const stat = lstatSync3(directory);
+  const stat = lstatSync4(directory);
   if (stat.isSymbolicLink() || !stat.isDirectory()) {
     throw new Error(
       "Mutation recovery directory is not a LaunchStack-owned directory."
@@ -2344,15 +2388,21 @@ function packageJson(root) {
     return void 0;
   }
 }
+var MAX_GIT_TRACKED_PATH_BYTES = 16 * 1024 * 1024;
 function gitTrackedFiles(root) {
   try {
-    return execFileSync("git", ["ls-files", "-z"], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).split("\0").filter(Boolean);
+    return {
+      paths: execFileSync("git", ["ls-files", "-z"], {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: MAX_GIT_TRACKED_PATH_BYTES,
+        timeout: 1e4,
+        stdio: ["ignore", "pipe", "ignore"]
+      }).split("\0").filter(Boolean),
+      complete: true
+    };
   } catch {
-    return [];
+    return { paths: [], complete: false };
   }
 }
 var finding = (ruleId, severity, title, detail, verified, path) => ({ ruleId, severity, title, detail, verified, path });
@@ -2420,7 +2470,18 @@ function runProductionAudit(projectDirectoryInput) {
           entry.path
         )
       );
-  const tracked = gitTrackedFiles(root).filter(
+  const trackedResult = gitTrackedFiles(root);
+  if (!trackedResult.complete)
+    findings.push(
+      finding(
+        "LS022",
+        "high",
+        "Tracked paths could not be fully audited",
+        "Git path enumeration failed or exceeded the 16 MiB audit bound; secret-path results are incomplete.",
+        true
+      )
+    );
+  const tracked = trackedResult.paths.filter(
     (path) => SECRET_FILE_PATTERNS.some((pattern) => pattern.test(path)) && !/(^|\/)\.env\.example$/.test(path)
   );
   if (tracked.length)
@@ -2430,7 +2491,7 @@ function runProductionAudit(projectDirectoryInput) {
         "critical",
         "Potential secret material is tracked by Git",
         `Sensitive-looking tracked paths: ${tracked.join(", ")}. Secret contents were not inspected or printed.`,
-        true
+        false
       )
     );
   const dockerfile = readIfPresent(root, "Dockerfile");
@@ -3292,7 +3353,7 @@ ${react}`;
 import {
   cpSync,
   existsSync as existsSync10,
-  lstatSync as lstatSync4,
+  lstatSync as lstatSync5,
   mkdirSync as mkdirSync3,
   readdirSync,
   renameSync as renameSync3,
@@ -3331,7 +3392,7 @@ function copyDirectory(sourceDirectory, destinationDirectory, overwriteRenamedFi
 function renameTemplateFiles(directory, overwriteRenamedFiles) {
   for (const entry of readdirSync(directory)) {
     const currentPath = resolve10(directory, entry);
-    const stats = lstatSync4(currentPath);
+    const stats = lstatSync5(currentPath);
     if (stats.isSymbolicLink()) {
       throw new Error(
         `Template contains an unsupported symbolic link: ${currentPath}`
@@ -3433,7 +3494,7 @@ function getTemplateDirectory(templateName) {
 }
 
 // src/generator/template.ts
-import { existsSync as existsSync12, lstatSync as lstatSync5, readdirSync as readdirSync2 } from "fs";
+import { existsSync as existsSync12, lstatSync as lstatSync6, readdirSync as readdirSync2 } from "fs";
 import { basename as basename3, extname, join as join7 } from "path";
 var TEXT_EXTENSIONS = /* @__PURE__ */ new Set([
   ".cjs",
@@ -3478,7 +3539,7 @@ function renderDirectory(directory, variables) {
   }
   for (const entry of readdirSync2(directory)) {
     const path = join7(directory, entry);
-    const stats = lstatSync5(path);
+    const stats = lstatSync6(path);
     if (stats.isSymbolicLink())
       throw new Error("Template directory cannot contain symbolic links.");
     if (stats.isDirectory()) {
@@ -3779,7 +3840,7 @@ import { spawn } from "child_process";
 import {
   closeSync as closeSync4,
   existsSync as existsSync15,
-  lstatSync as lstatSync6,
+  lstatSync as lstatSync7,
   openSync as openSync4,
   unlinkSync as unlinkSync3,
   writeFileSync as writeFileSync6
@@ -3828,7 +3889,7 @@ async function acquireHostPortLock() {
             alive = false;
         }
         if (!alive) {
-          const current = lstatSync6(path);
+          const current = lstatSync7(path);
           if (current.dev === lockFile.dev && current.ino === lockFile.ino)
             unlinkSync3(path);
           continue;
@@ -5111,4 +5172,4 @@ export {
   planModuleGeneration,
   applyModuleGeneration
 };
-//# sourceMappingURL=chunk-S4V7VTT5.mjs.map
+//# sourceMappingURL=chunk-DVANW34L.mjs.map

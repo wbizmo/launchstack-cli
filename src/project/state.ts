@@ -1,13 +1,17 @@
 import { createHash } from "node:crypto";
 import {
   closeSync,
+  constants,
   existsSync,
+  fstatSync,
+  lstatSync,
   openSync,
   readFileSync,
   readSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import { normalizeManagedPath } from "./paths";
 import {
   STATE_SCHEMA_VERSION,
   emptyProjectState,
@@ -65,16 +69,57 @@ export const STATE_FILENAME = "state.json";
 export function sha256(content: string | Buffer): string {
   return createHash("sha256").update(content).digest("hex");
 }
+const MAX_MANAGED_FILE_BYTES = 256 * 1024 * 1024;
+
 export function hashFile(path: string): string {
-  const descriptor = openSync(path, "r");
+  let descriptor: number;
+  try {
+    descriptor = openSync(
+      path,
+      constants.O_RDONLY |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ELOOP")
+      throw new Error("Refusing to hash a symbolic-link managed file.");
+    throw error;
+  }
   const hash = createHash("sha256");
   const chunk = Buffer.allocUnsafe(64 * 1024);
   try {
-    while (true) {
-      const bytes = readSync(descriptor, chunk, 0, chunk.length, null);
-      if (bytes === 0) break;
+    const before = fstatSync(descriptor);
+    if (!before.isFile())
+      throw new Error("Managed file is not a regular file.");
+    if (before.size > MAX_MANAGED_FILE_BYTES)
+      throw new Error("Managed file exceeds the 256 MiB hashing limit.");
+    let remaining = before.size;
+    while (remaining > 0) {
+      const bytes = readSync(
+        descriptor,
+        chunk,
+        0,
+        Math.min(chunk.length, remaining),
+        null,
+      );
+      if (bytes === 0)
+        throw new Error("Managed file changed while it was being hashed.");
       hash.update(chunk.subarray(0, bytes));
+      remaining -= bytes;
     }
+    const current = lstatSync(path);
+    if (
+      current.isSymbolicLink() ||
+      !current.isFile() ||
+      current.dev !== before.dev ||
+      current.ino !== before.ino ||
+      current.size !== before.size ||
+      current.mtimeMs !== before.mtimeMs ||
+      current.ctimeMs !== before.ctimeMs
+    )
+      throw new Error(
+        "Managed file identity changed while it was being hashed.",
+      );
     return hash.digest("hex");
   } finally {
     closeSync(descriptor);
@@ -86,6 +131,11 @@ export function parseProjectState(input: unknown): ProjectState {
     throw new Error(
       `Invalid LaunchStack state: ${result.error.issues.map((issue) => `${issue.path.join(".") || "state"}: ${issue.message}`).join("; ")}`,
     );
+  for (const path of Object.keys(result.data.managedFiles))
+    if (normalizeManagedPath(path) !== path)
+      throw new Error(
+        `Invalid managed file path in LaunchStack state: ${path}`,
+      );
   return result.data as ProjectState;
 }
 export function loadProjectState(
@@ -120,6 +170,10 @@ export function detectManagedDrift(
   const root = resolve(projectDirectory);
   const entries: DriftEntry[] = [];
   for (const [path, managed] of Object.entries(state.managedFiles)) {
+    if (normalizeManagedPath(path) !== path)
+      throw new Error(
+        `Invalid managed file path in LaunchStack state: ${path}`,
+      );
     const absolute = join(root, path);
     if (!existsSync(absolute)) {
       entries.push({

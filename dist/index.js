@@ -788,9 +788,49 @@ function createProjectManifest(input) {
 
 // src/project/state.ts
 var import_node_crypto3 = require("crypto");
+var import_node_fs9 = require("fs");
+var import_node_path9 = require("path");
+var import_zod2 = require("zod");
+
+// src/project/paths.ts
 var import_node_fs8 = require("fs");
 var import_node_path8 = require("path");
-var import_zod2 = require("zod");
+function normalizeManagedPath(path) {
+  if (!path || path.includes("\0") || (0, import_node_path8.isAbsolute)(path))
+    throw new Error(`Unsafe managed path: ${JSON.stringify(path)}`);
+  const segments = path.split(/[\\/]+/).filter(Boolean);
+  if (segments.length === 0 || segments.some((segment) => segment === ".." || segment === "."))
+    throw new Error(`Unsafe managed path: ${JSON.stringify(path)}`);
+  return segments.join("/");
+}
+function resolveProjectPath(projectDirectory, path) {
+  const root = (0, import_node_path8.resolve)(projectDirectory);
+  const normalized = normalizeManagedPath(path);
+  const target = (0, import_node_path8.resolve)(root, ...normalized.split("/"));
+  const fromRoot = (0, import_node_path8.relative)(root, target);
+  if (fromRoot === "" || fromRoot.startsWith(`..${import_node_path8.sep}`) || fromRoot === ".." || (0, import_node_path8.isAbsolute)(fromRoot))
+    throw new Error(`Managed path escapes project root: ${path}`);
+  let cursor = root;
+  for (const segment of normalized.split("/")) {
+    cursor = (0, import_node_path8.resolve)(cursor, segment);
+    if ((0, import_node_fs8.existsSync)(cursor) && (0, import_node_fs8.lstatSync)(cursor).isSymbolicLink())
+      throw new Error(`Refusing to mutate symbolic-link path: ${path}`);
+  }
+  if ((0, import_node_fs8.existsSync)(root)) {
+    const realRoot = (0, import_node_fs8.realpathSync)(root);
+    let current = (0, import_node_path8.dirname)(target);
+    while (!(0, import_node_fs8.existsSync)(current) && current !== realRoot)
+      current = (0, import_node_path8.dirname)(current);
+    if ((0, import_node_fs8.existsSync)(current)) {
+      const relativeParent = (0, import_node_path8.relative)(realRoot, (0, import_node_fs8.realpathSync)(current));
+      if (relativeParent.startsWith(`..${import_node_path8.sep}`) || relativeParent === ".." || (0, import_node_path8.isAbsolute)(relativeParent))
+        throw new Error(`Managed path resolves outside project root: ${path}`);
+    }
+  }
+  return target;
+}
+
+// src/project/state.ts
 var managedFileSchema = import_zod2.z.object({
   owner: import_zod2.z.string().min(1),
   sha256: import_zod2.z.string().regex(/^[a-f0-9]{64}$/),
@@ -830,19 +870,49 @@ var STATE_FILENAME = "state.json";
 function sha256(content) {
   return (0, import_node_crypto3.createHash)("sha256").update(content).digest("hex");
 }
+var MAX_MANAGED_FILE_BYTES = 256 * 1024 * 1024;
 function hashFile(path) {
-  const descriptor = (0, import_node_fs8.openSync)(path, "r");
+  let descriptor;
+  try {
+    descriptor = (0, import_node_fs9.openSync)(
+      path,
+      import_node_fs9.constants.O_RDONLY | (import_node_fs9.constants.O_NOFOLLOW ?? 0) | (import_node_fs9.constants.O_NONBLOCK ?? 0)
+    );
+  } catch (error) {
+    if (error.code === "ELOOP")
+      throw new Error("Refusing to hash a symbolic-link managed file.");
+    throw error;
+  }
   const hash = (0, import_node_crypto3.createHash)("sha256");
   const chunk = Buffer.allocUnsafe(64 * 1024);
   try {
-    while (true) {
-      const bytes = (0, import_node_fs8.readSync)(descriptor, chunk, 0, chunk.length, null);
-      if (bytes === 0) break;
+    const before = (0, import_node_fs9.fstatSync)(descriptor);
+    if (!before.isFile())
+      throw new Error("Managed file is not a regular file.");
+    if (before.size > MAX_MANAGED_FILE_BYTES)
+      throw new Error("Managed file exceeds the 256 MiB hashing limit.");
+    let remaining = before.size;
+    while (remaining > 0) {
+      const bytes = (0, import_node_fs9.readSync)(
+        descriptor,
+        chunk,
+        0,
+        Math.min(chunk.length, remaining),
+        null
+      );
+      if (bytes === 0)
+        throw new Error("Managed file changed while it was being hashed.");
       hash.update(chunk.subarray(0, bytes));
+      remaining -= bytes;
     }
+    const current = (0, import_node_fs9.lstatSync)(path);
+    if (current.isSymbolicLink() || !current.isFile() || current.dev !== before.dev || current.ino !== before.ino || current.size !== before.size || current.mtimeMs !== before.mtimeMs || current.ctimeMs !== before.ctimeMs)
+      throw new Error(
+        "Managed file identity changed while it was being hashed."
+      );
     return hash.digest("hex");
   } finally {
-    (0, import_node_fs8.closeSync)(descriptor);
+    (0, import_node_fs9.closeSync)(descriptor);
   }
 }
 function parseProjectState(input) {
@@ -851,21 +921,26 @@ function parseProjectState(input) {
     throw new Error(
       `Invalid LaunchStack state: ${result.error.issues.map((issue) => `${issue.path.join(".") || "state"}: ${issue.message}`).join("; ")}`
     );
+  for (const path of Object.keys(result.data.managedFiles))
+    if (normalizeManagedPath(path) !== path)
+      throw new Error(
+        `Invalid managed file path in LaunchStack state: ${path}`
+      );
   return result.data;
 }
 function loadProjectState(projectDirectory, defaults) {
-  const statePath = (0, import_node_path8.join)(
-    (0, import_node_path8.resolve)(projectDirectory),
+  const statePath = (0, import_node_path9.join)(
+    (0, import_node_path9.resolve)(projectDirectory),
     STATE_DIRECTORY,
     STATE_FILENAME
   );
-  if (!(0, import_node_fs8.existsSync)(statePath))
+  if (!(0, import_node_fs9.existsSync)(statePath))
     return emptyProjectState(
       defaults?.templateVersion ?? "unknown",
       defaults?.cliVersion ?? "unknown"
     );
   try {
-    return parseProjectState(JSON.parse((0, import_node_fs8.readFileSync)(statePath, "utf8")));
+    return parseProjectState(JSON.parse((0, import_node_fs9.readFileSync)(statePath, "utf8")));
   } catch (error) {
     throw new Error(
       `Unable to read LaunchStack state: ${error instanceof Error ? error.message : String(error)}`
@@ -877,11 +952,15 @@ function serializeProjectState(state) {
 `;
 }
 function detectManagedDrift(projectDirectory, state) {
-  const root = (0, import_node_path8.resolve)(projectDirectory);
+  const root = (0, import_node_path9.resolve)(projectDirectory);
   const entries = [];
   for (const [path, managed] of Object.entries(state.managedFiles)) {
-    const absolute = (0, import_node_path8.join)(root, path);
-    if (!(0, import_node_fs8.existsSync)(absolute)) {
+    if (normalizeManagedPath(path) !== path)
+      throw new Error(
+        `Invalid managed file path in LaunchStack state: ${path}`
+      );
+    const absolute = (0, import_node_path9.join)(root, path);
+    if (!(0, import_node_fs9.existsSync)(absolute)) {
       entries.push({
         path,
         kind: "missing",
@@ -911,44 +990,6 @@ var import_node_fs11 = require("fs");
 var import_node_child_process2 = require("child_process");
 var import_node_os = require("os");
 var import_node_path11 = require("path");
-
-// src/project/paths.ts
-var import_node_fs9 = require("fs");
-var import_node_path9 = require("path");
-function normalizeManagedPath(path) {
-  if (!path || path.includes("\0") || (0, import_node_path9.isAbsolute)(path))
-    throw new Error(`Unsafe managed path: ${JSON.stringify(path)}`);
-  const segments = path.split(/[\\/]+/).filter(Boolean);
-  if (segments.length === 0 || segments.some((segment) => segment === ".." || segment === "."))
-    throw new Error(`Unsafe managed path: ${JSON.stringify(path)}`);
-  return segments.join("/");
-}
-function resolveProjectPath(projectDirectory, path) {
-  const root = (0, import_node_path9.resolve)(projectDirectory);
-  const normalized = normalizeManagedPath(path);
-  const target = (0, import_node_path9.resolve)(root, ...normalized.split("/"));
-  const fromRoot = (0, import_node_path9.relative)(root, target);
-  if (fromRoot === "" || fromRoot.startsWith(`..${import_node_path9.sep}`) || fromRoot === ".." || (0, import_node_path9.isAbsolute)(fromRoot))
-    throw new Error(`Managed path escapes project root: ${path}`);
-  let cursor = root;
-  for (const segment of normalized.split("/")) {
-    cursor = (0, import_node_path9.resolve)(cursor, segment);
-    if ((0, import_node_fs9.existsSync)(cursor) && (0, import_node_fs9.lstatSync)(cursor).isSymbolicLink())
-      throw new Error(`Refusing to mutate symbolic-link path: ${path}`);
-  }
-  if ((0, import_node_fs9.existsSync)(root)) {
-    const realRoot = (0, import_node_fs9.realpathSync)(root);
-    let current = (0, import_node_path9.dirname)(target);
-    while (!(0, import_node_fs9.existsSync)(current) && current !== realRoot)
-      current = (0, import_node_path9.dirname)(current);
-    if ((0, import_node_fs9.existsSync)(current)) {
-      const relativeParent = (0, import_node_path9.relative)(realRoot, (0, import_node_fs9.realpathSync)(current));
-      if (relativeParent.startsWith(`..${import_node_path9.sep}`) || relativeParent === ".." || (0, import_node_path9.isAbsolute)(relativeParent))
-        throw new Error(`Managed path resolves outside project root: ${path}`);
-    }
-  }
-  return target;
-}
 
 // src/project/transaction.ts
 var import_node_fs10 = require("fs");
@@ -3556,15 +3597,21 @@ function packageJson(root) {
     return void 0;
   }
 }
+var MAX_GIT_TRACKED_PATH_BYTES = 16 * 1024 * 1024;
 function gitTrackedFiles(root) {
   try {
-    return (0, import_node_child_process3.execFileSync)("git", ["ls-files", "-z"], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).split("\0").filter(Boolean);
+    return {
+      paths: (0, import_node_child_process3.execFileSync)("git", ["ls-files", "-z"], {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: MAX_GIT_TRACKED_PATH_BYTES,
+        timeout: 1e4,
+        stdio: ["ignore", "pipe", "ignore"]
+      }).split("\0").filter(Boolean),
+      complete: true
+    };
   } catch {
-    return [];
+    return { paths: [], complete: false };
   }
 }
 var finding = (ruleId, severity, title, detail, verified, path) => ({ ruleId, severity, title, detail, verified, path });
@@ -3632,7 +3679,18 @@ function runProductionAudit(projectDirectoryInput) {
           entry.path
         )
       );
-  const tracked = gitTrackedFiles(root).filter(
+  const trackedResult = gitTrackedFiles(root);
+  if (!trackedResult.complete)
+    findings.push(
+      finding(
+        "LS022",
+        "high",
+        "Tracked paths could not be fully audited",
+        "Git path enumeration failed or exceeded the 16 MiB audit bound; secret-path results are incomplete.",
+        true
+      )
+    );
+  const tracked = trackedResult.paths.filter(
     (path) => SECRET_FILE_PATTERNS.some((pattern) => pattern.test(path)) && !/(^|\/)\.env\.example$/.test(path)
   );
   if (tracked.length)
@@ -3642,7 +3700,7 @@ function runProductionAudit(projectDirectoryInput) {
         "critical",
         "Potential secret material is tracked by Git",
         `Sensitive-looking tracked paths: ${tracked.join(", ")}. Secret contents were not inspected or printed.`,
-        true
+        false
       )
     );
   const dockerfile = readIfPresent(root, "Dockerfile");
