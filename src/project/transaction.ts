@@ -191,6 +191,14 @@ function waitForLockRetry(): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
 }
 
+function lockChangedDuringRead(error: unknown): boolean {
+  return (
+    (error as NodeJS.ErrnoException).code === "ENOENT" ||
+    (error instanceof Error &&
+      error.message === "Opened file identity changed while reading.")
+  );
+}
+
 function syncDirectory(path: string): void {
   if (process.platform === "win32") return;
   let descriptor: number | undefined;
@@ -316,7 +324,8 @@ function acquireLock(projectDirectory: string): () => void {
           )
             unlinkSync(lockPath);
         }
-      } catch {
+      } catch (error) {
+        if (lockChangedDuringRead(error)) continue;
         if (!existsSync(lockPath)) continue;
         throw new Error(
           "Another LaunchStack mutation is already running; its lock identity cannot be verified.",

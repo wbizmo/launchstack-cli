@@ -16,6 +16,7 @@
 - Marks secret-looking tracked filenames as heuristic findings, bounds Git path enumeration to 16 MiB / 10 seconds and emits LS022 when enumeration is incomplete. LS005 does not inspect file contents. The measured 1k–100k audit results are in `docs/benchmarks/issue-31-security.md`.
 - Marks secret-looking tracked filenames as heuristic findings, bounds Git path enumeration to 16 MiB / 10 seconds and emits LS022 when enumeration is incomplete. LS005 does not inspect file contents. The measured 1k–100k audit results are in `docs/benchmarks/issue-31-security.md`.
 - Uses a versioned crash-recovery journal, durable file and directory flushes, lock identity checks, compare-and-swap preconditions and one transaction for multi-capability installs.
+- Retries transient lock identity changes when one writer releases and another acquires the project lock; independent 8/32 process writer tests cover the handoff.
 - Measures 100 / 1,000 / 10,000 file mutations against v3.0.0 and verifies 8 / 32 concurrent writer processes. The measured durability latency cost is documented in `docs/benchmarks/issue-32-transactions.md`.
 - Registers the explicit v2.0.0-to-v3.0.0 template upgrade, preserves unrelated TypeScript edits through AST-based integration, tracks shared-file migration bases and reports exact read-only plan diffs.
 - Orders migration chains by declared dependencies and validates manifest/state version preconditions and postconditions; synthetic multi-edge chain ordering and mismatched state versions are covered by tests.

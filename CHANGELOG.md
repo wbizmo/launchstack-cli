@@ -45,6 +45,7 @@
 
 - Add a versioned prepared/committing/committed journal, file and directory flushes, compare-and-swap preconditions, overlap rejection, process-start lock identity and bounded lock waiting.
 - Recover uncommitted plans idempotently; committed plans retain the complete new state while cleanup can resume.
+- Treat a lock descriptor/path mismatch during concurrent release-and-reacquire as a transient replacement race and retry verification; the independent 8/32 writer process regression now passes locally and in CI.
 - Batch multi-capability reconciliation installs into one package, manifest, state and generated-file transaction.
 - Benchmark 100 / 1,000 / 10,000 file plans against v3.0.0 and run 8 / 32 independent writer processes. Results, including the measured fsync cost, are in `docs/benchmarks/issue-32-transactions.md`.
 - Transaction checks passed on Node 24.22.3: lint, strict typecheck and 2 focused files / 14 tests.
