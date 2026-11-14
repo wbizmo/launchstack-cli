@@ -58,7 +58,7 @@
 
 ## Verification
 
-- Forensic follow-up release checks passed on Node 24.22.3/PostgreSQL 16 and Node 26.13.1/PostgreSQL 17: 42 root files / 178 tests and 9 generated-project files / 28 tests on each runtime. The 1,290-case security corpus peaked at 91.8 MiB and 110.7 MiB observed RSS respectively.
+- Forensic follow-up release checks passed on Node 24.22.3/PostgreSQL 16 and Node 26.13.1/PostgreSQL 17: 42 root files / 179 tests and 9 generated-project files / 28 tests on each runtime. The 1,290-case security corpus peaked at 107.3 MiB and 112.7 MiB observed RSS respectively.
 
 - Root `release:check` passed on Node 24.22.3 and 26.13.1; generated API integration checks passed on PostgreSQL 16 and 17 respectively.
 - After issue #35, full `release:check` passed on both runtimes with 38 root test files / 137 tests and 8 generated API test files / 26 tests; both production dependency audits reported zero vulnerabilities.
