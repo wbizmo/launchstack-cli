@@ -1,15 +1,15 @@
 # LaunchStack CLI
 
 [![GitHub release](https://img.shields.io/github/v/release/wbizmo/launchstack-cli?display_name=tag)](https://github.com/wbizmo/launchstack-cli/releases)
-[![npm version](https://img.shields.io/badge/npm-v3.0.5-CB3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/launchstack-cli)
+[![npm version](https://img.shields.io/badge/npm-v3.0.6-CB3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/launchstack-cli)
 [![Node.js](https://img.shields.io/badge/Node.js-24%20%7C%2026-339933?logo=node.js&logoColor=white)](docs/COMPATIBILITY.md)
 [![License: MIT](https://img.shields.io/github/license/wbizmo/launchstack-cli)](LICENSE)
 
 TypeScript backend scaffolding and lifecycle management. LaunchStack creates Fastify, Prisma and PostgreSQL projects, then helps teams manage generated files, capabilities, upgrades, local environments, typed clients and preview stages as the project changes.
 
-**Release:** [v3.0.5](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.5) · [Release notes](RELEASE_NOTES_3.0.5.md) · [Zivora Labs project page](https://www.zivoralabs.xyz/open-source/launchstack-cli)
+**Release:** [v3.0.6](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.6) · [Release notes](RELEASE_NOTES_3.0.6.md) · [Zivora Labs project page](https://www.zivoralabs.xyz/open-source/launchstack-cli)
 
-LaunchStack CLI has evolved from deployment and configuration tooling (v1) into a backend API generator (v2), then a declarative lifecycle platform (v3). Version 3.0.5 is the current release. Browse the [complete release history](docs/RELEASE_HISTORY.md) and [cumulative changelog](CHANGELOG.md) for every published version.
+LaunchStack CLI has evolved from deployment and configuration tooling (v1) into a backend API generator (v2), then a declarative lifecycle platform (v3). Version 3.0.6 is the current release. Browse the [complete release history](docs/RELEASE_HISTORY.md) and [cumulative changelog](CHANGELOG.md) for every published version.
 
 ## Requirements
 
@@ -19,7 +19,7 @@ LaunchStack CLI has evolved from deployment and configuration tooling (v1) into 
 ## Install
 
 ```bash
-npm install --global launchstack-cli@3.0.5
+npm install --global launchstack-cli@3.0.6
 ```
 
 ## Quick start
@@ -48,11 +48,13 @@ This reference includes every top-level command and nested subcommand. Use `laun
 
 ## Capabilities and lifecycle
 
-### What v3.0.4 and v3.0.5 add and improve
+### What v3.0.4 through v3.0.6 add and improve
 
 Version 3.0.4 hardens the CLI, generated API and release tooling. It updates supported runtimes to Node.js 24 and 26, updates security-sensitive dependencies, keeps the generated API compatible with Prisma 6, and aligns Docker images and CI with the supported Node versions. Security improvements cover managed paths, secret files, transaction journals and locks, remote OpenAPI DNS validation, bounded audit inputs and generated SDK output. Lifecycle changes add durable mutation recovery, explicit project migrations, safer concurrent capability updates, improved capability assembly, isolated local orchestration and preview stages, bounded owner-scoped resource pagination, and streaming/hash and graph complexity checks. Release qualification adds Windows portability, CodeQL, SBOM validation, generated-project and Docker checks, and reproducible benchmark reports.
 
 v3.0.5 adds portable mutation locking, v3 manifest validation, predictable project destination paths and optional creation progress. Lock initialization without verifiable owner metadata is not reclaimed by age alone; verify no mutation is running and remove `.launchstack/mutation.lock` if initialization was interrupted. The minimum supported patch versions are 24.22.0 and 26.13.0; CI continues to test current patched releases on both major lines. Prisma 7 migration is not included; generated projects remain on Prisma 6. Benchmark measurements and their limitations are summarized below and documented in full in [`docs/benchmarks`](docs/benchmarks/).
+
+v3.0.6 serializes concurrent capability installs and replans under the project lock, keeping independent updates in manifest, state and generated files together. It corrects production Compose auditing when settings are inherited from the base file and gives non-Git projects a specific audit finding. The CLI now explains and enforces its supported Node.js range for commands while leaving help and version output available. The Docker guide shows how to pass a custom CA to generated Compose builds as a BuildKit secret.
 
 ### Feature history
 
@@ -62,6 +64,7 @@ v3.0.5 adds portable mutation locking, v3 manifest validation, predictable proje
 - **v3.0.0:** declarative project state, drift-aware reconciliation and upgrades, capabilities and plugins, local orchestration, typed OpenAPI clients, security audit, resource/module generators and isolated preview stages.
 - **v3.0.4:** runtime/dependency modernization and the security, transaction, migration, capability, orchestration, generator, complexity and release-qualification improvements listed above.
 - **v3.0.5:** directory-based project mutation locks for filesystems without hard-link support, `validate` support for v3 manifests, `create --directory` parent semantics, optional generation progress, and a slightly broader Node 24/26 patch range.
+- **v3.0.6:** serialized concurrent capability updates, accurate inherited Compose security checks, clearer non-Git audit output, explicit unsupported-runtime guidance, and custom CA BuildKit instructions.
 
 ### Add capabilities
 
@@ -136,7 +139,7 @@ launchstack destroy --stage preview-demo
 
 Audit findings have stable rule IDs and severities. The optional `--advisories` mode queries the npm registry; if that evidence cannot be obtained, the audit reports it as incomplete. Secret-looking tracked paths are heuristic findings: LaunchStack checks filenames, not file contents. Git path enumeration is capped at 16 MiB and 10 seconds.
 
-Docker Compose is the complete preview lifecycle adapter in v3. Other provider adapters report unsupported lifecycle operations explicitly. `launchstack deploy` without `--stage` prepares and validates artifacts.
+Docker Compose is the complete preview lifecycle adapter in v3. Other provider adapters report unsupported lifecycle operations explicitly. `launchstack deploy` without `--stage` prepares and validates artifacts. For generated production builds behind a TLS-inspecting proxy, see the [Docker guide](docs/DOCKER.md) for the BuildKit CA secret setup.
 
 ## Generated API security baseline
 
@@ -158,6 +161,8 @@ Full results, methodology, reproduction commands and limitations are in the [ben
 - **Complexity:** service scheduling is O((V+E) log V), extension ordering O(V+E), and streaming hashing O(B) time with a bounded buffer.
 - **Release qualification:** at 250,000 files, drift-scan p50 was 36.41 s vs. 2.53 s on v3.0.0 (14.41× slower on this host).
 - **Transactions (v3.0.5):** 100, 1,000 and 10,000 file mutations measured 82.7 ms, 546.5 ms and 5.12 s p50; the 10,000-file p95 was 6.19 s. This separate Node 24.22.1 sample is not a direct comparison with the v3.0.4 host.
+- **Capability transactions (v3.0.6):** one transaction installing 1, 10 and 100 synthetic file-only capabilities measured 17.4 ms, 20.0 ms and 81.6 ms p50.
+- **Transactions (v3.0.6):** 100, 1,000 and 10,000 file mutations measured 78.8 ms, 594.4 ms and 6.23 s p50; the 10,000-file p95 was 6.41 s.
 
 ## Development checks
 

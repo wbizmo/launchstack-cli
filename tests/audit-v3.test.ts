@@ -122,6 +122,65 @@ describe("v3 production audit", () => {
     ).toBe(false);
   });
 
+  test("accepts production Compose settings inherited from the base file", () => {
+    const root = mkdtempSync(join(tmpdir(), "launchstack-audit-compose-"));
+    writeFileSync(
+      join(root, "docker-compose.yml"),
+      [
+        "services:",
+        "  api:",
+        "    environment:",
+        "      CORS_ORIGIN: ${CORS_ORIGIN:?Set an explicit production origin}",
+        "      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set a production access secret}",
+        "      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set a production refresh secret}",
+        "",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(root, "docker-compose.production.yml"),
+      "services:\n  api:\n    environment:\n      NODE_ENV: production\n",
+    );
+
+    expect(
+      runProductionAudit(root).findings.map((item) => item.ruleId),
+    ).not.toContain("LS021");
+  });
+
+  test("distinguishes a non-Git project from incomplete Git enumeration", () => {
+    const root = mkdtempSync(join(tmpdir(), "launchstack-audit-no-git-"));
+    const finding = runProductionAudit(root).findings.find(
+      (item) => item.ruleId === "LS022",
+    );
+
+    expect(finding).toMatchObject({
+      severity: "medium",
+      title: "Project is not a Git repository",
+      verified: true,
+    });
+    expect(finding?.detail).toContain(
+      "Initialize or select the project repository",
+    );
+  });
+
+  test("reports Git command failures as incomplete enumeration", () => {
+    const root = mkdtempSync(join(tmpdir(), "launchstack-audit-git-error-"));
+    const originalPath = process.env.PATH;
+    process.env.PATH = root;
+    try {
+      const finding = runProductionAudit(root).findings.find(
+        (item) => item.ruleId === "LS022",
+      );
+      expect(finding).toMatchObject({
+        severity: "high",
+        title: "Tracked paths could not be fully audited",
+        verified: true,
+      });
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+    }
+  });
+
   test("does not mistake Node minor versions for unsupported major lines", () => {
     const root = mkdtempSync(join(tmpdir(), "launchstack-audit-node-range-"));
     writeFileSync(

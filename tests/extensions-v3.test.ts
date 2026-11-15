@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdtempSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
 } from "node:fs";
@@ -17,6 +18,7 @@ import { FIRST_PARTY_EXTENSIONS } from "../src/extensions/first-party";
 import type { ExtensionManifest } from "../src/extensions/types";
 import {
   createProjectManifest,
+  loadProjectManifest,
   serializeProjectManifest,
 } from "../src/project/manifest";
 import { emptyProjectState } from "../src/project/types";
@@ -169,6 +171,38 @@ describe("v3 extension engine", () => {
     expect(packageJson.dependencies.ioredis).toBeDefined();
     expect(packageJson.dependencies.bullmq).toBeDefined();
     expect(existsSync(join(root, "package-lock.json"))).toBe(true);
+  });
+  test("replans stale concurrent capability installs under the mutation lock", () => {
+    const root = fixture();
+    const queuePlan = planExtensionInstall({
+      projectDirectory: root,
+      requested: ["queue"],
+      registry: FIRST_PARTY_EXTENSIONS,
+    });
+    const cronPlan = planExtensionInstall({
+      projectDirectory: root,
+      requested: ["cron"],
+      registry: FIRST_PARTY_EXTENSIONS,
+    });
+
+    applyExtensionInstall(queuePlan);
+    applyExtensionInstall(cronPlan);
+
+    const manifest = loadProjectManifest(root);
+    expect(manifest.capabilities.queue).toBeDefined();
+    expect(manifest.capabilities.cron).toBeDefined();
+    const state = loadProjectState(root);
+    expect(state.extensions.queue).toBeDefined();
+    expect(state.extensions.cron).toBeDefined();
+    expect(existsSync(join(root, "src/scheduler.ts"))).toBe(true);
+    expect(existsSync(join(root, "src/launchstack/capabilities/cron.ts"))).toBe(
+      true,
+    );
+    expect(
+      readdirSync(join(root, ".launchstack")).some(
+        (path) => path.startsWith(".stage-") || path.startsWith(".backup-"),
+      ),
+    ).toBe(false);
   });
   test("blocks dependency removal and removes generated scripts/files safely", () => {
     const root = fixture();

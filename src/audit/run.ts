@@ -208,7 +208,31 @@ function npmAdvisoryFindings(root: string): AuditFinding[] {
 
 function gitTrackedFiles(
   root: string,
-): { paths: string[]; complete: true } | { paths: []; complete: false } {
+):
+  | { paths: string[]; complete: true }
+  | { paths: []; complete: false; reason: "not-git" | "incomplete" } {
+  try {
+    const repository = execFileSync(
+      "git",
+      ["rev-parse", "--is-inside-work-tree"],
+      {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 10_000,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    ).trim();
+    if (repository !== "true")
+      return { paths: [], complete: false, reason: "not-git" };
+  } catch (error) {
+    const stderr =
+      error && typeof error === "object" && "stderr" in error
+        ? String((error as { stderr?: unknown }).stderr ?? "")
+        : "";
+    if (/not a git repository|outside a git work tree/i.test(stderr))
+      return { paths: [], complete: false, reason: "not-git" };
+    return { paths: [], complete: false, reason: "incomplete" };
+  }
   try {
     return {
       paths: execFileSync("git", ["ls-files", "-z"], {
@@ -223,7 +247,7 @@ function gitTrackedFiles(
       complete: true,
     };
   } catch {
-    return { paths: [], complete: false };
+    return { paths: [], complete: false, reason: "incomplete" };
   }
 }
 const finding = (
@@ -309,13 +333,23 @@ export function runProductionAudit(
         ),
       );
   const trackedResult = gitTrackedFiles(root);
-  if (!trackedResult.complete)
+  if (!trackedResult.complete && trackedResult.reason === "not-git")
+    findings.push(
+      finding(
+        "LS022",
+        "medium",
+        "Project is not a Git repository",
+        "Tracked-file secret checks could not run because this directory is not inside a Git work tree. Initialize or select the project repository to include tracked paths in the audit.",
+        true,
+      ),
+    );
+  else if (!trackedResult.complete)
     findings.push(
       finding(
         "LS022",
         "high",
         "Tracked paths could not be fully audited",
-        "Git path enumeration failed or exceeded the 16 MiB audit bound; secret-path results are incomplete.",
+        "Git path enumeration failed, timed out, or exceeded the 16 MiB audit bound; tracked-file secret results are incomplete.",
         true,
       ),
     );
@@ -437,8 +471,10 @@ export function runProductionAudit(
       );
     }
   }
-  const productionCompose =
-    readIfPresent(root, "docker-compose.production.yml") ?? "";
+  const productionCompose = [
+    readIfPresent(root, "docker-compose.yml") ?? "",
+    readIfPresent(root, "docker-compose.production.yml") ?? "",
+  ].join("\n");
   if (
     productionCompose &&
     (!/CORS_ORIGIN:\s*\$\{CORS_ORIGIN:\?/.test(productionCompose) ||
@@ -451,7 +487,7 @@ export function runProductionAudit(
         "Production Compose does not require deployment settings",
         "Production Compose should require an explicit CORS origin and JWT secrets.",
         true,
-        "docker-compose.production.yml",
+        "docker-compose.yml",
       ),
     );
   if (pkg) {

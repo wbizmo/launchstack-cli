@@ -1,0 +1,40 @@
+{
+  "version": "3.0.6",
+  "node": "v24.22.1",
+  "platform": "linux x64",
+  "cpu": "AMD EPYC 9V74 80-Core Processor",
+  "visible_cpus": 4,
+  "memory_bytes": 35743748096,
+  "workload": {
+    "mutation": "new small files with expectedSha256=null in an isolated temporary project",
+    "sizes": [100, 1000, 10000],
+    "repetitions_per_size": 3,
+    "warmup": 0,
+    "network": "none",
+    "measurement": "parent-observed wall time; child /proc VmRSS sampled every 5ms",
+    "limitations": "RSS sampling can miss short peaks; p95 from three samples is diagnostic; physical device I/O and syscall counts were not traced; not directly comparable with prior host samples."
+  },
+  "results": [
+    {
+      "files": 100,
+      "bytes": 1090,
+      "latency_ms": { "p50": 78.75, "p95": 83.674 },
+      "sampled_peak_rss_kb": 62376,
+      "errors": 0
+    },
+    {
+      "files": 1000,
+      "bytes": 11890,
+      "latency_ms": { "p50": 594.435, "p95": 661.872 },
+      "sampled_peak_rss_kb": 72004,
+      "errors": 0
+    },
+    {
+      "files": 10000,
+      "bytes": 128890,
+      "latency_ms": { "p50": 6229.597, "p95": 6407.101 },
+      "sampled_peak_rss_kb": 83768,
+      "errors": 0
+    }
+  ]
+}

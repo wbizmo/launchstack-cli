@@ -36,6 +36,7 @@ export type PreparedExtensionPlan = ExtensionPlan & {
   mutations: FileMutation[];
   nextManifest: ProjectManifest;
   nextState: ProjectState;
+  replan: () => PreparedExtensionPlan;
 };
 function compatible(version: string, range: string): boolean {
   const major = Number.parseInt(version.split(".")[0] ?? "", 10);
@@ -499,6 +500,7 @@ export function planExtensionInstall(input: {
   projectDirectory: string;
   requested: string[];
   registry: Record<string, ExtensionManifest>;
+  provider?: string;
 }): PreparedExtensionPlan {
   const projectDirectory = resolve(input.projectDirectory);
   const manifest = loadProjectManifest(projectDirectory);
@@ -526,6 +528,11 @@ export function planExtensionInstall(input: {
   const composeWrite = composeMutation(projectDirectory, state, mutations);
   if (composeWrite) mutations.push(composeWrite);
   const nextManifest = structuredClone(manifest);
+  if (input.provider && input.requested[0])
+    nextManifest.capabilities[input.requested[0]] = {
+      ...(nextManifest.capabilities[input.requested[0]] ?? {}),
+      provider: input.provider,
+    };
   const nextState = withTrackedMutations(state, mutations);
   const installedAt = new Date().toISOString();
   for (const item of ordered) {
@@ -553,6 +560,13 @@ export function planExtensionInstall(input: {
     ordered.some((item) => state.extensions[item.id]?.version !== item.version)
   )
     nextState.updatedAt = installedAt;
+  else nextState.updatedAt = state.updatedAt;
+  // Capture metadata compare-and-swap preconditions while planning. Recomputing
+  // them after acquiring the transaction lock would let a stale plan overwrite
+  // another install's newer manifest and state.
+  mutations.push(
+    ...metadataMutations(projectDirectory, nextManifest, nextState),
+  );
   const changed = ordered.filter(
     (item) => state.extensions[item.id]?.version !== item.version,
   );
@@ -594,26 +608,37 @@ export function planExtensionInstall(input: {
     mutations,
     nextManifest,
     nextState,
+    replan: () => planExtensionInstall(input),
   };
 }
 export function applyExtensionInstall(
   plan: PreparedExtensionPlan,
 ): ProjectState {
-  if (plan.noop) return plan.nextState;
   return applyFileMutations({
     projectDirectory: plan.projectDirectory,
-    mutations: [
-      ...plan.mutations,
-      ...metadataMutations(
-        plan.projectDirectory,
-        plan.nextManifest,
-        plan.nextState,
-      ),
-    ],
-    state: loadProjectState(plan.projectDirectory, {
-      templateVersion: plan.nextManifest.project.templateVersion,
-      cliVersion: currentLaunchStackVersion(),
-    }),
-    nextState: plan.nextState,
+    prepare: () => {
+      const currentPlan = plan.replan();
+      const mutations = currentPlan.mutations.map((mutation) =>
+        mutation.owner === "launchstack:metadata" &&
+        (mutation.path === "launchstack.json" ||
+          mutation.path === ".launchstack/state.json")
+          ? {
+              ...mutation,
+              content:
+                mutation.path === "launchstack.json"
+                  ? serializeProjectManifest(currentPlan.nextManifest)
+                  : serializeProjectState(currentPlan.nextState),
+            }
+          : mutation,
+      );
+      return {
+        mutations,
+        state: loadProjectState(plan.projectDirectory, {
+          templateVersion: currentPlan.nextManifest.project.templateVersion,
+          cliVersion: currentLaunchStackVersion(),
+        }),
+        nextState: currentPlan.nextState,
+      };
+    },
   });
 }

@@ -1,12 +1,13 @@
 # Benchmark reports
 
-These reports document measured runtime, security, lifecycle and generated-project workloads for v3.0.4, plus the v3.0.5 transaction hotfix sample. Each report includes its environment, methodology, observations, reproduction steps where available and raw machine-readable results.
+These reports document measured runtime, security, lifecycle and generated-project workloads for v3.0.4, plus transaction and capability mutation samples from v3.0.5 and v3.0.6. Each report includes its environment, methodology, observations, reproduction steps where available and raw machine-readable results.
 
 | Area                                                            | Report                                                                     |
 | --------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | CLI startup and generation                                      | [Runtime](runtime.md)                                                      |
 | Audit traversal and hostile-input corpus                        | [Security audit](security-audit.md) · [Security fuzzing](security-fuzz.md) |
 | Durable file mutations, lock portability and concurrent writers | [Transactions](transactions.md)                                            |
+| Capability install planning and locked mutation                 | [Capability mutations](capability-mutations.md)                            |
 | Template migration planning                                     | [Upgrades](upgrades.md)                                                    |
 | Dependency graphs and local integrations                        | [Capabilities](capabilities.md)                                            |
 | Concurrent local projects and preview stages                    | [Orchestration](orchestration.md)                                          |

@@ -32,7 +32,16 @@ import { secretsCommand } from "./commands/secrets";
 import { statusCommand } from "./commands/status";
 import { validateCommand } from "./commands/validate";
 import { currentLaunchStackVersion } from "./version";
+import { unsupportedRuntimeMessage } from "./runtime-policy";
 
+const runtimeMessage = unsupportedRuntimeMessage(
+  process.version,
+  process.argv.slice(2),
+);
+if (runtimeMessage) {
+  console.error(runtimeMessage);
+  process.exitCode = 1;
+}
 const program = new Command();
 program
   .name("launchstack")
@@ -69,7 +78,8 @@ program.addCommand(rollbackCommand);
 program.addCommand(dockerCommand);
 program.addCommand(githubCommand);
 
-program.parseAsync().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+if (!runtimeMessage)
+  program.parseAsync().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });

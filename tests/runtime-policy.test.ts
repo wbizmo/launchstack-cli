@@ -1,11 +1,30 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { unsupportedRuntimeMessage } from "../src/runtime-policy";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), "utf8");
 
 describe("supported Node runtime policy", () => {
+  it("rejects unsupported runtime commands with an actionable message", () => {
+    expect(unsupportedRuntimeMessage("v20.19.0", ["create", "my-api"])).toMatch(
+      /requires Node\.js.*Current runtime: v20\.19\.0.*Install a supported/,
+    );
+    expect(
+      unsupportedRuntimeMessage("v20.19.0", ["--version"]),
+    ).toBeUndefined();
+    expect(
+      unsupportedRuntimeMessage("v20.19.0", ["create", "--help"]),
+    ).toBeUndefined();
+    expect(
+      unsupportedRuntimeMessage("v24.22.1", ["create", "my-api"]),
+    ).toBeUndefined();
+    expect(
+      unsupportedRuntimeMessage("v26.13.1", ["create", "my-api"]),
+    ).toBeUndefined();
+  });
+
   it("keeps package manifests and lockfiles on the tested 24/26 lines", () => {
     const policy = ">=24.22.0 <25 || >=26.13.0 <27";
     for (const path of ["package.json", "src/templates/api/package.json"]) {

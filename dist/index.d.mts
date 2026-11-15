@@ -412,6 +412,7 @@ type PreparedExtensionPlan = ExtensionPlan & {
     mutations: FileMutation[];
     nextManifest: ProjectManifest;
     nextState: ProjectState;
+    replan: () => PreparedExtensionPlan;
 };
 declare function resolveExtensionOrder(requested: string[], registry: Record<string, ExtensionManifest>): ExtensionManifest[];
 declare function composeMutation(projectDirectory: string, state: ProjectState, pending: FileMutation[]): FileMutation | null;
@@ -419,6 +420,7 @@ declare function planExtensionInstall(input: {
     projectDirectory: string;
     requested: string[];
     registry: Record<string, ExtensionManifest>;
+    provider?: string;
 }): PreparedExtensionPlan;
 declare function applyExtensionInstall(plan: PreparedExtensionPlan): ProjectState;
 

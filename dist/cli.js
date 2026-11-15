@@ -1156,6 +1156,8 @@ function applyFileMutations(input) {
   const releaseLock = acquireLock(projectDirectory);
   try {
     recoverInterruptedMutation(projectDirectory);
+    const batch = input.prepare ? input.prepare() : input;
+    if (!batch.mutations.length) return batch.nextState ?? batch.state;
     const id = (0, import_node_crypto3.randomUUID)();
     const metadata = ensureMetadataDirectory(projectDirectory);
     const stageDirectory = (0, import_node_path5.join)(metadata, `.stage-${id}`);
@@ -1165,7 +1167,7 @@ function applyFileMutations(input) {
     syncDirectory(metadata);
     const stagedDirectories = /* @__PURE__ */ new Set();
     try {
-      const normalizedPaths = input.mutations.map((mutation) => {
+      const normalizedPaths = batch.mutations.map((mutation) => {
         const normalized = normalizeManagedPath(mutation.path);
         if (normalized !== mutation.path || normalized.startsWith(".launchstack/mutation.lock") || normalized.startsWith(".launchstack/mutation-journal.json") || normalized.split("/").some(
           (segment) => segment.startsWith(".stage-") || segment.startsWith(".backup-")
@@ -1190,7 +1192,7 @@ function applyFileMutations(input) {
             `Mutation plan contains overlapping paths: ${normalizedPaths[index - 1]} and ${normalizedPaths[index]}`
           );
       }
-      for (const mutation of input.mutations) {
+      for (const mutation of batch.mutations) {
         const target = resolveProjectPath(projectDirectory, mutation.path);
         const exists = (0, import_node_fs5.existsSync)(target);
         if (mutation.type === "write") {
@@ -1228,7 +1230,7 @@ function applyFileMutations(input) {
       version: 1,
       id,
       state: "prepared",
-      mutations: input.mutations.map((mutation) => ({
+      mutations: batch.mutations.map((mutation) => ({
         type: mutation.type,
         path: mutation.path,
         hadOriginal: (0, import_node_fs5.existsSync)(
@@ -1241,7 +1243,7 @@ function applyFileMutations(input) {
       journal.state = "committing";
       writeJournal(projectDirectory, journal);
       const committedDirectories = /* @__PURE__ */ new Set();
-      for (const mutation of input.mutations) {
+      for (const mutation of batch.mutations) {
         const target = resolveProjectPath(projectDirectory, mutation.path);
         const backup = (0, import_node_path5.join)(backupDirectory, mutation.path);
         if ((0, import_node_fs5.existsSync)(target)) {
@@ -1275,7 +1277,7 @@ function applyFileMutations(input) {
         }
       }
       syncDirectories(committedDirectories);
-      const nextState = input.nextState ?? withTrackedMutations(input.state, input.mutations);
+      const committedState = batch.nextState ?? withTrackedMutations(batch.state, batch.mutations);
       journal.state = "committed";
       writeJournal(projectDirectory, journal);
       try {
@@ -1285,7 +1287,7 @@ function applyFileMutations(input) {
         syncDirectory(metadata);
       } catch {
       }
-      return nextState;
+      return committedState;
     } catch (error) {
       try {
         restoreJournal(projectDirectory, readJournal(projectDirectory));
@@ -1302,7 +1304,7 @@ function applyFileMutations(input) {
 function currentLaunchStackVersion() {
   if (process.env.LAUNCHSTACK_VERSION_OVERRIDE)
     return process.env.LAUNCHSTACK_VERSION_OVERRIDE;
-  return true ? "3.0.5" : "0.0.0-dev";
+  return true ? "3.0.6" : "0.0.0-dev";
 }
 
 // src/extensions/engine.ts
@@ -1724,6 +1726,11 @@ function planExtensionInstall(input) {
   const composeWrite = composeMutation(projectDirectory, state, mutations);
   if (composeWrite) mutations.push(composeWrite);
   const nextManifest = structuredClone(manifest);
+  if (input.provider && input.requested[0])
+    nextManifest.capabilities[input.requested[0]] = {
+      ...nextManifest.capabilities[input.requested[0]] ?? {},
+      provider: input.provider
+    };
   const nextState = withTrackedMutations(state, mutations);
   const installedAt = (/* @__PURE__ */ new Date()).toISOString();
   for (const item of ordered) {
@@ -1745,6 +1752,10 @@ function planExtensionInstall(input) {
   nextState.cliVersion = currentLaunchStackVersion();
   if (mutations.length || ordered.some((item) => state.extensions[item.id]?.version !== item.version))
     nextState.updatedAt = installedAt;
+  else nextState.updatedAt = state.updatedAt;
+  mutations.push(
+    ...metadataMutations(projectDirectory, nextManifest, nextState)
+  );
   const changed = ordered.filter(
     (item) => state.extensions[item.id]?.version !== item.version
   );
@@ -1772,26 +1783,30 @@ function planExtensionInstall(input) {
     noop: actions.length === 0,
     mutations,
     nextManifest,
-    nextState
+    nextState,
+    replan: () => planExtensionInstall(input)
   };
 }
 function applyExtensionInstall(plan) {
-  if (plan.noop) return plan.nextState;
   return applyFileMutations({
     projectDirectory: plan.projectDirectory,
-    mutations: [
-      ...plan.mutations,
-      ...metadataMutations(
-        plan.projectDirectory,
-        plan.nextManifest,
-        plan.nextState
-      )
-    ],
-    state: loadProjectState(plan.projectDirectory, {
-      templateVersion: plan.nextManifest.project.templateVersion,
-      cliVersion: currentLaunchStackVersion()
-    }),
-    nextState: plan.nextState
+    prepare: () => {
+      const currentPlan = plan.replan();
+      const mutations = currentPlan.mutations.map(
+        (mutation) => mutation.owner === "launchstack:metadata" && (mutation.path === "launchstack.json" || mutation.path === ".launchstack/state.json") ? {
+          ...mutation,
+          content: mutation.path === "launchstack.json" ? serializeProjectManifest(currentPlan.nextManifest) : serializeProjectState(currentPlan.nextState)
+        } : mutation
+      );
+      return {
+        mutations,
+        state: loadProjectState(plan.projectDirectory, {
+          templateVersion: currentPlan.nextManifest.project.templateVersion,
+          cliVersion: currentLaunchStackVersion()
+        }),
+        nextState: currentPlan.nextState
+      };
+    }
   });
 }
 
@@ -1823,13 +1838,9 @@ var addCommand = new import_commander.Command("add").description("Add a producti
       const plan = planExtensionInstall({
         projectDirectory: options.directory ?? process.cwd(),
         requested: [capability],
-        registry: FIRST_PARTY_EXTENSIONS
+        registry: FIRST_PARTY_EXTENSIONS,
+        ...provider ? { provider } : {}
       });
-      if (provider && plan.nextManifest.capabilities[capability])
-        plan.nextManifest.capabilities[capability] = {
-          ...plan.nextManifest.capabilities[capability],
-          provider
-        };
       if (!options.dryRun) applyExtensionInstall(plan);
       const capabilityDefinition = FIRST_PARTY_EXTENSIONS[capability];
       const coverageWarning = capabilityDefinition?.coverage === "helper-only" ? [
@@ -2920,6 +2931,25 @@ function npmAdvisoryFindings(root) {
 }
 function gitTrackedFiles(root) {
   try {
+    const repository = (0, import_node_child_process2.execFileSync)(
+      "git",
+      ["rev-parse", "--is-inside-work-tree"],
+      {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 1e4,
+        stdio: ["ignore", "pipe", "pipe"]
+      }
+    ).trim();
+    if (repository !== "true")
+      return { paths: [], complete: false, reason: "not-git" };
+  } catch (error) {
+    const stderr = error && typeof error === "object" && "stderr" in error ? String(error.stderr ?? "") : "";
+    if (/not a git repository|outside a git work tree/i.test(stderr))
+      return { paths: [], complete: false, reason: "not-git" };
+    return { paths: [], complete: false, reason: "incomplete" };
+  }
+  try {
     return {
       paths: (0, import_node_child_process2.execFileSync)("git", ["ls-files", "-z"], {
         cwd: root,
@@ -2931,7 +2961,7 @@ function gitTrackedFiles(root) {
       complete: true
     };
   } catch {
-    return { paths: [], complete: false };
+    return { paths: [], complete: false, reason: "incomplete" };
   }
 }
 var finding = (ruleId, severity, title, detail, verified, path) => ({ ruleId, severity, title, detail, verified, path });
@@ -3000,13 +3030,23 @@ function runProductionAudit(projectDirectoryInput, options = {}) {
         )
       );
   const trackedResult = gitTrackedFiles(root);
-  if (!trackedResult.complete)
+  if (!trackedResult.complete && trackedResult.reason === "not-git")
+    findings.push(
+      finding(
+        "LS022",
+        "medium",
+        "Project is not a Git repository",
+        "Tracked-file secret checks could not run because this directory is not inside a Git work tree. Initialize or select the project repository to include tracked paths in the audit.",
+        true
+      )
+    );
+  else if (!trackedResult.complete)
     findings.push(
       finding(
         "LS022",
         "high",
         "Tracked paths could not be fully audited",
-        "Git path enumeration failed or exceeded the 16 MiB audit bound; secret-path results are incomplete.",
+        "Git path enumeration failed, timed out, or exceeded the 16 MiB audit bound; tracked-file secret results are incomplete.",
         true
       )
     );
@@ -3106,7 +3146,10 @@ function runProductionAudit(projectDirectoryInput, options = {}) {
       );
     }
   }
-  const productionCompose = readIfPresent(root, "docker-compose.production.yml") ?? "";
+  const productionCompose = [
+    readIfPresent(root, "docker-compose.yml") ?? "",
+    readIfPresent(root, "docker-compose.production.yml") ?? ""
+  ].join("\n");
   if (productionCompose && (!/CORS_ORIGIN:\s*\$\{CORS_ORIGIN:\?/.test(productionCompose) || !/JWT_(?:ACCESS|REFRESH)_SECRET:\s*\$\{JWT_/.test(productionCompose)))
     findings.push(
       finding(
@@ -3115,7 +3158,7 @@ function runProductionAudit(projectDirectoryInput, options = {}) {
         "Production Compose does not require deployment settings",
         "Production Compose should require an explicit CORS origin and JWT secrets.",
         true,
-        "docker-compose.production.yml"
+        "docker-compose.yml"
       )
     );
   if (pkg) {
@@ -7205,7 +7248,26 @@ var validateCommand = new import_commander21.Command("validate").description("Va
   }
 });
 
+// src/runtime-policy.ts
+var import_semver2 = require("semver");
+var SUPPORTED_NODE_RANGE = ">=24.22.0 <25 || >=26.13.0 <27";
+var informationalArguments = /* @__PURE__ */ new Set(["--help", "-h", "--version", "-V"]);
+function unsupportedRuntimeMessage(runtimeVersion, args) {
+  if ((0, import_semver2.satisfies)(runtimeVersion, SUPPORTED_NODE_RANGE)) return void 0;
+  if (args.length === 0 || args[0] === "help" || args.some((argument) => informationalArguments.has(argument)))
+    return void 0;
+  return `LaunchStack CLI requires Node.js ${SUPPORTED_NODE_RANGE}. Current runtime: ${runtimeVersion}. Install a supported Node.js 24 or 26 release and retry.`;
+}
+
 // src/cli.ts
+var runtimeMessage = unsupportedRuntimeMessage(
+  process.version,
+  process.argv.slice(2)
+);
+if (runtimeMessage) {
+  console.error(runtimeMessage);
+  process.exitCode = 1;
+}
 var program = new import_commander22.Command();
 program.name("launchstack").description(
   "Backend API scaffolding and lifecycle platform for production TypeScript services"
@@ -7237,8 +7299,9 @@ program.addCommand(historyCommand);
 program.addCommand(rollbackCommand);
 program.addCommand(dockerCommand);
 program.addCommand(githubCommand);
-program.parseAsync().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+if (!runtimeMessage)
+  program.parseAsync().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
 //# sourceMappingURL=cli.js.map

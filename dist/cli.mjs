@@ -37,7 +37,7 @@ import {
   runProductionAudit,
   selectDevPlan,
   severityRank
-} from "./chunk-QHUI4JDJ.mjs";
+} from "./chunk-IQFKJC3Y.mjs";
 
 // src/cli.ts
 import { Command as Command22 } from "commander";
@@ -71,13 +71,9 @@ var addCommand = new Command("add").description("Add a production capability to 
       const plan = planExtensionInstall({
         projectDirectory: options.directory ?? process.cwd(),
         requested: [capability],
-        registry: FIRST_PARTY_EXTENSIONS
+        registry: FIRST_PARTY_EXTENSIONS,
+        ...provider ? { provider } : {}
       });
-      if (provider && plan.nextManifest.capabilities[capability])
-        plan.nextManifest.capabilities[capability] = {
-          ...plan.nextManifest.capabilities[capability],
-          provider
-        };
       if (!options.dryRun) applyExtensionInstall(plan);
       const capabilityDefinition = FIRST_PARTY_EXTENSIONS[capability];
       const coverageWarning = capabilityDefinition?.coverage === "helper-only" ? [
@@ -1701,7 +1697,26 @@ var validateCommand = new Command21("validate").description("Validate the Launch
   }
 });
 
+// src/runtime-policy.ts
+import { satisfies } from "semver";
+var SUPPORTED_NODE_RANGE = ">=24.22.0 <25 || >=26.13.0 <27";
+var informationalArguments = /* @__PURE__ */ new Set(["--help", "-h", "--version", "-V"]);
+function unsupportedRuntimeMessage(runtimeVersion, args) {
+  if (satisfies(runtimeVersion, SUPPORTED_NODE_RANGE)) return void 0;
+  if (args.length === 0 || args[0] === "help" || args.some((argument) => informationalArguments.has(argument)))
+    return void 0;
+  return `LaunchStack CLI requires Node.js ${SUPPORTED_NODE_RANGE}. Current runtime: ${runtimeVersion}. Install a supported Node.js 24 or 26 release and retry.`;
+}
+
 // src/cli.ts
+var runtimeMessage = unsupportedRuntimeMessage(
+  process.version,
+  process.argv.slice(2)
+);
+if (runtimeMessage) {
+  console.error(runtimeMessage);
+  process.exitCode = 1;
+}
 var program = new Command22();
 program.name("launchstack").description(
   "Backend API scaffolding and lifecycle platform for production TypeScript services"
@@ -1733,8 +1748,9 @@ program.addCommand(historyCommand);
 program.addCommand(rollbackCommand);
 program.addCommand(dockerCommand);
 program.addCommand(githubCommand);
-program.parseAsync().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+if (!runtimeMessage)
+  program.parseAsync().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
 //# sourceMappingURL=cli.mjs.map

@@ -31,3 +31,15 @@ The v3.0.5 directory-lock implementation was measured separately on Node.js 24.2
 | 10,000 |    5.12 / 6.19 s |         79.8 MiB |
 
 For a plan with `n` paths and `B` bytes of file content, path sorting is `O(n log n)`, file staging and commit perform `O(n)` filesystem operations, and content I/O is `O(B)`. Lock acquisition uses a fixed number of filesystem operations in the uncontended case; owner-directory inspection occurs only while another or stale lock is present. Concurrent writer tests cover 8 and 32 processes; the benchmark does not measure distributed locking across separate hosts or network partitions.
+
+## v3.0.6 transaction sample
+
+The v3.0.6 sample ran on Node.js 24.22.1, Linux x64, AMD EPYC 9V74, with 4 visible CPUs and 33.3 GiB reported memory. It used three fresh processes per size with no warmup. This is a host-specific sample and is not directly comparable with the v3.0.4 or v3.0.5 measurements. Full raw values are in [`transactions-3.0.6.json`](transactions-3.0.6.json).
+
+|  Files |        p50 / p95 | Sampled peak RSS |
+| -----: | ---------------: | ---------------: |
+|    100 |   78.8 / 83.7 ms |         60.9 MiB |
+|  1,000 | 594.4 / 661.9 ms |         70.3 MiB |
+| 10,000 |    6.23 / 6.41 s |         81.8 MiB |
+
+Reproduce with `NPM_CONFIG_CACHE=/workspace/.npm-cache npm run bench:transactions`.
