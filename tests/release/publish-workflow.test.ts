@@ -19,8 +19,12 @@ describe("npm publish workflow authorization", () => {
     expect(workflow).toContain("environment: npm-publish");
   });
 
-  it("pins this authorization workflow to the reviewed package version", () => {
-    expect(workflow).toContain('if [ "$VERSION" != "3.0.5" ]');
+  it("validates a stable package version and its matching release notes", () => {
+    expect(workflow).toContain(
+      '[[ ! "$VERSION" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]]',
+    );
+    expect(workflow).toContain('NOTES="RELEASE_NOTES_${VERSION}.md"');
+    expect(workflow).not.toContain('VERSION" != "3.0.5"');
     expect(workflow).toContain("npm run release:check");
     expect(workflow).toContain("npm publish --access public --provenance");
   });
