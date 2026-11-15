@@ -1,7 +1,7 @@
 # LaunchStack CLI
 
 [![GitHub release](https://img.shields.io/github/v/release/wbizmo/launchstack-cli?display_name=tag)](https://github.com/wbizmo/launchstack-cli/releases)
-[![npm version](https://img.shields.io/badge/npm-v3.0.6-CB3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/launchstack-cli)
+[![npm version](https://img.shields.io/npm/v/launchstack-cli?logo=npm&logoColor=white)](https://www.npmjs.com/package/launchstack-cli)
 [![Node.js](https://img.shields.io/badge/Node.js-24%20%7C%2026-339933?logo=node.js&logoColor=white)](docs/COMPATIBILITY.md)
 [![License: MIT](https://img.shields.io/github/license/wbizmo/launchstack-cli)](LICENSE)
 
