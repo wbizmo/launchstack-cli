@@ -13,4 +13,4 @@ LaunchStack CLI's current release is [v3.0.5](https://github.com/wbizmo/launchst
 | 3.0.4   | 2026-11-14   | Runtime modernization, lifecycle/security hardening and qualification.     | [Release notes](../RELEASE_NOTES_3.0.4.md) |
 | 3.0.5   | 2026-11-15   | Portable mutation locks and CLI project validation and creation fixes.     | [Release notes](../RELEASE_NOTES_3.0.5.md) |
 
-The [cumulative changelog](../CHANGELOG.md) records changes by release. The source repository's [benchmark reports](benchmarks/) include methodology, raw machine-readable results and known limits for v3.0.4; v3.0.5 does not claim new benchmark results.
+The [cumulative changelog](../CHANGELOG.md) records changes by release. The [benchmark reports](benchmarks/) include methodology, raw machine-readable results and known limits. v3.0.5 includes transaction benchmark runs at 100, 1,000 and 10,000 files; the measurements and environment details are in the transaction report.

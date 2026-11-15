@@ -256,6 +256,7 @@ function writeJournal(projectDirectory: string, journal: Journal): void {
 function acquireLock(projectDirectory: string): () => void {
   const directory = ensureMetadataDirectory(projectDirectory);
   const lockPath = join(directory, "mutation.lock");
+  let unverifiedLockInitialization = false;
 
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const lockId = randomUUID();
@@ -354,9 +355,18 @@ function acquireLock(projectDirectory: string): () => void {
             name.startsWith("owner-"),
           );
           if (!ownerName) {
+            // A creator may be suspended after mkdir but before it can capture
+            // the directory identity or write owner metadata. Age alone cannot
+            // distinguish that live creator from an abandoned empty directory.
+            // Never reclaim an empty lock directory without an owner to verify.
+            if (ownerNames.length === 0) {
+              unverifiedLockInitialization = true;
+              waitForLockRetry();
+              continue;
+            }
             // mkdir and owner creation are separate syscalls. A fresh empty
-            // directory may belong to an acquiring process; only reclaim an
-            // abandoned empty directory after a generous grace period.
+            // directory may belong to an acquiring process; temporary owner
+            // metadata must identify a dead process before it can be removed.
             if (Date.now() - lockStat.mtimeMs > 30_000) {
               let abandoned = true;
               for (const name of ownerNames) {
@@ -384,9 +394,11 @@ function acquireLock(projectDirectory: string): () => void {
                     temporaryFile.content,
                   ) as typeof temporaryLock;
                 } catch {
-                  // A crash during the write can leave incomplete temporary
-                  // metadata. The directory age and inode check below bound
-                  // cleanup to that abandoned acquisition attempt.
+                  // Incomplete metadata cannot distinguish a crash from a
+                  // suspended writer, so leave it for explicit cleanup.
+                  abandoned = false;
+                  unverifiedLockInitialization = true;
+                  break;
                 }
                 if (
                   temporaryLock.id &&
@@ -530,6 +542,10 @@ function acquireLock(projectDirectory: string): () => void {
     }
   }
 
+  if (unverifiedLockInitialization)
+    throw new Error(
+      "Mutation lock initialization has no verifiable owner. Verify that no mutation is running, remove .launchstack/mutation.lock, and retry.",
+    );
   throw new Error("Unable to acquire LaunchStack project mutation lock.");
 }
 

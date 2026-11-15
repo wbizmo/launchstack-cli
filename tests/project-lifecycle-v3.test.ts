@@ -128,6 +128,72 @@ describe("v3 project lifecycle primitives", () => {
     expect(existsSync(lock)).toBe(false);
   });
 
+  test("does not reclaim a paused acquirer's empty lock directory", async () => {
+    const root = fixture();
+    const lock = join(root, ".launchstack", "mutation.lock");
+    const transactionModule = resolve(
+      process.cwd(),
+      "src/project/transaction.ts",
+    );
+    const typesModule = resolve(process.cwd(), "src/project/types.ts");
+    const code = `const fs = require("node:fs"); const lockPath = ${JSON.stringify(lock)}; const originalMkdir = fs.mkdirSync; let paused = false; fs.mkdirSync = function (path, ...args) { const result = originalMkdir.call(fs, path, ...args); if (!paused && path === lockPath) { paused = true; process.send("created"); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 9000); } return result; }; const { applyFileMutations } = require(${JSON.stringify(transactionModule)}); const { emptyProjectState } = require(${JSON.stringify(typesModule)}); applyFileMutations({ projectDirectory: ${JSON.stringify(root)}, state: emptyProjectState("3.0.5", "3.0.5"), mutations: [{ type: "write", path: "writers/paused-owner.txt", content: "owner\\n", owner: "test", version: "1", expectedSha256: null }] });`;
+    const child = spawn(process.execPath, ["--import", "tsx", "--eval", code], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "ignore", "pipe", "ipc"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      child.once("message", () => resolvePromise());
+      child.once("error", rejectPromise);
+      child.once("exit", (codeValue) =>
+        rejectPromise(
+          new Error(`paused lock owner exited early (${codeValue}): ${stderr}`),
+        ),
+      );
+    });
+
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lock, old, old);
+    expect(() =>
+      applyFileMutations({
+        projectDirectory: root,
+        state: emptyProjectState("3.0.5", "3.0.5"),
+        mutations: [
+          {
+            type: "write",
+            path: "writers/contender.txt",
+            content: "contender\n",
+            owner: "test",
+            version: "1",
+            expectedSha256: null,
+          },
+        ],
+      }),
+    ).toThrow(/no verifiable owner/i);
+    expect(readdirSync(lock)).toEqual([]);
+
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      child.once("error", rejectPromise);
+      child.once("exit", (codeValue) =>
+        codeValue === 0
+          ? resolvePromise()
+          : rejectPromise(
+              new Error(
+                `paused lock owner exited with ${codeValue}: ${stderr}`,
+              ),
+            ),
+      );
+    });
+    expect(
+      readFileSync(join(root, "writers", "paused-owner.txt"), "utf8"),
+    ).toBe("owner\n");
+    expect(existsSync(join(root, "writers", "contender.txt"))).toBe(false);
+  }, 15_000);
+
   test("does not reclaim a stale legacy lock without coordinating with older CLIs", () => {
     const root = fixture();
     const lock = join(root, ".launchstack", "mutation.lock");

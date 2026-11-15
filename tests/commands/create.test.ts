@@ -1,3 +1,4 @@
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createCommand,
@@ -24,10 +25,10 @@ describe("create command", () => {
 
   it("creates the named project inside the selected parent directory", () => {
     expect(resolveCreateDestination("my-api", "/tmp/projects", "/work")).toBe(
-      "/tmp/projects/my-api",
+      join(resolve("/tmp/projects"), "my-api"),
     );
     expect(resolveCreateDestination("my-api", undefined, "/work")).toBe(
-      "/work/my-api",
+      join(resolve("/work"), "my-api"),
     );
   });
 

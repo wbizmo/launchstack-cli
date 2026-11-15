@@ -870,6 +870,7 @@ function writeJournal(projectDirectory, journal) {
 function acquireLock(projectDirectory) {
   const directory2 = ensureMetadataDirectory(projectDirectory);
   const lockPath = (0, import_node_path5.join)(directory2, "mutation.lock");
+  let unverifiedLockInitialization = false;
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const lockId = (0, import_node_crypto3.randomUUID)();
     const ownerPath = (0, import_node_path5.join)(lockPath, `owner-${lockId}.json`);
@@ -948,6 +949,11 @@ function acquireLock(projectDirectory) {
             (name) => name.startsWith("owner-")
           );
           if (!ownerName) {
+            if (ownerNames.length === 0) {
+              unverifiedLockInitialization = true;
+              waitForLockRetry();
+              continue;
+            }
             if (Date.now() - lockStat.mtimeMs > 3e4) {
               let abandoned = true;
               for (const name of ownerNames) {
@@ -971,6 +977,9 @@ function acquireLock(projectDirectory) {
                     temporaryFile.content
                   );
                 } catch {
+                  abandoned = false;
+                  unverifiedLockInitialization = true;
+                  break;
                 }
                 if (temporaryLock.id && name !== `.owner-${temporaryLock.id}.tmp`) {
                   abandoned = false;
@@ -1056,6 +1065,10 @@ function acquireLock(projectDirectory) {
       }
     }
   }
+  if (unverifiedLockInitialization)
+    throw new Error(
+      "Mutation lock initialization has no verifiable owner. Verify that no mutation is running, remove .launchstack/mutation.lock, and retry."
+    );
   throw new Error("Unable to acquire LaunchStack project mutation lock.");
 }
 function restoreJournal(projectDirectory, journal) {

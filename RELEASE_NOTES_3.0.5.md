@@ -4,7 +4,7 @@ LaunchStack CLI 3.0.5 is a hotfix release focused on project mutation reliabilit
 
 ## Fixes and improvements
 
-- Project mutations use an atomic directory lock, avoiding hard-link requirements on FUSE, network and restricted filesystems. Stale-owner detection and concurrent writer serialization remain in place.
+- Project mutations use an atomic directory lock, avoiding hard-link requirements on FUSE, network and restricted filesystems. Stale-owner detection and concurrent writer serialization remain in place. An empty or incomplete lock initialization is never reclaimed by age alone; if its process crashed before writing verifiable owner metadata, verify that no mutation is running, remove `.launchstack/mutation.lock`, and retry.
 - Existing lock files from older CLI releases remain compatible while live. If one is stale, the CLI asks the user to verify no mutation is running and remove that legacy lock; new directory locks recover stale owners automatically.
 - `launchstack validate` reads and validates v3 `launchstack.json` project manifests and retains support for legacy `launchstack.config.json` files.
 - `launchstack create <name> --directory <parent>` now creates `<parent>/<name>`. Add `--verbose` to see the generation stages.
