@@ -91,7 +91,13 @@ async function main(): Promise<void> {
       temp,
     );
     const installMs = performance.now() - installStarted;
-    const cli = join(temp, "node_modules", "launchstack-cli", "dist", "cli.js");
+    const cli = join(
+      temp,
+      "node_modules",
+      "launchstack-cli",
+      "bin",
+      "launchstack.cjs",
+    );
     let firstStartupMs = 0;
     const warmSamples: number[] = [];
     for (let index = 0; index < repetitions + 1; index += 1) {

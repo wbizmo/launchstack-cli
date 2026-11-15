@@ -54,12 +54,8 @@ export const addCommand = new Command("add")
           projectDirectory: options.directory ?? process.cwd(),
           requested: [capability],
           registry: FIRST_PARTY_EXTENSIONS,
+          ...(provider ? { provider } : {}),
         });
-        if (provider && plan.nextManifest.capabilities[capability])
-          plan.nextManifest.capabilities[capability] = {
-            ...plan.nextManifest.capabilities[capability],
-            provider,
-          };
         if (!options.dryRun) applyExtensionInstall(plan);
         const capabilityDefinition = FIRST_PARTY_EXTENSIONS[capability];
         const coverageWarning =

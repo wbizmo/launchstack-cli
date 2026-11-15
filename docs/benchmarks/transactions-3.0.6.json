@@ -1,0 +1,52 @@
+{
+  "repository": "/workspace/launchstack-cli",
+  "node": "v24.22.1",
+  "platform": "linux x64",
+  "source_sha256": "d9702a06fe9edb073af01fd0b0bb9222487f37c8bffab1664a0ef8d113642b9c",
+  "source_identity_files": ["src/project/transaction.ts", "bench/mutations.ts"],
+  "worker_count": 3,
+  "warmup": 0,
+  "isolation": "one fresh process and temporary project per repetition",
+  "measurements": "parent-observed wall time; /proc VmRSS sampled every 5ms",
+  "results": [
+    {
+      "files": 100,
+      "bytes": 1090,
+      "repetitions": 3,
+      "latency_ms": {
+        "p50": 110.175,
+        "p95": 115.113
+      },
+      "latency_samples_ms": [115.113, 89.126, 110.175],
+      "sampled_peak_rss_kb": 61172,
+      "errors": 0,
+      "content_checks": true
+    },
+    {
+      "files": 1000,
+      "bytes": 11890,
+      "repetitions": 3,
+      "latency_ms": {
+        "p50": 727.163,
+        "p95": 731.493
+      },
+      "latency_samples_ms": [731.493, 639.872, 727.163],
+      "sampled_peak_rss_kb": 71636,
+      "errors": 0,
+      "content_checks": true
+    },
+    {
+      "files": 10000,
+      "bytes": 128890,
+      "repetitions": 3,
+      "latency_ms": {
+        "p50": 6062.339,
+        "p95": 6277.066
+      },
+      "latency_samples_ms": [5992.082, 6277.066, 6062.339],
+      "sampled_peak_rss_kb": 82416,
+      "errors": 0,
+      "content_checks": true
+    }
+  ]
+}

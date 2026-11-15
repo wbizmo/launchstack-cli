@@ -29,7 +29,7 @@ function run(command, args, options = {}) {
 
 try {
   run(node, [
-    join(root, "dist", "cli.js"),
+    join(root, "bin", "launchstack.cjs"),
     "create",
     "smoke-api",
     "--directory",
@@ -37,7 +37,7 @@ try {
     "--no-install",
   ]);
   run(node, [
-    join(root, "dist", "cli.js"),
+    join(root, "bin", "launchstack.cjs"),
     "generate",
     "resource",
     "invoice",

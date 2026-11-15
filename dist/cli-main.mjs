@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import {
   AUDIT_SEVERITIES,
   DevOrchestrator,
@@ -37,9 +36,9 @@ import {
   runProductionAudit,
   selectDevPlan,
   severityRank
-} from "./chunk-QHUI4JDJ.mjs";
+} from "./chunk-VVVC34HH.mjs";
 
-// src/cli.ts
+// src/cli-main.ts
 import { Command as Command22 } from "commander";
 
 // src/commands/add.ts
@@ -71,13 +70,9 @@ var addCommand = new Command("add").description("Add a production capability to 
       const plan = planExtensionInstall({
         projectDirectory: options.directory ?? process.cwd(),
         requested: [capability],
-        registry: FIRST_PARTY_EXTENSIONS
+        registry: FIRST_PARTY_EXTENSIONS,
+        ...provider ? { provider } : {}
       });
-      if (provider && plan.nextManifest.capabilities[capability])
-        plan.nextManifest.capabilities[capability] = {
-          ...plan.nextManifest.capabilities[capability],
-          provider
-        };
       if (!options.dryRun) applyExtensionInstall(plan);
       const capabilityDefinition = FIRST_PARTY_EXTENSIONS[capability];
       const coverageWarning = capabilityDefinition?.coverage === "helper-only" ? [
@@ -1701,7 +1696,7 @@ var validateCommand = new Command21("validate").description("Validate the Launch
   }
 });
 
-// src/cli.ts
+// src/cli-main.ts
 var program = new Command22();
 program.name("launchstack").description(
   "Backend API scaffolding and lifecycle platform for production TypeScript services"
@@ -1737,4 +1732,4 @@ program.parseAsync().catch((error) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });
-//# sourceMappingURL=cli.mjs.map
+//# sourceMappingURL=cli-main.mjs.map

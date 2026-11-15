@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { intersects, validRange } from "semver";
+import { parse as parseYaml } from "yaml";
 import { loadProjectManifest } from "../project/manifest";
 import { detectManagedDrift, loadProjectState } from "../project/state";
 import {
@@ -208,7 +209,31 @@ function npmAdvisoryFindings(root: string): AuditFinding[] {
 
 function gitTrackedFiles(
   root: string,
-): { paths: string[]; complete: true } | { paths: []; complete: false } {
+):
+  | { paths: string[]; complete: true }
+  | { paths: []; complete: false; reason: "not-git" | "incomplete" } {
+  try {
+    const repository = execFileSync(
+      "git",
+      ["rev-parse", "--is-inside-work-tree"],
+      {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 10_000,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    ).trim();
+    if (repository !== "true")
+      return { paths: [], complete: false, reason: "not-git" };
+  } catch (error) {
+    const stderr =
+      error && typeof error === "object" && "stderr" in error
+        ? String((error as { stderr?: unknown }).stderr ?? "")
+        : "";
+    if (/not a git repository|outside a git work tree/i.test(stderr))
+      return { paths: [], complete: false, reason: "not-git" };
+    return { paths: [], complete: false, reason: "incomplete" };
+  }
   try {
     return {
       paths: execFileSync("git", ["ls-files", "-z"], {
@@ -223,8 +248,52 @@ function gitTrackedFiles(
       complete: true,
     };
   } catch {
-    return { paths: [], complete: false };
+    return { paths: [], complete: false, reason: "incomplete" };
   }
+}
+function composeApiEnvironment(
+  content: string,
+): Record<string, unknown> | undefined {
+  try {
+    const parsed = parseYaml(
+      content.replace(/!reset\s+(\[\]|\{\})/g, "$1"),
+    ) as {
+      services?: Record<string, { environment?: unknown }>;
+    } | null;
+    const environment = parsed?.services?.api?.environment;
+    if (Array.isArray(environment)) {
+      const values: Record<string, unknown> = {};
+      for (const entry of environment) {
+        if (typeof entry !== "string") continue;
+        const separator = entry.indexOf("=");
+        if (separator < 0) values[entry] = undefined;
+        else values[entry.slice(0, separator)] = entry.slice(separator + 1);
+      }
+      return values;
+    }
+    if (
+      typeof environment === "object" &&
+      environment !== null &&
+      !Array.isArray(environment)
+    )
+      return environment as Record<string, unknown>;
+    return {};
+  } catch {
+    return undefined;
+  }
+}
+function composeApiEnvironmentReset(content: string): boolean {
+  return /environment\s*:\s*!reset\s+(?:\[\s*\]|\{\s*\})/m.test(content);
+}
+function requiresExplicitComposeValue(
+  environment: Record<string, unknown>,
+  name: string,
+): boolean {
+  const value = environment[name];
+  return (
+    typeof value === "string" &&
+    new RegExp(`^\\$\\{${name}(?::)?\\?`).test(value)
+  );
 }
 const finding = (
   ruleId: string,
@@ -309,13 +378,23 @@ export function runProductionAudit(
         ),
       );
   const trackedResult = gitTrackedFiles(root);
-  if (!trackedResult.complete)
+  if (!trackedResult.complete && trackedResult.reason === "not-git")
+    findings.push(
+      finding(
+        "LS022",
+        "medium",
+        "Project is not a Git repository",
+        "Tracked-file secret checks could not run because this directory is not inside a Git work tree. Initialize or select the project repository to include tracked paths in the audit.",
+        true,
+      ),
+    );
+  else if (!trackedResult.complete)
     findings.push(
       finding(
         "LS022",
         "high",
         "Tracked paths could not be fully audited",
-        "Git path enumeration failed or exceeded the 16 MiB audit bound; secret-path results are incomplete.",
+        "Git path enumeration failed, timed out, or exceeded the 16 MiB audit bound; tracked-file secret results are incomplete.",
         true,
       ),
     );
@@ -437,23 +516,46 @@ export function runProductionAudit(
       );
     }
   }
-  const productionCompose =
-    readIfPresent(root, "docker-compose.production.yml") ?? "";
-  if (
-    productionCompose &&
-    (!/CORS_ORIGIN:\s*\$\{CORS_ORIGIN:\?/.test(productionCompose) ||
-      !/JWT_(?:ACCESS|REFRESH)_SECRET:\s*\$\{JWT_/.test(productionCompose))
-  )
-    findings.push(
-      finding(
-        "LS021",
-        "high",
-        "Production Compose does not require deployment settings",
-        "Production Compose should require an explicit CORS origin and JWT secrets.",
-        true,
-        "docker-compose.production.yml",
-      ),
-    );
+  const baseCompose = readIfPresent(root, "docker-compose.yml");
+  const productionCompose = readIfPresent(
+    root,
+    "docker-compose.production.yml",
+  );
+  if (baseCompose !== undefined || productionCompose !== undefined) {
+    const baseEnvironment = baseCompose
+      ? composeApiEnvironment(baseCompose)
+      : {};
+    const productionEnvironment = productionCompose
+      ? composeApiEnvironment(productionCompose)
+      : {};
+    const effectiveEnvironment =
+      baseEnvironment && productionEnvironment
+        ? productionCompose && composeApiEnvironmentReset(productionCompose)
+          ? productionEnvironment
+          : { ...baseEnvironment, ...productionEnvironment }
+        : undefined;
+    if (
+      !effectiveEnvironment ||
+      !requiresExplicitComposeValue(effectiveEnvironment, "CORS_ORIGIN") ||
+      !requiresExplicitComposeValue(
+        effectiveEnvironment,
+        "JWT_ACCESS_SECRET",
+      ) ||
+      !requiresExplicitComposeValue(effectiveEnvironment, "JWT_REFRESH_SECRET")
+    )
+      findings.push(
+        finding(
+          "LS021",
+          "high",
+          "Production Compose does not require deployment settings",
+          "Production Compose should require an explicit CORS origin and JWT secrets.",
+          true,
+          productionCompose !== undefined
+            ? "docker-compose.production.yml"
+            : "docker-compose.yml",
+        ),
+      );
+  }
   if (pkg) {
     const scripts =
       pkg.scripts && typeof pkg.scripts === "object"

@@ -1,12 +1,12 @@
 {
   "name": "launchstack-cli",
-  "version": "3.0.5",
+  "version": "3.0.6",
   "description": "A TypeScript CLI for production-ready backend API scaffolding, lifecycle management, deployment preparation, configuration management, and developer workflows.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "bin": {
-    "launchstack": "./dist/cli.js"
+    "launchstack": "./bin/launchstack.cjs"
   },
   "repository": {
     "type": "git",
@@ -27,6 +27,7 @@
     "security:fuzz": "node scripts/security-fuzz.cjs",
     "bench:template": "vitest bench bench/template-render.bench.ts",
     "bench:transactions": "tsx bench/mutations.ts",
+    "bench:capability-mutations": "tsx bench/capability-mutations.ts",
     "bench:upgrades": "tsx bench/upgrades.ts",
     "bench:capabilities": "tsx bench/capabilities.ts",
     "bench:complexity": "tsx bench/complexity.ts",
@@ -68,6 +69,7 @@
   "author": "Williams Ashibuogwu",
   "license": "MIT",
   "files": [
+    "bin",
     "dist",
     "README.md",
     "LICENSE"

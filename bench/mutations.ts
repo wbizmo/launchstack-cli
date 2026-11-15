@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,16 +34,24 @@ async function runWorker(size: number): Promise<void> {
     applyFileMutations({
       projectDirectory,
       mutations,
-      state: emptyProjectState("3.0.0", "3.0.4"),
+      state: emptyProjectState("3.0.0", "3.0.6"),
     });
+    const elapsed_ms = performance.now() - started;
+    for (const mutation of mutations)
+      if (
+        readFileSync(join(projectDirectory, mutation.path), "utf8") !==
+        mutation.content
+      )
+        throw new Error(`Content check failed for ${mutation.path}.`);
     process.stdout.write(
       JSON.stringify({
-        elapsed_ms: performance.now() - started,
+        elapsed_ms,
         files: size,
         bytes: mutations.reduce(
           (sum, mutation) => sum + Buffer.byteLength(mutation.content),
           0,
         ),
+        content_checks: "passed",
       }),
     );
   } finally {
@@ -64,6 +73,7 @@ async function sampleRun(size: number): Promise<{
   peak_rss_kb: number;
   files: number;
   bytes: number;
+  content_checks: "passed";
 }> {
   const script = __filename;
   const child = spawn(
@@ -104,6 +114,7 @@ async function sampleRun(size: number): Promise<{
       elapsed_ms: number;
       files: number;
       bytes: number;
+      content_checks: "passed";
     }),
     peak_rss_kb: peak,
   };
@@ -116,6 +127,13 @@ function percentile(samples: number[], fraction: number): number {
       Math.min(sorted.length - 1, Math.ceil(fraction * sorted.length) - 1)
     ]?.toFixed(3) ?? 0,
   );
+}
+
+function sourceSha256(): string {
+  const hash = createHash("sha256");
+  hash.update(readFileSync(join(repository, "src/project/transaction.ts")));
+  hash.update(readFileSync(__filename));
+  return hash.digest("hex");
 }
 
 async function runSuite(): Promise<void> {
@@ -140,12 +158,16 @@ async function runSuite(): Promise<void> {
           0.95,
         ),
       },
+      latency_samples_ms: samples.map((item) =>
+        Number(item.elapsed_ms.toFixed(3)),
+      ),
       sampled_peak_rss_kb: Math.max(...samples.map((item) => item.peak_rss_kb)),
       errors: 0,
+      content_checks: samples.every((item) => item.content_checks === "passed"),
     });
   }
   process.stdout.write(
-    `${JSON.stringify({ repository, node: process.version, platform: `${process.platform} ${process.arch}`, worker_count: workerCount, warmup: 0, isolation: "one fresh process and temporary project per repetition", measurements: "parent-observed wall time; /proc VmRSS sampled every 5ms", results }, null, 2)}\n`,
+    `${JSON.stringify({ repository, node: process.version, platform: `${process.platform} ${process.arch}`, source_sha256: sourceSha256(), source_identity_files: ["src/project/transaction.ts", "bench/mutations.ts"], worker_count: workerCount, warmup: 0, isolation: "one fresh process and temporary project per repetition", measurements: "parent-observed wall time; /proc VmRSS sampled every 5ms", results }, null, 2)}\n`,
   );
 }
 

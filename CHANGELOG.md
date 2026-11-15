@@ -2,6 +2,20 @@
 
 Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.md`](docs/RELEASE_HISTORY.md).
 
+## [3.0.6] - 2026-11-15
+
+### Fixed
+
+- Replan capability installs while holding the project mutation lock, so concurrent independent installs preserve both manifest/state entries and their generated files in serialized transactions.
+- Check production CORS and JWT requirements across the base and production Compose files, including inherited settings.
+- Report a project outside a Git work tree distinctly from failed or bounded Git path enumeration, and lower the non-Git completeness notice to medium severity.
+- Enforce the declared Node.js 24/26 support range for CLI commands with an actionable message while preserving help and version output.
+
+### Documentation
+
+- Add generated Compose instructions for passing a custom CA through BuildKit secrets.
+- Record end-to-end v3.0.5 generated-project checks and v3.0.6 local verification in the release notes.
+
 ## [3.0.5] - 2026-11-15
 
 ### Fixed

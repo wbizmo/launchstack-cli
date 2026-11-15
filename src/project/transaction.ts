@@ -641,16 +641,30 @@ export function withTrackedMutations(
   return next;
 }
 
-export function applyFileMutations(input: {
-  projectDirectory: string;
+type PreparedMutationBatch = {
   mutations: FileMutation[];
   state: ProjectState;
   nextState?: ProjectState;
-}): ProjectState {
+};
+type ApplyFileMutationsInput =
+  | (PreparedMutationBatch & {
+      projectDirectory: string;
+      prepare?: never;
+    })
+  | {
+      projectDirectory: string;
+      prepare: () => PreparedMutationBatch;
+    };
+
+export function applyFileMutations(
+  input: ApplyFileMutationsInput,
+): ProjectState {
   const projectDirectory = resolve(input.projectDirectory);
   const releaseLock = acquireLock(projectDirectory);
   try {
     recoverInterruptedMutation(projectDirectory);
+    const batch = input.prepare ? input.prepare() : input;
+    if (!batch.mutations.length) return batch.nextState ?? batch.state;
     const id = randomUUID();
     const metadata = ensureMetadataDirectory(projectDirectory);
     const stageDirectory = join(metadata, `.stage-${id}`);
@@ -661,7 +675,7 @@ export function applyFileMutations(input: {
 
     const stagedDirectories = new Set<string>();
     try {
-      const normalizedPaths = input.mutations
+      const normalizedPaths = batch.mutations
         .map((mutation) => {
           const normalized = normalizeManagedPath(mutation.path);
           if (
@@ -702,7 +716,7 @@ export function applyFileMutations(input: {
             `Mutation plan contains overlapping paths: ${normalizedPaths[index - 1]} and ${normalizedPaths[index]}`,
           );
       }
-      for (const mutation of input.mutations) {
+      for (const mutation of batch.mutations) {
         const target = resolveProjectPath(projectDirectory, mutation.path);
         const exists = existsSync(target);
         if (mutation.type === "write") {
@@ -744,7 +758,7 @@ export function applyFileMutations(input: {
       version: 1,
       id,
       state: "prepared",
-      mutations: input.mutations.map((mutation) => ({
+      mutations: batch.mutations.map((mutation) => ({
         type: mutation.type,
         path: mutation.path,
         hadOriginal: existsSync(
@@ -758,7 +772,7 @@ export function applyFileMutations(input: {
       journal.state = "committing";
       writeJournal(projectDirectory, journal);
       const committedDirectories = new Set<string>();
-      for (const mutation of input.mutations) {
+      for (const mutation of batch.mutations) {
         const target = resolveProjectPath(projectDirectory, mutation.path);
         const backup = join(backupDirectory, mutation.path);
         if (existsSync(target)) {
@@ -792,8 +806,8 @@ export function applyFileMutations(input: {
         }
       }
       syncDirectories(committedDirectories);
-      const nextState =
-        input.nextState ?? withTrackedMutations(input.state, input.mutations);
+      const committedState =
+        batch.nextState ?? withTrackedMutations(batch.state, batch.mutations);
       journal.state = "committed";
       writeJournal(projectDirectory, journal);
       try {
@@ -804,7 +818,7 @@ export function applyFileMutations(input: {
       } catch {
         // The committed journal lets the next operation safely finish cleanup.
       }
-      return nextState;
+      return committedState;
     } catch (error) {
       try {
         restoreJournal(projectDirectory, readJournal(projectDirectory));

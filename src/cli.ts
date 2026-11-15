@@ -1,75 +1,32 @@
 #!/usr/bin/env node
-import { Command } from "commander";
-import { addCommand } from "./commands/add";
-import {
-  applyCommand,
-  diffCommand,
-  planCommand,
-  reconcileCommand,
-  upgradeCommand,
-} from "./commands/project";
-import { auditCommand } from "./commands/audit";
-import { clientCommand } from "./commands/client-generate";
-import { createCommand } from "./commands/create";
-import { deployCommand } from "./commands/deploy";
-import {
-  destroyCommand,
-  previewCommand,
-  stageCommand,
-} from "./commands/stages";
-import { devCommand } from "./commands/dev";
-import { doctorCommand } from "./commands/doctor";
-import { dockerCommand } from "./commands/docker";
-import { envCommand } from "./commands/env";
-import { generateCommand } from "./commands/generate";
-import { githubCommand } from "./commands/github";
-import { historyCommand } from "./commands/history";
-import { initCommand } from "./commands/init";
-import { pluginCommand } from "./commands/plugin";
-import { providerCommand } from "./commands/provider";
-import { rollbackCommand } from "./commands/rollback";
-import { secretsCommand } from "./commands/secrets";
-import { statusCommand } from "./commands/status";
-import { validateCommand } from "./commands/validate";
 import { currentLaunchStackVersion } from "./version";
+import {
+  isRuntimeHelpRequest,
+  isRuntimeVersionRequest,
+  unsupportedRuntimeMessage,
+} from "./runtime-policy";
 
-const program = new Command();
-program
-  .name("launchstack")
-  .description(
-    "Backend API scaffolding and lifecycle platform for production TypeScript services",
-  )
-  .version(currentLaunchStackVersion());
+const args = process.argv.slice(2);
+const runtimeMessage = unsupportedRuntimeMessage(process.version, args);
 
-program.addCommand(createCommand);
-program.addCommand(addCommand);
-program.addCommand(pluginCommand);
-program.addCommand(planCommand);
-program.addCommand(applyCommand);
-program.addCommand(reconcileCommand);
-program.addCommand(diffCommand);
-program.addCommand(upgradeCommand);
-program.addCommand(devCommand);
-program.addCommand(clientCommand);
-program.addCommand(auditCommand);
-program.addCommand(generateCommand);
-program.addCommand(previewCommand);
-program.addCommand(stageCommand);
-program.addCommand(destroyCommand);
-program.addCommand(doctorCommand);
-program.addCommand(initCommand);
-program.addCommand(statusCommand);
-program.addCommand(deployCommand);
-program.addCommand(validateCommand);
-program.addCommand(envCommand);
-program.addCommand(providerCommand);
-program.addCommand(secretsCommand);
-program.addCommand(historyCommand);
-program.addCommand(rollbackCommand);
-program.addCommand(dockerCommand);
-program.addCommand(githubCommand);
+if (runtimeMessage) {
+  if (isRuntimeVersionRequest(args)) {
+    console.log(currentLaunchStackVersion());
+  } else if (isRuntimeHelpRequest(args)) {
+    console.log(`LaunchStack CLI ${currentLaunchStackVersion()}
 
-program.parseAsync().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+Usage: launchstack <command> [options]
+
+Commands: create, init, validate, add, plugin, plan, apply, reconcile, diff, upgrade, dev, client, generate, audit, deploy, status, doctor, preview, stage, destroy, env, provider, secrets, docker, github, history, rollback
+
+Run the full command help with Node.js 24.22.0+ or 26.13.0+.`);
+  } else {
+    console.error(runtimeMessage);
+    process.exitCode = 1;
+  }
+} else {
+  void import("./cli-main").catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

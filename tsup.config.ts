@@ -8,7 +8,7 @@ const packageJson = JSON.parse(
 };
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/cli.ts"],
+  entry: ["src/index.ts", "src/cli-main.ts"],
   format: ["cjs", "esm"],
   dts: true,
   sourcemap: true,

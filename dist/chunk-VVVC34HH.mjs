@@ -1,0 +1,5771 @@
+// src/extensions/first-party.ts
+var extension = (value) => value;
+var redis = extension({
+  schemaVersion: 1,
+  id: "redis",
+  version: "1.0.0",
+  kind: "capability",
+  displayName: "Redis service and client",
+  supportedLaunchStack: ">=2 <4",
+  coverage: "complete",
+  packages: { dependencies: { ioredis: "^5.4.0" } },
+  environment: [
+    {
+      name: "REDIS_URL",
+      description: "Redis connection URL",
+      example: "redis://localhost:6379",
+      required: true
+    }
+  ],
+  composeServices: {
+    redis: {
+      image: "redis:8-alpine",
+      restart: "unless-stopped",
+      ports: ["127.0.0.1:${LAUNCHSTACK_REDIS_PORT:-6379}:6379"],
+      healthcheck: {
+        test: ["CMD", "redis-cli", "ping"],
+        interval: "5s",
+        timeout: "3s",
+        retries: 10
+      }
+    }
+  },
+  files: [
+    {
+      path: "src/launchstack/capabilities/redis.ts",
+      content: `import Redis from "ioredis";
+export function createRedisClient(url = process.env.REDIS_URL): Redis { if (!url) throw new Error("REDIS_URL is required"); return new Redis(url, { lazyConnect: true, maxRetriesPerRequest: null, enableReadyCheck: true }); }
+`
+    }
+  ]
+});
+var queue = extension({
+  schemaVersion: 1,
+  id: "queue",
+  version: "1.0.0",
+  kind: "capability",
+  displayName: "BullMQ worker and queue",
+  supportedLaunchStack: ">=2 <4",
+  coverage: "complete",
+  dependencies: ["redis"],
+  packages: { dependencies: { bullmq: "^5.0.0" } },
+  scripts: { worker: "tsx src/worker.ts" },
+  environment: [
+    {
+      name: "QUEUE_PREFIX",
+      description: "BullMQ key prefix",
+      example: "launchstack"
+    }
+  ],
+  files: [
+    {
+      path: "src/launchstack/capabilities/queue.ts",
+      content: `import { Queue, type JobsOptions } from "bullmq";
+import { createRedisClient } from "./redis";
+export const DEFAULT_QUEUE_NAME = "launchstack-default";
+export function createQueue<Data>(name = DEFAULT_QUEUE_NAME): Queue<Data> { if (!/^[a-zA-Z0-9:_-]{1,80}$/.test(name)) throw new Error("Invalid queue name"); return new Queue<Data>(name, { connection: createRedisClient(), prefix: process.env.QUEUE_PREFIX || undefined, defaultJobOptions: { attempts: 3, backoff: { type: "exponential", delay: 1000 }, removeOnComplete: 1000, removeOnFail: 5000 } satisfies JobsOptions }); }
+`
+    },
+    {
+      path: "src/worker.ts",
+      content: `import { createServer } from "node:http";
+import { Worker } from "bullmq";
+import { createRedisClient } from "./launchstack/capabilities/redis";
+import { DEFAULT_QUEUE_NAME } from "./launchstack/capabilities/queue";
+const connection = createRedisClient();
+const worker = new Worker(DEFAULT_QUEUE_NAME, async (job) => { console.info(JSON.stringify({ event: "job.processed", jobId: job.id, name: job.name })); return { processed: true }; }, { connection, prefix: process.env.QUEUE_PREFIX || undefined, concurrency: 4 });
+worker.on("failed", (job, error) => console.error(JSON.stringify({ event: "job.failed", jobId: job?.id, error: error.message })));
+let workerReady = false;
+worker.on("ready", () => { workerReady = true; console.info(JSON.stringify({ event: "worker.ready", queue: DEFAULT_QUEUE_NAME })); });
+const healthPort = Number(process.env.LAUNCHSTACK_WORKER_HEALTH_PORT ?? 0);
+const healthServer = healthPort > 0 ? createServer((request, response) => { response.statusCode = request.url === "/healthz" && workerReady ? 200 : 503; response.end(); }).listen(healthPort, "127.0.0.1") : null;
+let stopping = false;
+async function shutdown(): Promise<void> { if (stopping) return; stopping = true; if (healthServer) await new Promise<void>((resolve) => healthServer.close(() => resolve())); await worker.close(); await connection.quit(); }
+process.once("SIGINT", () => { void shutdown().then(() => process.exit(0)); });
+process.once("SIGTERM", () => { void shutdown().then(() => process.exit(0)); });
+`
+    }
+  ]
+});
+var oauth = extension({
+  schemaVersion: 1,
+  id: "oauth",
+  version: "1.0.0",
+  kind: "capability",
+  coverage: "helper-only",
+  displayName: "OAuth client helpers",
+  supportedLaunchStack: ">=2 <4",
+  environment: [
+    {
+      name: "OAUTH_CLIENT_ID",
+      description: "OAuth client identifier",
+      required: true
+    },
+    {
+      name: "OAUTH_CLIENT_SECRET",
+      description: "OAuth client secret",
+      required: true,
+      secret: true
+    },
+    {
+      name: "OAUTH_REDIRECT_URI",
+      description: "OAuth callback URL",
+      example: "http://localhost:3000/api/auth/callback",
+      required: true
+    }
+  ],
+  files: [
+    {
+      path: "src/launchstack/capabilities/oauth.ts",
+      content: `export function buildAuthorizationUrl(input: { authorizationEndpoint: string; state: string; scope: string[] }): string { if (input.state.length < 16) throw new Error("OAuth state must contain at least 16 characters"); const clientId = process.env.OAUTH_CLIENT_ID; const redirectUri = process.env.OAUTH_REDIRECT_URI; if (!clientId || !redirectUri) throw new Error("OAuth client configuration is incomplete"); const url = new URL(input.authorizationEndpoint); url.searchParams.set("response_type", "code"); url.searchParams.set("client_id", clientId); url.searchParams.set("redirect_uri", redirectUri); url.searchParams.set("scope", input.scope.join(" ")); url.searchParams.set("state", input.state); return url.toString(); }
+`
+    }
+  ]
+});
+var storage = extension({
+  schemaVersion: 1,
+  id: "storage",
+  version: "1.0.0",
+  kind: "capability",
+  coverage: "helper-only",
+  displayName: "S3-compatible storage",
+  supportedLaunchStack: ">=2 <4",
+  environment: [
+    {
+      name: "STORAGE_ENDPOINT",
+      description: "S3-compatible endpoint",
+      required: true
+    },
+    { name: "STORAGE_BUCKET", description: "Storage bucket", required: true },
+    {
+      name: "STORAGE_ACCESS_KEY_ID",
+      description: "Storage access key",
+      required: true,
+      secret: true
+    },
+    {
+      name: "STORAGE_SECRET_ACCESS_KEY",
+      description: "Storage secret key",
+      required: true,
+      secret: true
+    }
+  ],
+  files: [
+    {
+      path: "src/launchstack/capabilities/storage.ts",
+      content: `export type StorageConfig = { endpoint: URL; bucket: string; accessKeyId: string; secretAccessKey: string };
+export function storageConfig(): StorageConfig { const endpoint = process.env.STORAGE_ENDPOINT; const bucket = process.env.STORAGE_BUCKET; const accessKeyId = process.env.STORAGE_ACCESS_KEY_ID; const secretAccessKey = process.env.STORAGE_SECRET_ACCESS_KEY; if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) throw new Error("Storage configuration is incomplete"); return { endpoint: new URL(endpoint), bucket, accessKeyId, secretAccessKey }; }
+`
+    }
+  ]
+});
+var observability = extension({
+  schemaVersion: 1,
+  id: "observability",
+  version: "1.0.0",
+  kind: "capability",
+  coverage: "helper-only",
+  displayName: "OpenTelemetry baseline",
+  supportedLaunchStack: ">=2 <4",
+  packages: { dependencies: { "@opentelemetry/api": "^1.9.0" } },
+  environment: [
+    { name: "OTEL_SERVICE_NAME", description: "OpenTelemetry service name" }
+  ],
+  files: [
+    {
+      path: "src/launchstack/capabilities/observability.ts",
+      content: `import { trace } from "@opentelemetry/api";
+export const tracer = trace.getTracer(process.env.OTEL_SERVICE_NAME ?? "launchstack-api");
+`
+    }
+  ]
+});
+var websocket = extension({
+  schemaVersion: 1,
+  id: "websocket",
+  version: "1.0.0",
+  kind: "capability",
+  coverage: "helper-only",
+  displayName: "Fastify WebSocket",
+  supportedLaunchStack: ">=2 <4",
+  packages: { dependencies: { "@fastify/websocket": "^11.0.0" } },
+  files: [
+    {
+      path: "src/launchstack/capabilities/websocket.ts",
+      content: `import websocket from "@fastify/websocket";
+import type { FastifyInstance } from "fastify";
+export async function registerWebsocket(app: FastifyInstance): Promise<void> { await app.register(websocket); }
+`
+    }
+  ]
+});
+var email = extension({
+  schemaVersion: 1,
+  id: "email",
+  version: "1.0.0",
+  kind: "capability",
+  coverage: "helper-only",
+  displayName: "Email/notification adapter",
+  supportedLaunchStack: ">=2 <4",
+  environment: [
+    {
+      name: "EMAIL_FROM",
+      description: "Default sender address",
+      required: true
+    }
+  ],
+  files: [
+    {
+      path: "src/launchstack/capabilities/email.ts",
+      content: `export type EmailMessage = { to: string; subject: string; text: string; html?: string };
+export interface EmailAdapter { send(message: EmailMessage): Promise<void>; }
+export function requireEmailFrom(): string { const value = process.env.EMAIL_FROM; if (!value) throw new Error("EMAIL_FROM is required"); return value; }
+`
+    }
+  ]
+});
+var cron = extension({
+  schemaVersion: 1,
+  id: "cron",
+  version: "1.0.0",
+  kind: "capability",
+  coverage: "complete",
+  displayName: "Scheduled worker",
+  supportedLaunchStack: ">=2 <4",
+  scripts: { scheduler: "tsx src/scheduler.ts" },
+  files: [
+    {
+      path: "src/launchstack/capabilities/cron.ts",
+      content: `export function scheduleInterval(task: () => Promise<void>, intervalMs: number, onError: (error: unknown) => void = console.error): () => void { if (!Number.isFinite(intervalMs) || intervalMs < 1000) throw new Error("intervalMs must be at least 1000"); let running = false; const timer = setInterval(() => { if (running) return; running = true; void task().catch(onError).finally(() => { running = false; }); }, intervalMs); return () => clearInterval(timer); }
+`
+    },
+    {
+      path: "src/scheduler.ts",
+      content: `import { createServer } from "node:http";
+import { scheduleInterval } from "./launchstack/capabilities/cron";
+const intervalMs = Number(process.env.CRON_INTERVAL_MS ?? 60000);
+const stop = scheduleInterval(async () => { console.info(JSON.stringify({ event: "schedule.tick", at: new Date().toISOString() })); }, intervalMs);
+let schedulerReady = true;
+console.info(JSON.stringify({ event: "scheduler.ready", intervalMs }));
+const healthPort = Number(process.env.LAUNCHSTACK_SCHEDULER_HEALTH_PORT ?? 0);
+const healthServer = healthPort > 0 ? createServer((request, response) => { response.statusCode = request.url === "/healthz" && schedulerReady ? 200 : 503; response.end(); }).listen(healthPort, "127.0.0.1") : null;
+let stopping = false;
+function shutdown(): void { if (stopping) return; stopping = true; stop(); if (healthServer) healthServer.close(() => process.exit(0)); else process.exit(0); }
+process.once("SIGINT", shutdown);
+process.once("SIGTERM", shutdown);
+`
+    }
+  ]
+});
+var webhooks = extension({
+  schemaVersion: 1,
+  id: "webhooks",
+  version: "1.0.0",
+  kind: "capability",
+  coverage: "helper-only",
+  displayName: "Signed webhooks",
+  supportedLaunchStack: ">=2 <4",
+  environment: [
+    {
+      name: "WEBHOOK_SIGNING_SECRET",
+      description: "Webhook HMAC secret",
+      required: true,
+      secret: true
+    }
+  ],
+  files: [
+    {
+      path: "src/launchstack/capabilities/webhooks.ts",
+      content: `import { createHmac, timingSafeEqual } from "node:crypto";
+export function verifyWebhookSignature(payload: string | Buffer, signature: string, secret = process.env.WEBHOOK_SIGNING_SECRET): boolean { if (!secret || !/^[a-f0-9]{64}$/i.test(signature)) return false; const expected = createHmac("sha256", secret).update(payload).digest(); const supplied = Buffer.from(signature, "hex"); return supplied.length === expected.length && timingSafeEqual(supplied, expected); }
+`
+    }
+  ]
+});
+var FIRST_PARTY_EXTENSIONS = Object.fromEntries(
+  [
+    redis,
+    queue,
+    oauth,
+    storage,
+    observability,
+    websocket,
+    email,
+    cron,
+    webhooks
+  ].map((item) => [item.id, item])
+);
+function listFirstPartyExtensions() {
+  return Object.values(FIRST_PARTY_EXTENSIONS).sort(
+    (left, right) => left.id.localeCompare(right.id)
+  );
+}
+
+// src/project/types.ts
+var MANIFEST_SCHEMA_URL = "https://launchstack.dev/schemas/project-v1.json";
+var MANIFEST_SCHEMA_VERSION = 1;
+var STATE_SCHEMA_VERSION = 1;
+function emptyProjectState(templateVersion, cliVersion, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  return {
+    stateVersion: STATE_SCHEMA_VERSION,
+    templateVersion,
+    cliVersion,
+    managedFiles: {},
+    extensions: {},
+    stages: {},
+    updatedAt: now
+  };
+}
+
+// src/project/manifest.ts
+import { readFileSync } from "fs";
+import { join, resolve } from "path";
+import { z } from "zod";
+var jsonValueSchema = z.lazy(
+  () => z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema)
+  ])
+);
+var capabilitySchema = z.object({
+  version: z.string().min(1).max(64),
+  provider: z.string().min(1).max(64).optional(),
+  options: z.record(z.string(), jsonValueSchema).optional()
+}).strict();
+var stageSchema = z.object({
+  provider: z.string().min(1).max(64).optional(),
+  source: z.string().min(1).max(256).optional(),
+  production: z.boolean().optional(),
+  env: z.record(z.string(), z.string()).optional()
+}).strict();
+var suppressionSchema = z.object({
+  ruleId: z.string().regex(/^LS\d{3}$/),
+  reason: z.string().trim().min(8).max(300)
+}).strict();
+var projectManifestSchema = z.object({
+  $schema: z.literal(MANIFEST_SCHEMA_URL),
+  schemaVersion: z.literal(MANIFEST_SCHEMA_VERSION),
+  project: z.object({
+    name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/),
+    templateVersion: z.string().min(1).max(64)
+  }).strict(),
+  capabilities: z.record(z.string(), capabilitySchema),
+  provider: z.object({ id: z.string().min(1).max(64) }).strict().optional(),
+  stages: z.record(z.string(), stageSchema),
+  audit: z.object({ suppressions: z.array(suppressionSchema).max(100) }).strict().optional()
+}).strict();
+var MANIFEST_FILENAME = "launchstack.json";
+function parseProjectManifest(input) {
+  const result = projectManifestSchema.safeParse(input);
+  if (!result.success) {
+    const detail = result.error.issues.map((issue) => `${issue.path.join(".") || "manifest"}: ${issue.message}`).join("; ");
+    throw new Error(`Invalid ${MANIFEST_FILENAME}: ${detail}`);
+  }
+  return result.data;
+}
+function loadProjectManifest(projectDirectory) {
+  const manifestPath = join(resolve(projectDirectory), MANIFEST_FILENAME);
+  try {
+    return parseProjectManifest(JSON.parse(readFileSync(manifestPath, "utf8")));
+  } catch (error) {
+    throw new Error(
+      `Unable to read ${MANIFEST_FILENAME}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+function serializeProjectManifest(manifest) {
+  return `${JSON.stringify(parseProjectManifest(manifest), null, 2)}
+`;
+}
+function createProjectManifest(input) {
+  return parseProjectManifest({
+    $schema: MANIFEST_SCHEMA_URL,
+    schemaVersion: MANIFEST_SCHEMA_VERSION,
+    project: input,
+    capabilities: {},
+    provider: { id: "docker" },
+    stages: {}
+  });
+}
+
+// src/project/state.ts
+import { createHash } from "crypto";
+import {
+  closeSync,
+  constants,
+  existsSync as existsSync2,
+  fstatSync,
+  lstatSync as lstatSync2,
+  openSync,
+  readFileSync as readFileSync2,
+  readSync
+} from "fs";
+import { join as join2, resolve as resolve3 } from "path";
+import { z as z2 } from "zod";
+
+// src/project/paths.ts
+import { existsSync, lstatSync, realpathSync } from "fs";
+import { dirname, isAbsolute, relative, resolve as resolve2, sep } from "path";
+function normalizeManagedPath(path) {
+  if (!path || path.includes("\0") || isAbsolute(path) || /^[\\/]/.test(path) || /^[A-Za-z]:[\\/]/.test(path))
+    throw new Error(`Unsafe managed path: ${JSON.stringify(path)}`);
+  const segments = path.split(/[\\/]+/).filter(Boolean);
+  if (segments.length === 0 || segments.some((segment) => segment === ".." || segment === "."))
+    throw new Error(`Unsafe managed path: ${JSON.stringify(path)}`);
+  return segments.join("/");
+}
+function resolveProjectPath(projectDirectory, path) {
+  const root = resolve2(projectDirectory);
+  const normalized = normalizeManagedPath(path);
+  const target = resolve2(root, ...normalized.split("/"));
+  const fromRoot = relative(root, target);
+  if (fromRoot === "" || fromRoot.startsWith(`..${sep}`) || fromRoot === ".." || isAbsolute(fromRoot))
+    throw new Error(`Managed path escapes project root: ${path}`);
+  let cursor = root;
+  for (const segment of normalized.split("/")) {
+    cursor = resolve2(cursor, segment);
+    if (existsSync(cursor) && lstatSync(cursor).isSymbolicLink())
+      throw new Error(`Refusing to mutate symbolic-link path: ${path}`);
+  }
+  if (existsSync(root)) {
+    const realRoot = realpathSync(root);
+    let current = dirname(target);
+    while (!existsSync(current) && current !== realRoot)
+      current = dirname(current);
+    if (existsSync(current)) {
+      const relativeParent = relative(realRoot, realpathSync(current));
+      if (relativeParent.startsWith(`..${sep}`) || relativeParent === ".." || isAbsolute(relativeParent))
+        throw new Error(`Managed path resolves outside project root: ${path}`);
+    }
+  }
+  return target;
+}
+
+// src/project/state.ts
+var managedFileSchema = z2.object({
+  owner: z2.string().min(1),
+  sha256: z2.string().regex(/^[a-f0-9]{64}$/),
+  version: z2.string().min(1),
+  ownership: z2.enum(["launchstack", "shared", "extension"]).optional(),
+  migrationBaseSha256: z2.string().regex(/^[a-f0-9]{64}$/).optional()
+}).strict();
+var extensionSchema = z2.object({
+  id: z2.string().min(1),
+  version: z2.string().min(1),
+  kind: z2.enum(["capability", "plugin"]),
+  source: z2.string().optional(),
+  installedAt: z2.string().min(1)
+}).strict();
+var stageSchema2 = z2.object({
+  name: z2.string().min(1),
+  provider: z2.string().min(1),
+  resourceId: z2.string().min(1),
+  status: z2.enum(["creating", "ready", "failed", "destroyed"]),
+  sourceCommit: z2.string().optional(),
+  url: z2.string().optional(),
+  createdAt: z2.string().min(1),
+  updatedAt: z2.string().min(1),
+  production: z2.boolean()
+}).strict();
+var projectStateSchema = z2.object({
+  stateVersion: z2.literal(STATE_SCHEMA_VERSION),
+  templateVersion: z2.string().min(1),
+  cliVersion: z2.string().min(1),
+  managedFiles: z2.record(z2.string(), managedFileSchema),
+  extensions: z2.record(z2.string(), extensionSchema),
+  stages: z2.record(z2.string(), stageSchema2),
+  updatedAt: z2.string().min(1)
+}).strict();
+var STATE_DIRECTORY = ".launchstack";
+var STATE_FILENAME = "state.json";
+function sha256(content) {
+  return createHash("sha256").update(content).digest("hex");
+}
+var MAX_MANAGED_FILE_BYTES = 256 * 1024 * 1024;
+function hashFile(path) {
+  let descriptor;
+  try {
+    descriptor = openSync(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0)
+    );
+  } catch (error) {
+    if (error.code === "ELOOP")
+      throw new Error("Refusing to hash a symbolic-link managed file.");
+    throw error;
+  }
+  const hash = createHash("sha256");
+  const chunk = Buffer.allocUnsafe(64 * 1024);
+  try {
+    const before = fstatSync(descriptor);
+    if (!before.isFile())
+      throw new Error("Managed file is not a regular file.");
+    if (before.size > MAX_MANAGED_FILE_BYTES)
+      throw new Error("Managed file exceeds the 256 MiB hashing limit.");
+    let remaining = before.size;
+    while (remaining > 0) {
+      const bytes = readSync(
+        descriptor,
+        chunk,
+        0,
+        Math.min(chunk.length, remaining),
+        null
+      );
+      if (bytes === 0)
+        throw new Error("Managed file changed while it was being hashed.");
+      hash.update(chunk.subarray(0, bytes));
+      remaining -= bytes;
+    }
+    const current = lstatSync2(path);
+    if (current.isSymbolicLink() || !current.isFile() || current.dev !== before.dev || current.ino !== before.ino || current.size !== before.size || current.mtimeMs !== before.mtimeMs || current.ctimeMs !== before.ctimeMs)
+      throw new Error(
+        "Managed file identity changed while it was being hashed."
+      );
+    return hash.digest("hex");
+  } finally {
+    closeSync(descriptor);
+  }
+}
+function parseProjectState(input) {
+  const result = projectStateSchema.safeParse(input);
+  if (!result.success)
+    throw new Error(
+      `Invalid LaunchStack state: ${result.error.issues.map((issue) => `${issue.path.join(".") || "state"}: ${issue.message}`).join("; ")}`
+    );
+  for (const path of Object.keys(result.data.managedFiles))
+    if (normalizeManagedPath(path) !== path)
+      throw new Error(
+        `Invalid managed file path in LaunchStack state: ${path}`
+      );
+  return result.data;
+}
+function loadProjectState(projectDirectory, defaults) {
+  const statePath = join2(
+    resolve3(projectDirectory),
+    STATE_DIRECTORY,
+    STATE_FILENAME
+  );
+  if (!existsSync2(statePath))
+    return emptyProjectState(
+      defaults?.templateVersion ?? "unknown",
+      defaults?.cliVersion ?? "unknown"
+    );
+  try {
+    return parseProjectState(JSON.parse(readFileSync2(statePath, "utf8")));
+  } catch (error) {
+    throw new Error(
+      `Unable to read LaunchStack state: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+function serializeProjectState(state) {
+  return `${JSON.stringify(parseProjectState(state), null, 2)}
+`;
+}
+function detectManagedDrift(projectDirectory, state) {
+  const root = resolve3(projectDirectory);
+  const entries = [];
+  for (const [path, managed] of Object.entries(state.managedFiles)) {
+    if (normalizeManagedPath(path) !== path)
+      throw new Error(
+        `Invalid managed file path in LaunchStack state: ${path}`
+      );
+    const absolute = join2(root, path);
+    let actualSha256;
+    try {
+      actualSha256 = hashFile(absolute);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      entries.push({
+        path,
+        kind: "missing",
+        owner: managed.owner,
+        expectedSha256: managed.sha256
+      });
+      continue;
+    }
+    entries.push({
+      path,
+      kind: actualSha256 === managed.sha256 ? "clean" : "modified",
+      owner: managed.owner,
+      expectedSha256: managed.sha256,
+      actualSha256
+    });
+  }
+  return entries.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+// src/version.ts
+function currentLaunchStackVersion() {
+  if (process.env.LAUNCHSTACK_VERSION_OVERRIDE)
+    return process.env.LAUNCHSTACK_VERSION_OVERRIDE;
+  return true ? "3.0.6" : "0.0.0-dev";
+}
+
+// src/extensions/engine.ts
+import {
+  existsSync as existsSync5,
+  mkdtempSync,
+  readFileSync as readFileSync5,
+  rmSync as rmSync3,
+  writeFileSync as writeFileSync3
+} from "fs";
+import { spawnSync } from "child_process";
+import { tmpdir } from "os";
+import { join as join5, resolve as resolve5 } from "path";
+
+// src/project/transaction.ts
+import {
+  chmodSync as chmodSync2,
+  closeSync as closeSync3,
+  existsSync as existsSync4,
+  fsyncSync,
+  lstatSync as lstatSync4,
+  mkdirSync as mkdirSync2,
+  openSync as openSync3,
+  readdirSync,
+  readFileSync as readFileSync4,
+  renameSync as renameSync2,
+  rmdirSync,
+  rmSync as rmSync2,
+  unlinkSync,
+  writeFileSync as writeFileSync2
+} from "fs";
+import { randomUUID as randomUUID2 } from "crypto";
+import { dirname as dirname3, join as join4, resolve as resolve4, relative as relative2, sep as sep2, isAbsolute as isAbsolute2 } from "path";
+
+// src/storage.ts
+import {
+  chmodSync,
+  closeSync as closeSync2,
+  constants as constants2,
+  existsSync as existsSync3,
+  fstatSync as fstatSync2,
+  lstatSync as lstatSync3,
+  mkdirSync,
+  openSync as openSync2,
+  readFileSync as readFileSync3,
+  renameSync,
+  readSync as readSync2,
+  rmSync,
+  writeFileSync
+} from "fs";
+import { basename, dirname as dirname2, join as join3 } from "path";
+import { randomUUID } from "crypto";
+function readRegularFileNoFollow(path, maxBytes) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
+    throw new Error("File size limit must be a non-negative safe integer.");
+  let descriptor;
+  try {
+    descriptor = openSync2(
+      path,
+      constants2.O_RDONLY | (constants2.O_NOFOLLOW ?? 0) | (constants2.O_NONBLOCK ?? 0),
+      384
+    );
+  } catch (error) {
+    if (error.code === "ELOOP")
+      throw new Error("Expected a regular file without following links.");
+    throw error;
+  }
+  try {
+    const before = fstatSync2(descriptor);
+    const pathStat = lstatSync3(path);
+    if (!before.isFile() || pathStat.isSymbolicLink() || !pathStat.isFile() || before.dev !== pathStat.dev || before.ino !== pathStat.ino)
+      throw new Error("Expected a regular file without following links.");
+    if (before.size > maxBytes)
+      throw new Error("File exceeds the configured size limit.");
+    const chunks = [];
+    const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+    let total = 0;
+    while (total <= maxBytes) {
+      const length = Math.min(chunk.length, maxBytes + 1 - total);
+      const bytesRead = readSync2(descriptor, chunk, 0, length, null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > maxBytes)
+        throw new Error("File exceeds the configured size limit.");
+      chunks.push(Buffer.from(chunk.subarray(0, bytesRead)));
+    }
+    const after = fstatSync2(descriptor);
+    if (after.dev !== before.dev || after.ino !== before.ino)
+      throw new Error("Opened file identity changed while reading.");
+    const bytes = Buffer.concat(chunks, total);
+    return {
+      content: bytes.toString("utf8"),
+      bytes,
+      size: after.size,
+      mode: after.mode,
+      dev: after.dev,
+      ino: after.ino
+    };
+  } finally {
+    closeSync2(descriptor);
+  }
+}
+function atomicWriteText(path, content, mode) {
+  const directory = dirname2(path);
+  mkdirSync(directory, { recursive: true });
+  const temporaryPath = join3(
+    directory,
+    `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`
+  );
+  try {
+    writeFileSync(temporaryPath, content, {
+      encoding: "utf8",
+      flag: "wx",
+      ...mode === void 0 ? {} : { mode }
+    });
+    if (mode !== void 0) {
+      chmodSync(temporaryPath, mode);
+    }
+    renameSync(temporaryPath, path);
+    if (mode !== void 0) {
+      chmodSync(path, mode);
+    }
+  } finally {
+    if (existsSync3(temporaryPath)) {
+      rmSync(temporaryPath, { force: true });
+    }
+  }
+}
+function readJsonFile(path, fallback) {
+  if (!existsSync3(path)) {
+    return fallback;
+  }
+  try {
+    return JSON.parse(readFileSync3(path, "utf8"));
+  } catch {
+    throw new Error(`Invalid JSON in ${basename(path)}.`);
+  }
+}
+
+// src/project/transaction.ts
+var metadataDirectory = (projectDirectory) => join4(resolve4(projectDirectory), ".launchstack");
+var journalPath = (projectDirectory) => join4(metadataDirectory(projectDirectory), "mutation-journal.json");
+var MAX_JOURNAL_BYTES = 2 * 1024 * 1024;
+var MAX_JOURNAL_MUTATIONS = 1e4;
+function ensureMetadataDirectory(projectDirectory) {
+  const root = resolve4(projectDirectory);
+  const directory = metadataDirectory(root);
+  mkdirSync2(directory, { recursive: true, mode: 448 });
+  const stat = lstatSync4(directory);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error("LaunchStack metadata directory must be a real directory.");
+  }
+  const relativePath = relative2(root, resolve4(directory));
+  if (relativePath !== ".launchstack" || isAbsolute2(relativePath) || relativePath.startsWith(`..${sep2}`)) {
+    throw new Error("LaunchStack metadata directory escapes the project.");
+  }
+  return directory;
+}
+function assertOwnedDirectory(directory, metadata) {
+  const stat = lstatSync4(directory);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error(
+      "Mutation recovery directory is not a LaunchStack-owned directory."
+    );
+  }
+  const rel = relative2(resolve4(metadata), resolve4(directory));
+  if (!rel.startsWith(".stage-") && !rel.startsWith(".backup-")) {
+    throw new Error(
+      "Mutation recovery directory escapes LaunchStack metadata."
+    );
+  }
+  if (rel.includes(sep2) || rel === ".." || isAbsolute2(rel)) {
+    throw new Error(
+      "Mutation recovery directory escapes LaunchStack metadata."
+    );
+  }
+}
+function parseJournal(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Invalid mutation recovery journal.");
+  const candidate = value;
+  const allowed = /* @__PURE__ */ new Set(["version", "id", "state", "mutations"]);
+  if (Object.keys(candidate).some((key) => !allowed.has(key)) || candidate.version !== 1 || typeof candidate.id !== "string" || !/^[0-9a-f-]{36}$/i.test(candidate.id) || !["prepared", "committing", "committed"].includes(
+    candidate.state
+  ) || !Array.isArray(candidate.mutations) || candidate.mutations.length > MAX_JOURNAL_MUTATIONS) {
+    throw new Error("Invalid mutation recovery journal.");
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const mutations = candidate.mutations.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry))
+      throw new Error("Invalid mutation recovery journal entry.");
+    const item = entry;
+    if (Object.keys(item).some(
+      (key) => !["type", "path", "hadOriginal"].includes(key)
+    ) || item.type !== "write" && item.type !== "delete" || typeof item.path !== "string" || typeof item.hadOriginal !== "boolean") {
+      throw new Error("Invalid mutation recovery journal entry.");
+    }
+    const normalized = item.path.split(/[\\/]+/).filter(Boolean).join("/");
+    if (!normalized || normalized !== item.path || normalizeManagedPath(item.path) !== item.path || seen.has(normalized))
+      throw new Error("Invalid mutation recovery journal path.");
+    seen.add(normalized);
+    return {
+      type: item.type,
+      path: normalized,
+      hadOriginal: item.hadOriginal
+    };
+  });
+  const sortedPaths = mutations.map((item) => item.path).sort();
+  for (let index = 1; index < sortedPaths.length; index += 1) {
+    if (sortedPaths[index] === sortedPaths[index - 1] || sortedPaths[index]?.startsWith(`${sortedPaths[index - 1]}/`))
+      throw new Error("Invalid overlapping mutation recovery journal paths.");
+  }
+  return {
+    version: 1,
+    id: candidate.id,
+    state: candidate.state,
+    mutations
+  };
+}
+function readJournal(projectDirectory) {
+  ensureMetadataDirectory(projectDirectory);
+  const path = journalPath(projectDirectory);
+  const file = readRegularFileNoFollow(path, MAX_JOURNAL_BYTES);
+  return parseJournal(JSON.parse(file.content));
+}
+function processStartToken(pid) {
+  if (process.platform !== "linux") return void 0;
+  try {
+    const stat = readFileSync4(`/proc/${pid}/stat`, "utf8");
+    const close = stat.lastIndexOf(")");
+    const fields = stat.slice(close + 2).trim().split(/\s+/);
+    return fields[19];
+  } catch {
+    return void 0;
+  }
+}
+function processIsAlive(pid, expectedStartToken) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    if (expectedStartToken) {
+      const actualStartToken = processStartToken(pid);
+      if (actualStartToken && actualStartToken !== expectedStartToken)
+        return false;
+    }
+    return true;
+  } catch (error) {
+    return error.code !== "ESRCH";
+  }
+}
+function syncFile(path) {
+  const descriptor = openSync3(path, "r");
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync3(descriptor);
+  }
+}
+function waitForLockRetry() {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+}
+function lockChangedDuringRead(error) {
+  return error.code === "ENOENT" || error instanceof Error && error.message === "Opened file identity changed while reading.";
+}
+function syncDirectory(path) {
+  if (process.platform === "win32") return;
+  let descriptor;
+  try {
+    descriptor = openSync3(path, "r");
+    fsyncSync(descriptor);
+  } catch (error) {
+    const code = error.code;
+    if (code !== "EINVAL" && code !== "ENOTSUP" && code !== "EISDIR")
+      throw error;
+  } finally {
+    if (descriptor !== void 0) closeSync3(descriptor);
+  }
+}
+function collectDirectoryChain(directories, path, stopAt) {
+  const stop = resolve4(stopAt);
+  let current = resolve4(path);
+  while (current === stop || current.startsWith(`${stop}${sep2}`)) {
+    directories.add(current);
+    if (current === stop) return;
+    current = dirname3(current);
+  }
+  throw new Error("Cannot sync a directory outside the transaction boundary.");
+}
+function syncDirectories(directories) {
+  for (const directory of [...directories].sort(
+    (left, right) => right.length - left.length
+  ))
+    syncDirectory(directory);
+}
+function writeJournal(projectDirectory, journal) {
+  const path = journalPath(projectDirectory);
+  const temporary = `${path}.${randomUUID2()}.tmp`;
+  writeFileSync2(temporary, JSON.stringify(journal, null, 2), {
+    mode: 384,
+    flag: "wx"
+  });
+  syncFile(temporary);
+  renameSync2(temporary, path);
+  syncDirectory(metadataDirectory(projectDirectory));
+}
+function acquireLock(projectDirectory) {
+  const directory = ensureMetadataDirectory(projectDirectory);
+  const lockPath = join4(directory, "mutation.lock");
+  let unverifiedLockInitialization = false;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const lockId = randomUUID2();
+    const ownerPath = join4(lockPath, `owner-${lockId}.json`);
+    const temporaryOwnerPath = join4(lockPath, `.owner-${lockId}.tmp`);
+    const startToken = processStartToken(process.pid);
+    let createdDirectory;
+    try {
+      mkdirSync2(lockPath, { mode: 448 });
+      const lockDirectory = lstatSync4(lockPath);
+      createdDirectory = { dev: lockDirectory.dev, ino: lockDirectory.ino };
+      const owner = {
+        version: 1,
+        id: lockId,
+        pid: process.pid,
+        processStartToken: startToken,
+        createdAt: Date.now()
+      };
+      writeFileSync2(temporaryOwnerPath, JSON.stringify(owner), {
+        mode: 384,
+        flag: "wx"
+      });
+      syncFile(temporaryOwnerPath);
+      renameSync2(temporaryOwnerPath, ownerPath);
+      syncDirectory(lockPath);
+      const currentDirectory = lstatSync4(lockPath);
+      if (currentDirectory.isSymbolicLink() || !currentDirectory.isDirectory() || currentDirectory.dev !== lockDirectory.dev || currentDirectory.ino !== lockDirectory.ino) {
+        unlinkSync(ownerPath);
+        throw new Error("Mutation lock directory changed during acquisition.");
+      }
+      syncDirectory(directory);
+      return () => {
+        try {
+          const current = JSON.parse(
+            readRegularFileNoFollow(ownerPath, 4096).content
+          );
+          const currentDirectory2 = lstatSync4(lockPath);
+          if (current.id === lockId && currentDirectory2.isDirectory() && !currentDirectory2.isSymbolicLink()) {
+            unlinkSync(ownerPath);
+            rmdirSync(lockPath);
+            syncDirectory(directory);
+          }
+        } catch {
+        }
+      };
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        if (createdDirectory) {
+          try {
+            unlinkSync(temporaryOwnerPath);
+          } catch {
+          }
+          try {
+            unlinkSync(ownerPath);
+          } catch {
+          }
+          try {
+            const current = lstatSync4(lockPath);
+            if (current.isDirectory() && current.dev === createdDirectory.dev && current.ino === createdDirectory.ino)
+              rmdirSync(lockPath);
+          } catch {
+          }
+        }
+        if (error.code === "ENOENT") continue;
+        throw error;
+      }
+      if (!existsSync4(lockPath)) continue;
+      let stale = false;
+      let staleLegacyLock = false;
+      try {
+        const lockStat = lstatSync4(lockPath);
+        if (lockStat.isSymbolicLink())
+          throw new Error("Mutation lock must not be a symbolic link.");
+        if (lockStat.isDirectory()) {
+          const ownerNames = readdirSync(lockPath);
+          const ownerName = ownerNames.find(
+            (name) => name.startsWith("owner-")
+          );
+          if (!ownerName) {
+            if (ownerNames.length === 0) {
+              unverifiedLockInitialization = true;
+              waitForLockRetry();
+              continue;
+            }
+            if (Date.now() - lockStat.mtimeMs > 3e4) {
+              let abandoned = true;
+              for (const name of ownerNames) {
+                if (!/^\.owner-[0-9a-f-]{36}\.tmp$/i.test(name)) {
+                  abandoned = false;
+                  break;
+                }
+                const temporaryOwner = join4(lockPath, name);
+                const temporaryStat = lstatSync4(temporaryOwner);
+                if (temporaryStat.isSymbolicLink() || !temporaryStat.isFile()) {
+                  abandoned = false;
+                  break;
+                }
+                const temporaryFile = readRegularFileNoFollow(
+                  temporaryOwner,
+                  4096
+                );
+                let temporaryLock = {};
+                try {
+                  temporaryLock = JSON.parse(
+                    temporaryFile.content
+                  );
+                } catch {
+                  abandoned = false;
+                  unverifiedLockInitialization = true;
+                  break;
+                }
+                if (temporaryLock.id && name !== `.owner-${temporaryLock.id}.tmp`) {
+                  abandoned = false;
+                  break;
+                }
+                if (temporaryLock.pid !== void 0 && processIsAlive(
+                  temporaryLock.pid,
+                  temporaryLock.processStartToken
+                )) {
+                  abandoned = false;
+                  break;
+                }
+                const confirmedTemporary = readRegularFileNoFollow(
+                  temporaryOwner,
+                  4096
+                );
+                if (confirmedTemporary.dev !== temporaryFile.dev || confirmedTemporary.ino !== temporaryFile.ino || confirmedTemporary.content !== temporaryFile.content) {
+                  abandoned = false;
+                  break;
+                }
+                unlinkSync(temporaryOwner);
+              }
+              if (abandoned) {
+                try {
+                  rmdirSync(lockPath);
+                  syncDirectory(directory);
+                } catch {
+                }
+              }
+              continue;
+            }
+            waitForLockRetry();
+            continue;
+          }
+          if (ownerNames.length !== 1 || !/^owner-[0-9a-f-]{36}\.json$/i.test(ownerName))
+            throw new Error(
+              "Mutation lock directory contains invalid owner data."
+            );
+          const currentOwnerPath = join4(lockPath, ownerName);
+          const lockFile = readRegularFileNoFollow(currentOwnerPath, 4096);
+          const contents = lockFile.content;
+          const lock = JSON.parse(contents);
+          if (lock.version !== 1 || typeof lock.id !== "string" || ownerName !== `owner-${lock.id}.json` || !Number.isInteger(lock.pid) || !Number.isFinite(lock.createdAt) || lock.processStartToken !== void 0 && typeof lock.processStartToken !== "string")
+            throw new Error("malformed lock");
+          stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
+          if (stale) {
+            const confirmed = readRegularFileNoFollow(currentOwnerPath, 4096);
+            if (confirmed.content === contents && confirmed.dev === lockFile.dev && confirmed.ino === lockFile.ino && !processIsAlive(lock.pid ?? -1, lock.processStartToken)) {
+              try {
+                unlinkSync(currentOwnerPath);
+                rmdirSync(lockPath);
+                syncDirectory(directory);
+              } catch {
+              }
+            }
+          }
+        } else {
+          const lockFile = readRegularFileNoFollow(lockPath, 4096);
+          const contents = lockFile.content;
+          const lock = JSON.parse(contents);
+          if (lock.version !== 1 || typeof lock.id !== "string" || !Number.isInteger(lock.pid) || !Number.isFinite(lock.createdAt) || lock.processStartToken !== void 0 && typeof lock.processStartToken !== "string")
+            throw new Error("malformed lock");
+          stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
+          staleLegacyLock = stale;
+        }
+      } catch (error2) {
+        if (lockChangedDuringRead(error2)) continue;
+        if (!existsSync4(lockPath)) continue;
+        throw new Error(
+          "Another LaunchStack mutation is already running; its lock identity cannot be verified."
+        );
+      }
+      if (staleLegacyLock)
+        throw new Error(
+          "A stale mutation lock file from an earlier LaunchStack release needs manual cleanup. Verify that no LaunchStack mutation is running, remove .launchstack/mutation.lock, and retry."
+        );
+      if (!stale) {
+        if (attempt === 99)
+          throw new Error(
+            "Another LaunchStack mutation is already running for this project."
+          );
+        waitForLockRetry();
+      }
+    }
+  }
+  if (unverifiedLockInitialization)
+    throw new Error(
+      "Mutation lock initialization has no verifiable owner. Verify that no mutation is running, remove .launchstack/mutation.lock, and retry."
+    );
+  throw new Error("Unable to acquire LaunchStack project mutation lock.");
+}
+function restoreJournal(projectDirectory, journal) {
+  const metadata = ensureMetadataDirectory(projectDirectory);
+  const stageDirectory = join4(metadata, `.stage-${journal.id}`);
+  const backupDirectory = join4(metadata, `.backup-${journal.id}`);
+  if (existsSync4(stageDirectory))
+    assertOwnedDirectory(stageDirectory, metadata);
+  if (existsSync4(backupDirectory))
+    assertOwnedDirectory(backupDirectory, metadata);
+  if (journal.state === "committed") {
+    if (existsSync4(stageDirectory))
+      rmSync2(stageDirectory, { recursive: true, force: true });
+    if (existsSync4(backupDirectory))
+      rmSync2(backupDirectory, { recursive: true, force: true });
+    rmSync2(journalPath(projectDirectory), { force: true });
+    syncDirectory(metadata);
+    return;
+  }
+  for (const mutation of journal.mutations) {
+    const target = resolveProjectPath(projectDirectory, mutation.path);
+    const backup = join4(backupDirectory, mutation.path);
+    if (existsSync4(backup)) resolveProjectPath(backupDirectory, mutation.path);
+    if (mutation.hadOriginal && !existsSync4(backup) && !existsSync4(target)) {
+      throw new Error(`Cannot safely recover original file: ${mutation.path}`);
+    }
+  }
+  const restoredDirectories = /* @__PURE__ */ new Set();
+  for (const mutation of [...journal.mutations].reverse()) {
+    const target = resolveProjectPath(projectDirectory, mutation.path);
+    const backup = join4(backupDirectory, mutation.path);
+    if (existsSync4(backup)) {
+      if (existsSync4(target)) rmSync2(target, { recursive: true, force: true });
+      mkdirSync2(dirname3(target), { recursive: true });
+      renameSync2(backup, target);
+      collectDirectoryChain(
+        restoredDirectories,
+        dirname3(target),
+        projectDirectory
+      );
+    } else if (!mutation.hadOriginal && existsSync4(target)) {
+      rmSync2(target, { recursive: true, force: true });
+      collectDirectoryChain(
+        restoredDirectories,
+        dirname3(target),
+        projectDirectory
+      );
+    }
+  }
+  syncDirectories(restoredDirectories);
+  if (existsSync4(stageDirectory))
+    rmSync2(stageDirectory, { recursive: true, force: true });
+  if (existsSync4(backupDirectory))
+    rmSync2(backupDirectory, { recursive: true, force: true });
+  rmSync2(journalPath(projectDirectory), { force: true });
+  syncDirectory(metadata);
+}
+function recoverInterruptedMutation(projectDirectory) {
+  const path = journalPath(projectDirectory);
+  if (!existsSync4(path)) return false;
+  restoreJournal(projectDirectory, readJournal(projectDirectory));
+  return true;
+}
+function withTrackedMutations(state, mutations) {
+  const next = structuredClone(state);
+  for (const mutation of mutations) {
+    if (mutation.owner === "launchstack:metadata") continue;
+    if (mutation.type === "write") {
+      next.managedFiles[mutation.path] = {
+        owner: mutation.owner,
+        version: mutation.version,
+        sha256: sha256(mutation.content),
+        ownership: mutation.owner.startsWith("launchstack:integration:") ? "shared" : mutation.owner.startsWith("launchstack:") ? "launchstack" : "extension",
+        ...mutation.baseSha256 ? { migrationBaseSha256: mutation.baseSha256 } : {}
+      };
+    } else {
+      delete next.managedFiles[mutation.path];
+    }
+  }
+  next.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  return next;
+}
+function applyFileMutations(input) {
+  const projectDirectory = resolve4(input.projectDirectory);
+  const releaseLock = acquireLock(projectDirectory);
+  try {
+    recoverInterruptedMutation(projectDirectory);
+    const batch = input.prepare ? input.prepare() : input;
+    if (!batch.mutations.length) return batch.nextState ?? batch.state;
+    const id = randomUUID2();
+    const metadata = ensureMetadataDirectory(projectDirectory);
+    const stageDirectory = join4(metadata, `.stage-${id}`);
+    const backupDirectory = join4(metadata, `.backup-${id}`);
+    mkdirSync2(stageDirectory, { recursive: true, mode: 448 });
+    mkdirSync2(backupDirectory, { recursive: true, mode: 448 });
+    syncDirectory(metadata);
+    const stagedDirectories = /* @__PURE__ */ new Set();
+    try {
+      const normalizedPaths = batch.mutations.map((mutation) => {
+        const normalized = normalizeManagedPath(mutation.path);
+        if (normalized !== mutation.path || normalized.startsWith(".launchstack/mutation.lock") || normalized.startsWith(".launchstack/mutation-journal.json") || normalized.split("/").some(
+          (segment) => segment.startsWith(".stage-") || segment.startsWith(".backup-")
+        )) {
+          throw new Error(
+            `Mutation plan contains a non-canonical or reserved path: ${mutation.path}`
+          );
+        }
+        if (mutation.type === "write" && mutation.expectedSha256 === void 0)
+          throw new Error(
+            `Write mutation lacks a compare-and-swap precondition: ${normalized}`
+          );
+        return normalized;
+      }).sort();
+      for (let index = 0; index < normalizedPaths.length; index += 1) {
+        if (normalizedPaths[index] === normalizedPaths[index - 1])
+          throw new Error(
+            `Mutation plan contains duplicate target: ${normalizedPaths[index]}`
+          );
+        if (normalizedPaths[index]?.startsWith(`${normalizedPaths[index - 1]}/`))
+          throw new Error(
+            `Mutation plan contains overlapping paths: ${normalizedPaths[index - 1]} and ${normalizedPaths[index]}`
+          );
+      }
+      for (const mutation of batch.mutations) {
+        const target = resolveProjectPath(projectDirectory, mutation.path);
+        const exists = existsSync4(target);
+        if (mutation.type === "write") {
+          if (mutation.expectedSha256 === null && exists) {
+            throw new Error(
+              `Refusing to overwrite unmanaged file: ${mutation.path}`
+            );
+          }
+          if (typeof mutation.expectedSha256 === "string" && (!exists || hashFile(target) !== mutation.expectedSha256)) {
+            throw new Error(`File changed since planning: ${mutation.path}`);
+          }
+          const staged = join4(stageDirectory, mutation.path);
+          mkdirSync2(dirname3(staged), { recursive: true });
+          writeFileSync2(staged, mutation.content, "utf8");
+          chmodSync2(staged, mutation.executable ? 493 : 420);
+          syncFile(staged);
+          collectDirectoryChain(
+            stagedDirectories,
+            dirname3(staged),
+            stageDirectory
+          );
+        } else if (!exists || hashFile(target) !== mutation.expectedSha256) {
+          throw new Error(
+            `Managed file changed before delete: ${mutation.path}`
+          );
+        }
+      }
+      syncDirectories(stagedDirectories);
+    } catch (error) {
+      rmSync2(stageDirectory, { recursive: true, force: true });
+      rmSync2(backupDirectory, { recursive: true, force: true });
+      throw error;
+    }
+    const journal = {
+      version: 1,
+      id,
+      state: "prepared",
+      mutations: batch.mutations.map((mutation) => ({
+        type: mutation.type,
+        path: mutation.path,
+        hadOriginal: existsSync4(
+          resolveProjectPath(projectDirectory, mutation.path)
+        )
+      }))
+    };
+    writeJournal(projectDirectory, journal);
+    try {
+      journal.state = "committing";
+      writeJournal(projectDirectory, journal);
+      const committedDirectories = /* @__PURE__ */ new Set();
+      for (const mutation of batch.mutations) {
+        const target = resolveProjectPath(projectDirectory, mutation.path);
+        const backup = join4(backupDirectory, mutation.path);
+        if (existsSync4(target)) {
+          mkdirSync2(dirname3(backup), { recursive: true });
+          renameSync2(target, backup);
+          collectDirectoryChain(
+            committedDirectories,
+            dirname3(target),
+            projectDirectory
+          );
+          collectDirectoryChain(
+            committedDirectories,
+            dirname3(backup),
+            backupDirectory
+          );
+        }
+        if (mutation.type === "write") {
+          const staged = join4(stageDirectory, mutation.path);
+          mkdirSync2(dirname3(target), { recursive: true });
+          renameSync2(staged, target);
+          collectDirectoryChain(
+            committedDirectories,
+            dirname3(staged),
+            stageDirectory
+          );
+          collectDirectoryChain(
+            committedDirectories,
+            dirname3(target),
+            projectDirectory
+          );
+        }
+      }
+      syncDirectories(committedDirectories);
+      const committedState = batch.nextState ?? withTrackedMutations(batch.state, batch.mutations);
+      journal.state = "committed";
+      writeJournal(projectDirectory, journal);
+      try {
+        rmSync2(stageDirectory, { recursive: true, force: true });
+        rmSync2(backupDirectory, { recursive: true, force: true });
+        rmSync2(journalPath(projectDirectory), { force: true });
+        syncDirectory(metadata);
+      } catch {
+      }
+      return committedState;
+    } catch (error) {
+      try {
+        restoreJournal(projectDirectory, readJournal(projectDirectory));
+      } catch {
+      }
+      throw error;
+    }
+  } finally {
+    releaseLock();
+  }
+}
+
+// src/extensions/engine.ts
+import { parse as parseYaml } from "yaml";
+function compatible(version, range) {
+  const major = Number.parseInt(version.split(".")[0] ?? "", 10);
+  if (!Number.isInteger(major)) return false;
+  const lower = range.match(/>=\s*(\d+)/)?.[1];
+  const upper = range.match(/<\s*(\d+)/)?.[1];
+  return !(lower && major < Number(lower)) && !(upper && major >= Number(upper));
+}
+function resolveExtensionOrder(requested, registry) {
+  const order = [];
+  const visiting = /* @__PURE__ */ new Set();
+  const visited = /* @__PURE__ */ new Set();
+  for (const root of requested) {
+    if (visited.has(root)) continue;
+    const rootItem = registry[root];
+    if (!rootItem) throw new Error(`Unknown extension: ${root}`);
+    const stack = [
+      { id: root, dependencies: rootItem.dependencies ?? [], next: 0 }
+    ];
+    visiting.add(root);
+    while (stack.length) {
+      const frame = stack[stack.length - 1];
+      if (frame.next < frame.dependencies.length) {
+        const dependency = frame.dependencies[frame.next++];
+        if (visited.has(dependency)) continue;
+        if (visiting.has(dependency)) {
+          const start = stack.findIndex((entry) => entry.id === dependency);
+          throw new Error(
+            `Extension dependency cycle: ${[...stack.slice(start).map((entry) => entry.id), dependency].join(" -> ")}`
+          );
+        }
+        const item = registry[dependency];
+        if (!item) throw new Error(`Unknown extension: ${dependency}`);
+        visiting.add(dependency);
+        stack.push({
+          id: dependency,
+          dependencies: item.dependencies ?? [],
+          next: 0
+        });
+        continue;
+      }
+      stack.pop();
+      visiting.delete(frame.id);
+      visited.add(frame.id);
+      order.push(registry[frame.id]);
+    }
+  }
+  return order;
+}
+function packageMutations(projectDirectory, extensions) {
+  const deps = {};
+  const devDeps = {};
+  const scripts = {};
+  for (const item of extensions) {
+    Object.assign(deps, item.packages?.dependencies ?? {});
+    Object.assign(devDeps, item.packages?.devDependencies ?? {});
+    Object.assign(scripts, item.scripts ?? {});
+  }
+  if (!Object.keys(deps).length && !Object.keys(devDeps).length && !Object.keys(scripts).length)
+    return [];
+  const path = resolveProjectPath(projectDirectory, "package.json");
+  if (!existsSync5(path))
+    throw new Error(
+      "Cannot install package-backed capability without package.json"
+    );
+  const existingText = readFileSync5(path, "utf8");
+  const parsed = JSON.parse(existingText);
+  const currentDeps = parsed.dependencies ?? {};
+  const currentDev = parsed.devDependencies ?? {};
+  const currentScripts = parsed.scripts ?? {};
+  for (const [name, version] of Object.entries(deps))
+    if (currentDeps[name] && currentDeps[name] !== version)
+      throw new Error(
+        `Dependency ${name} is already declared as ${currentDeps[name]}, which conflicts with capability requirement ${version}.`
+      );
+  for (const [name, version] of Object.entries(devDeps))
+    if (currentDev[name] && currentDev[name] !== version)
+      throw new Error(
+        `Development dependency ${name} is already declared as ${currentDev[name]}, which conflicts with capability requirement ${version}.`
+      );
+  for (const [name, command] of Object.entries(scripts))
+    if (currentScripts[name] && currentScripts[name] !== command)
+      throw new Error(
+        `npm script ${name} already exists with a different command.`
+      );
+  const sort = (value) => Object.fromEntries(
+    Object.entries(value).sort(([a], [b]) => a.localeCompare(b))
+  );
+  const nextPackage = `${JSON.stringify({ ...parsed, ...Object.keys(scripts).length ? { scripts: sort({ ...currentScripts, ...scripts }) } : {}, ...Object.keys(deps).length ? { dependencies: sort({ ...currentDeps, ...deps }) } : {}, ...Object.keys(devDeps).length ? { devDependencies: sort({ ...currentDev, ...devDeps }) } : {} }, null, 2)}
+`;
+  const lockPath = resolveProjectPath(projectDirectory, "package-lock.json");
+  const temporary = mkdtempSync(join5(tmpdir(), "launchstack-lock-"));
+  try {
+    writeFileSync3(join5(temporary, "package.json"), nextPackage);
+    if (existsSync5(lockPath))
+      writeFileSync3(
+        join5(temporary, "package-lock.json"),
+        readFileSync5(lockPath)
+      );
+    const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+    const result = spawnSync(
+      npm,
+      [
+        "install",
+        "--package-lock-only",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund",
+        "--no-update-notifier"
+      ],
+      {
+        cwd: temporary,
+        env: process.env,
+        encoding: "utf8",
+        maxBuffer: 4 * 1024 * 1024
+      }
+    );
+    if (result.error || result.status !== 0)
+      throw new Error(
+        `Unable to resolve a matching package-lock.json${result.stderr ? `: ${result.stderr.trim()}` : ""}`
+      );
+    const lockContent = readFileSync5(
+      join5(temporary, "package-lock.json"),
+      "utf8"
+    );
+    const mutations = [];
+    if (nextPackage !== existingText)
+      mutations.push({
+        type: "write",
+        path: "package.json",
+        content: nextPackage,
+        owner: "launchstack:metadata",
+        version: currentLaunchStackVersion(),
+        expectedSha256: hashFile(path)
+      });
+    const existingLock = existsSync5(lockPath) ? readFileSync5(lockPath, "utf8") : null;
+    if (lockContent !== existingLock)
+      mutations.push({
+        type: "write",
+        path: "package-lock.json",
+        content: lockContent,
+        owner: "launchstack:metadata",
+        version: currentLaunchStackVersion(),
+        expectedSha256: existsSync5(lockPath) ? hashFile(lockPath) : null
+      });
+    return mutations;
+  } finally {
+    rmSync3(temporary, { recursive: true, force: true });
+  }
+}
+function composeMutation(projectDirectory, state, pending) {
+  const pendingByPath = new Map(
+    pending.map((mutation) => [mutation.path, mutation])
+  );
+  const fragments = /* @__PURE__ */ new Map();
+  for (const [path, managed] of Object.entries(state.managedFiles)) {
+    if (!path.startsWith(".launchstack/generated/compose/") || !path.endsWith(".json"))
+      continue;
+    const mutation = pendingByPath.get(path);
+    if (mutation?.type === "delete") continue;
+    if (mutation?.type === "write") fragments.set(path, mutation.content);
+    else {
+      const absolute2 = resolveProjectPath(projectDirectory, path);
+      if (!existsSync5(absolute2)) continue;
+      if (managed.sha256 !== hashFile(absolute2))
+        throw new Error(`Compose fragment has local modifications: ${path}`);
+      fragments.set(path, readFileSync5(absolute2, "utf8"));
+    }
+  }
+  for (const mutation of pending)
+    if (mutation.type === "write" && mutation.path.startsWith(".launchstack/generated/compose/") && mutation.path.endsWith(".json"))
+      fragments.set(mutation.path, mutation.content);
+  const merged = {
+    services: {},
+    volumes: {},
+    networks: {}
+  };
+  const baseline = {
+    services: {},
+    volumes: {},
+    networks: {}
+  };
+  const basePath = resolveProjectPath(projectDirectory, "docker-compose.yml");
+  if (existsSync5(basePath)) {
+    let base;
+    try {
+      base = parseYaml(readFileSync5(basePath, "utf8"));
+    } catch (error) {
+      throw new Error(
+        `Cannot parse docker-compose.yml: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    if (!base || typeof base !== "object" || Array.isArray(base))
+      throw new Error("docker-compose.yml must contain a top-level mapping.");
+    for (const section of ["services", "volumes", "networks"]) {
+      const values = base[section];
+      if (values === void 0) continue;
+      if (!values || typeof values !== "object" || Array.isArray(values))
+        throw new Error(
+          `docker-compose.yml has an invalid ${section} section.`
+        );
+      for (const [name, value] of Object.entries(values))
+        baseline[section][name] = value;
+    }
+  }
+  for (const [path, content2] of [...fragments].sort(
+    ([left], [right]) => left.localeCompare(right)
+  )) {
+    let fragment;
+    try {
+      fragment = JSON.parse(content2);
+    } catch {
+      throw new Error(`Invalid Compose JSON fragment: ${path}`);
+    }
+    if (!fragment || typeof fragment !== "object" || Array.isArray(fragment))
+      throw new Error(`Compose fragment ${path} must be a mapping.`);
+    for (const section of ["services", "volumes", "networks"]) {
+      const values = fragment[section];
+      if (values === void 0) continue;
+      if (!values || typeof values !== "object" || Array.isArray(values))
+        throw new Error(
+          `Compose fragment ${path} has an invalid ${section} section.`
+        );
+      for (const [name, value] of Object.entries(values)) {
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/.test(name) || !value || typeof value !== "object" || Array.isArray(value))
+          throw new Error(
+            `Compose fragment ${path} has an invalid ${section} entry: ${name}`
+          );
+        const baselineValue = baseline[section][name];
+        if (baselineValue && JSON.stringify(baselineValue) !== JSON.stringify(value))
+          throw new Error(
+            `Compose ${section} name ${name} conflicts with docker-compose.yml (from ${path}).`
+          );
+        const previous = merged[section][name];
+        if (previous && JSON.stringify(previous) !== JSON.stringify(value))
+          throw new Error(
+            `Compose ${section} name ${name} has conflicting definitions (from ${path}).`
+          );
+        merged[section][name] = value;
+      }
+    }
+    for (const section of Object.keys(fragment))
+      if (!["services", "volumes", "networks"].includes(section))
+        throw new Error(
+          `Compose fragment ${path} contains unsupported top-level section ${section}.`
+        );
+  }
+  for (const [name, rawService] of Object.entries(merged.services)) {
+    const service = rawService;
+    if (service.healthcheck !== void 0 && (!service.healthcheck || typeof service.healthcheck !== "object" || Array.isArray(service.healthcheck)))
+      throw new Error(`Compose service ${name} has an invalid healthcheck.`);
+  }
+  const target = "docker-compose.launchstack.yml";
+  const absolute = resolveProjectPath(projectDirectory, target);
+  const tracked = state.managedFiles[target];
+  if (existsSync5(absolute) && (!tracked || tracked.owner !== "launchstack:compose" || tracked.sha256 !== hashFile(absolute)))
+    throw new Error(
+      `Refusing to overwrite unmanaged or modified Compose file: ${target}`
+    );
+  if (!Object.keys(merged.services).length) {
+    if (!existsSync5(absolute)) return null;
+    return {
+      type: "delete",
+      path: target,
+      owner: "launchstack:compose",
+      expectedSha256: hashFile(absolute)
+    };
+  }
+  const content = `${JSON.stringify(
+    Object.fromEntries(
+      Object.entries(merged).filter(([, value]) => Object.keys(value).length).map(([key, value]) => [
+        key,
+        Object.fromEntries(
+          Object.entries(value).sort(([a], [b]) => a.localeCompare(b))
+        )
+      ])
+    ),
+    null,
+    2
+  )}
+`;
+  if (existsSync5(absolute) && readFileSync5(absolute, "utf8") === content)
+    return null;
+  return {
+    type: "write",
+    path: target,
+    content,
+    owner: "launchstack:compose",
+    version: currentLaunchStackVersion(),
+    expectedSha256: existsSync5(absolute) ? hashFile(absolute) : null
+  };
+}
+function envMutation(projectDirectory, extensions) {
+  const vars = extensions.flatMap((item) => item.environment ?? []);
+  if (!vars.length) return null;
+  const path = ".env.example";
+  const absolute = resolveProjectPath(projectDirectory, path);
+  const existing = existsSync5(absolute) ? readFileSync5(absolute, "utf8") : "";
+  const known = new Set(
+    existing.split(/\r?\n/).map((line) => line.match(/^([A-Z][A-Z0-9_]*)=/)?.[1]).filter((value) => Boolean(value))
+  );
+  const additions = vars.filter((item) => !known.has(item.name)).sort((a, b) => a.name.localeCompare(b.name)).map((item) => `${item.name}=${item.example ?? ""}`);
+  if (!additions.length) return null;
+  const prefix = existing && !existing.endsWith("\n") ? `${existing}
+` : existing;
+  return {
+    type: "write",
+    path,
+    content: `${prefix}${additions.join("\n")}
+`,
+    owner: "launchstack:metadata",
+    version: currentLaunchStackVersion(),
+    expectedSha256: existsSync5(absolute) ? hashFile(absolute) : null
+  };
+}
+function fileMutations(projectDirectory, state, extensions) {
+  const output = [];
+  for (const item of extensions) {
+    for (const file of item.files ?? []) {
+      const absolute = resolveProjectPath(projectDirectory, file.path);
+      const tracked = state.managedFiles[file.path];
+      if (tracked && tracked.owner !== item.id)
+        throw new Error(`File ${file.path} is owned by ${tracked.owner}`);
+      if (existsSync5(absolute)) {
+        const current = hashFile(absolute);
+        if (!tracked)
+          throw new Error(
+            `Refusing to overwrite user-owned file: ${file.path}`
+          );
+        if (tracked.sha256 !== current)
+          throw new Error(`Managed file has local modifications: ${file.path}`);
+        if (readFileSync5(absolute, "utf8") === file.content) continue;
+        output.push({
+          type: "write",
+          path: file.path,
+          content: file.content,
+          owner: item.id,
+          version: item.version,
+          expectedSha256: current,
+          executable: file.executable
+        });
+      } else
+        output.push({
+          type: "write",
+          path: file.path,
+          content: file.content,
+          owner: item.id,
+          version: item.version,
+          expectedSha256: null,
+          executable: file.executable
+        });
+    }
+    if (item.composeServices && Object.keys(item.composeServices).length) {
+      const path = `.launchstack/generated/compose/${item.id}.json`;
+      const absolute = resolveProjectPath(projectDirectory, path);
+      const tracked = state.managedFiles[path];
+      if (existsSync5(absolute) && (!tracked || tracked.owner !== item.id || tracked.sha256 !== hashFile(absolute)))
+        throw new Error(`Compose fragment has local modifications: ${path}`);
+      const content = `${JSON.stringify({ services: item.composeServices }, null, 2)}
+`;
+      if (!existsSync5(absolute) || readFileSync5(absolute, "utf8") !== content)
+        output.push({
+          type: "write",
+          path,
+          content,
+          owner: item.id,
+          version: item.version,
+          expectedSha256: existsSync5(absolute) ? hashFile(absolute) : null
+        });
+    }
+  }
+  return output;
+}
+function metadataMutations(projectDirectory, manifest, state) {
+  const output = [];
+  for (const item of [
+    { path: "launchstack.json", content: serializeProjectManifest(manifest) },
+    { path: ".launchstack/state.json", content: serializeProjectState(state) }
+  ]) {
+    const absolute = resolveProjectPath(projectDirectory, item.path);
+    const existing = existsSync5(absolute) ? readFileSync5(absolute, "utf8") : null;
+    if (existing === item.content) continue;
+    output.push({
+      type: "write",
+      path: item.path,
+      content: item.content,
+      owner: "launchstack:metadata",
+      version: currentLaunchStackVersion(),
+      expectedSha256: existsSync5(absolute) ? hashFile(absolute) : null
+    });
+  }
+  return output;
+}
+function planExtensionInstall(input) {
+  const projectDirectory = resolve5(input.projectDirectory);
+  const manifest = loadProjectManifest(projectDirectory);
+  const state = loadProjectState(projectDirectory, {
+    templateVersion: manifest.project.templateVersion,
+    cliVersion: currentLaunchStackVersion()
+  });
+  const ordered = resolveExtensionOrder(input.requested, input.registry);
+  const selected = new Set(ordered.map((item) => item.id));
+  for (const item of ordered) {
+    if (!compatible(manifest.project.templateVersion, item.supportedLaunchStack))
+      throw new Error(
+        `${item.id}@${item.version} does not support project ${manifest.project.templateVersion}`
+      );
+    for (const conflict of item.conflicts ?? [])
+      if (selected.has(conflict) || state.extensions[conflict])
+        throw new Error(`${item.id} conflicts with ${conflict}`);
+  }
+  const mutations = fileMutations(projectDirectory, state, ordered);
+  mutations.push(...packageMutations(projectDirectory, ordered));
+  const envWrite = envMutation(projectDirectory, ordered);
+  if (envWrite) mutations.push(envWrite);
+  const composeWrite = composeMutation(projectDirectory, state, mutations);
+  if (composeWrite) mutations.push(composeWrite);
+  const nextManifest = structuredClone(manifest);
+  if (input.provider && input.requested[0])
+    nextManifest.capabilities[input.requested[0]] = {
+      ...nextManifest.capabilities[input.requested[0]] ?? {},
+      provider: input.provider
+    };
+  const nextState = withTrackedMutations(state, mutations);
+  const installedAt = (/* @__PURE__ */ new Date()).toISOString();
+  for (const item of ordered) {
+    if (item.kind === "capability")
+      nextManifest.capabilities[item.id] = {
+        ...nextManifest.capabilities[item.id] ?? {},
+        version: item.version
+      };
+    const current = state.extensions[item.id];
+    nextState.extensions[item.id] = current?.version === item.version ? current : {
+      id: item.id,
+      version: item.version,
+      kind: item.kind,
+      installedAt,
+      source: item.kind === "plugin" ? item.id : void 0
+    };
+  }
+  nextState.templateVersion = manifest.project.templateVersion;
+  nextState.cliVersion = currentLaunchStackVersion();
+  if (mutations.length || ordered.some((item) => state.extensions[item.id]?.version !== item.version))
+    nextState.updatedAt = installedAt;
+  else nextState.updatedAt = state.updatedAt;
+  mutations.push(
+    ...metadataMutations(projectDirectory, nextManifest, nextState)
+  );
+  const changed = ordered.filter(
+    (item) => state.extensions[item.id]?.version !== item.version
+  );
+  const actions = [
+    ...changed.map((item) => ({
+      kind: "metadata",
+      target: item.id,
+      detail: state.extensions[item.id] ? `upgrade ${state.extensions[item.id]?.version} -> ${item.version}` : `install ${item.version}`
+    })),
+    ...mutations.map((mutation) => ({
+      kind: mutation.path === "package.json" || mutation.path === "package-lock.json" ? "package" : mutation.path === ".env.example" ? "environment" : mutation.path.includes("/compose/") || mutation.path === "docker-compose.launchstack.yml" ? "compose" : "file",
+      target: mutation.path,
+      detail: mutation.type
+    }))
+  ];
+  return {
+    projectDirectory,
+    extensionIds: ordered.map((item) => item.id),
+    actions,
+    warnings: ordered.flatMap(
+      (item) => item.hooks?.length ? [
+        `${item.id} declares executable hooks; declarative installation does not execute them.`
+      ] : []
+    ),
+    noop: actions.length === 0,
+    mutations,
+    nextManifest,
+    nextState,
+    replan: () => planExtensionInstall(input)
+  };
+}
+function applyExtensionInstall(plan) {
+  return applyFileMutations({
+    projectDirectory: plan.projectDirectory,
+    prepare: () => {
+      const currentPlan = plan.replan();
+      const mutations = currentPlan.mutations.map(
+        (mutation) => mutation.owner === "launchstack:metadata" && (mutation.path === "launchstack.json" || mutation.path === ".launchstack/state.json") ? {
+          ...mutation,
+          content: mutation.path === "launchstack.json" ? serializeProjectManifest(currentPlan.nextManifest) : serializeProjectState(currentPlan.nextState)
+        } : mutation
+      );
+      return {
+        mutations,
+        state: loadProjectState(plan.projectDirectory, {
+          templateVersion: currentPlan.nextManifest.project.templateVersion,
+          cliVersion: currentLaunchStackVersion()
+        }),
+        nextState: currentPlan.nextState
+      };
+    }
+  });
+}
+
+// src/project/reconcile.ts
+import { existsSync as existsSync7 } from "fs";
+import { resolve as resolve7 } from "path";
+
+// src/extensions/remove.ts
+import { existsSync as existsSync6, readFileSync as readFileSync6 } from "fs";
+import { resolve as resolve6 } from "path";
+function metadataWrite(projectDirectory, path, content) {
+  const absolute = resolveProjectPath(projectDirectory, path);
+  return {
+    type: "write",
+    path,
+    content,
+    owner: "launchstack:metadata",
+    version: currentLaunchStackVersion(),
+    expectedSha256: existsSync6(absolute) ? hashFile(absolute) : null
+  };
+}
+function planExtensionRemoval(input) {
+  const projectDirectory = resolve6(input.projectDirectory);
+  const manifest = loadProjectManifest(projectDirectory);
+  const state = loadProjectState(projectDirectory, {
+    templateVersion: manifest.project.templateVersion,
+    cliVersion: currentLaunchStackVersion()
+  });
+  if (!state.extensions[input.extension.id])
+    throw new Error(`${input.extension.id} is not installed.`);
+  if (input.registry && input.extension.kind === "capability") {
+    const remaining = Object.keys(state.extensions).filter(
+      (id) => id !== input.extension.id && state.extensions[id]?.kind === "capability"
+    );
+    const dependents = remaining.filter(
+      (id) => input.registry?.[id]?.dependencies?.includes(input.extension.id)
+    );
+    if (dependents.length)
+      throw new Error(
+        `Cannot remove ${input.extension.id}; installed capabilities still depend on it: ${dependents.sort().join(", ")}.`
+      );
+  }
+  const mutations = [];
+  for (const [path, managed] of Object.entries(state.managedFiles)) {
+    if (managed.owner !== input.extension.id) continue;
+    const absolute = resolveProjectPath(projectDirectory, path);
+    if (!existsSync6(absolute))
+      throw new Error(`Managed plugin file is missing: ${path}`);
+    const current = hashFile(absolute);
+    if (current !== managed.sha256)
+      throw new Error(`Refusing to remove locally modified file: ${path}`);
+    mutations.push({
+      type: "delete",
+      path,
+      owner: input.extension.id,
+      expectedSha256: current
+    });
+  }
+  if (input.extension.scripts) {
+    const packagePath = resolveProjectPath(projectDirectory, "package.json");
+    if (existsSync6(packagePath)) {
+      const packageText = readFileSync6(packagePath, "utf8");
+      const packageJson2 = JSON.parse(packageText);
+      const scripts = {
+        ...packageJson2.scripts ?? {}
+      };
+      let changed = false;
+      for (const [name, command] of Object.entries(input.extension.scripts)) {
+        if (scripts[name] !== command) continue;
+        const inUse = Object.values(state.extensions).some(
+          (installed) => installed.id !== input.extension.id && input.registry?.[installed.id]?.scripts?.[name] === command
+        );
+        if (!inUse) {
+          delete scripts[name];
+          changed = true;
+        }
+      }
+      if (changed) {
+        const sortedScripts = Object.fromEntries(
+          Object.entries(scripts).sort(
+            ([left], [right]) => left.localeCompare(right)
+          )
+        );
+        mutations.push({
+          type: "write",
+          path: "package.json",
+          content: JSON.stringify(
+            { ...packageJson2, scripts: sortedScripts },
+            null,
+            2
+          ) + "\n",
+          owner: "launchstack:metadata",
+          version: currentLaunchStackVersion(),
+          expectedSha256: hashFile(packagePath)
+        });
+      }
+    }
+  }
+  const composeWrite = composeMutation(projectDirectory, state, mutations);
+  if (composeWrite) mutations.push(composeWrite);
+  const nextManifest = structuredClone(manifest);
+  if (input.extension.kind === "capability")
+    delete nextManifest.capabilities[input.extension.id];
+  const nextState = withTrackedMutations(state, mutations);
+  delete nextState.extensions[input.extension.id];
+  nextState.cliVersion = currentLaunchStackVersion();
+  nextState.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const warnings = [];
+  if (input.extension.packages)
+    warnings.push(
+      "Package dependencies are preserved on removal because other code may still depend on them."
+    );
+  if (input.extension.environment?.length)
+    warnings.push(
+      "Environment variable declarations are preserved to avoid deleting user configuration."
+    );
+  return {
+    projectDirectory,
+    extension: input.extension,
+    mutations,
+    nextManifest,
+    nextState,
+    warnings
+  };
+}
+function applyExtensionRemoval(plan) {
+  return applyFileMutations({
+    projectDirectory: plan.projectDirectory,
+    mutations: [
+      ...plan.mutations,
+      metadataWrite(
+        plan.projectDirectory,
+        "launchstack.json",
+        serializeProjectManifest(plan.nextManifest)
+      ),
+      metadataWrite(
+        plan.projectDirectory,
+        ".launchstack/state.json",
+        serializeProjectState(plan.nextState)
+      )
+    ],
+    state: loadProjectState(plan.projectDirectory),
+    nextState: plan.nextState
+  });
+}
+
+// src/project/reconcile.ts
+function planReconciliation(projectDirectoryInput, manifestInput) {
+  const projectDirectory = resolve7(projectDirectoryInput);
+  const manifest = manifestInput ?? loadProjectManifest(projectDirectory);
+  const state = loadProjectState(projectDirectory, {
+    templateVersion: manifest.project.templateVersion,
+    cliVersion: currentLaunchStackVersion()
+  });
+  const desiredCapabilities = Object.keys(manifest.capabilities).sort();
+  const installedCapabilities = Object.values(state.extensions).filter((item) => item.kind === "capability").map((item) => item.id).sort();
+  const installCapabilities = desiredCapabilities.filter(
+    (id) => !state.extensions[id] || state.extensions[id]?.version !== manifest.capabilities[id]?.version
+  );
+  const desiredSet = new Set(desiredCapabilities);
+  const removeCapabilities = installedCapabilities.filter(
+    (id) => !desiredSet.has(id)
+  );
+  const drift = detectManagedDrift(projectDirectory, state);
+  const conflicts = drift.filter((item) => item.kind === "modified").map((item) => `Managed file has local modifications: ${item.path}`);
+  const actions = [];
+  for (const id of installCapabilities) {
+    if (!FIRST_PARTY_EXTENSIONS[id]) {
+      conflicts.push(`Manifest capability is not available: ${id}`);
+      continue;
+    }
+    actions.push({
+      id: `capability:${id}:install`,
+      kind: state.extensions[id] ? "upgrade" : "install",
+      target: id,
+      detail: `${state.extensions[id]?.version ?? "absent"} -> ${manifest.capabilities[id]?.version ?? "unknown"}`
+    });
+  }
+  for (const id of removeCapabilities) {
+    if (!FIRST_PARTY_EXTENSIONS[id])
+      conflicts.push(
+        `Installed capability cannot be removed by this CLI: ${id}`
+      );
+    actions.push({
+      id: `capability:${id}:remove`,
+      kind: "remove",
+      target: id,
+      detail: "installed capability is absent from desired manifest",
+      destructive: true
+    });
+  }
+  const removeSet = new Set(removeCapabilities);
+  for (const id of removeCapabilities) {
+    const dependents = Object.values(FIRST_PARTY_EXTENSIONS).filter(
+      (item) => !removeSet.has(item.id) && (state.extensions[item.id] || desiredCapabilities.includes(item.id)) && item.dependencies?.includes(id)
+    ).map((item) => item.id);
+    if (dependents.length)
+      conflicts.push(
+        `Cannot remove ${id}; capabilities still depend on it: ${dependents.sort().join(", ")}.`
+      );
+  }
+  return {
+    projectDirectory,
+    desiredCapabilities,
+    installCapabilities,
+    removeCapabilities,
+    drift,
+    actions,
+    warnings: removeCapabilities.length ? [
+      "Capability removals are destructive and require --allow-remove during apply."
+    ] : [],
+    conflicts
+  };
+}
+function applyReconciliation(input) {
+  const projectDirectory = resolve7(input.projectDirectory);
+  const manifest = loadProjectManifest(projectDirectory);
+  let plan = planReconciliation(projectDirectory, manifest);
+  if (plan.conflicts.length)
+    throw new Error(`Cannot reconcile project: ${plan.conflicts.join("; ")}`);
+  if (plan.removeCapabilities.length && !input.allowRemove)
+    throw new Error(
+      "Reconciliation includes capability removal. Re-run with --allow-remove after reviewing the plan."
+    );
+  if (plan.installCapabilities.length) {
+    for (const id of plan.installCapabilities) {
+      const item = FIRST_PARTY_EXTENSIONS[id];
+      if (!item) throw new Error(`Unknown first-party capability: ${id}`);
+      const desiredVersion = manifest.capabilities[id]?.version;
+      if (desiredVersion && desiredVersion !== item.version)
+        throw new Error(
+          `Requested ${id}@${desiredVersion}, but this CLI provides ${item.version}.`
+        );
+    }
+    applyExtensionInstall(
+      planExtensionInstall({
+        projectDirectory: input.projectDirectory,
+        requested: plan.installCapabilities,
+        registry: FIRST_PARTY_EXTENSIONS
+      })
+    );
+  }
+  if (plan.removeCapabilities.length) {
+    const ordered = resolveExtensionOrder(
+      plan.removeCapabilities,
+      FIRST_PARTY_EXTENSIONS
+    ).reverse();
+    for (const item of ordered) {
+      if (!plan.removeCapabilities.includes(item.id)) continue;
+      const fresh = planReconciliation(input.projectDirectory);
+      if (fresh.removeCapabilities.includes(item.id))
+        applyExtensionRemoval(
+          planExtensionRemoval({
+            projectDirectory: input.projectDirectory,
+            extension: item,
+            registry: FIRST_PARTY_EXTENSIONS
+          })
+        );
+    }
+  }
+  plan = planReconciliation(projectDirectory);
+  return plan;
+}
+function projectHasManifest(projectDirectory) {
+  return existsSync7(resolve7(projectDirectory, "launchstack.json"));
+}
+
+// src/project/upgrade.ts
+import { existsSync as existsSync8, readFileSync as readFileSync7 } from "fs";
+import { resolve as resolve8 } from "path";
+import { parse as parseTypeScript } from "@babel/parser";
+var V3_TEMPLATE_VERSION = "3.0.0";
+var LEGACY_V2_TEMPLATE_VERSION = "2.0.0";
+var MIGRATIONS = [
+  {
+    from: LEGACY_V2_TEMPLATE_VERSION,
+    to: V3_TEMPLATE_VERSION,
+    id: "v2-to-v3",
+    dependsOn: [],
+    preconditions: [
+      { target: "manifest", version: "from" },
+      { target: "state", version: "from" }
+    ],
+    postconditions: [
+      { target: "manifest", version: "to" },
+      { target: "state", version: "to" }
+    ]
+  }
+];
+function readText(projectDirectory, path) {
+  const absolute = resolveProjectPath(projectDirectory, path);
+  if (!existsSync8(absolute))
+    throw new Error(`Expected project file is missing: ${path}`);
+  const snapshot = readRegularFileNoFollow(absolute, 256 * 1024 * 1024);
+  return { content: snapshot.content, hash: sha256(snapshot.bytes) };
+}
+function inferLegacyProject(projectDirectory) {
+  const packagePath = resolveProjectPath(projectDirectory, "package.json");
+  if (!existsSync8(packagePath))
+    throw new Error(
+      "No launchstack.json or package.json was found; this does not look like a LaunchStack project."
+    );
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync7(packagePath, "utf8"));
+  } catch {
+    throw new Error("Legacy package.json is not valid JSON.");
+  }
+  if (typeof parsed.name !== "string" || typeof parsed.version !== "string")
+    throw new Error(
+      "Legacy package.json does not contain a valid name/version."
+    );
+  if (!existsSync8(resolveProjectPath(projectDirectory, "src/app.ts")) || !existsSync8(resolveProjectPath(projectDirectory, "src/routes/index.ts")))
+    throw new Error(
+      "Legacy project is missing LaunchStack architecture files."
+    );
+  if (!/^2\./.test(parsed.version) && !/^3\./.test(parsed.version))
+    throw new Error(`Unsupported legacy package version: ${parsed.version}`);
+  return {
+    name: parsed.name,
+    packageVersion: parsed.version,
+    templateVersion: parsed.version.startsWith("2.") ? LEGACY_V2_TEMPLATE_VERSION : V3_TEMPLATE_VERSION
+  };
+}
+function parseSource(content, path) {
+  try {
+    return parseTypeScript(content, {
+      sourceType: "unambiguous",
+      plugins: ["typescript"],
+      errorRecovery: false
+    });
+  } catch (error) {
+    throw new Error(
+      `Cannot parse ${path} as TypeScript: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+function moduleName(node) {
+  return node?.value;
+}
+function localName(node) {
+  return node?.name;
+}
+function findNamedImport(source, name) {
+  for (const statement of source.program.body) {
+    if (statement.type !== "ImportDeclaration") continue;
+    for (const binding of statement.specifiers ?? []) {
+      if (binding.type !== "ImportSpecifier") continue;
+      if (localName(binding.imported) === name || moduleName(binding.imported) === name) {
+        const module = moduleName(statement.source);
+        if (module) return { module, binding };
+      }
+    }
+  }
+  return void 0;
+}
+function addNamedImport(content, path, name, module) {
+  const source = parseSource(content, path);
+  const current = findNamedImport(source, name);
+  if (current) {
+    if (current.module !== module)
+      throw new Error(
+        `Cannot safely upgrade ${path}: ${name} is already imported from ${current.module}.`
+      );
+    return content;
+  }
+  const imports = source.program.body.filter(
+    (item) => item.type === "ImportDeclaration"
+  );
+  const insertion = imports[imports.length - 1]?.end ?? 0;
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  const quote = imports.some(
+    (item) => content.slice(item.start ?? 0, item.end ?? 0).includes("'")
+  ) ? "'" : '"';
+  return `${content.slice(0, insertion)}${newline}import { ${name} } from ${quote}${module}${quote};${content.slice(insertion)}`;
+}
+function findFunction(source, name) {
+  for (const statement of source.program.body) {
+    const declaration = statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+    if (declaration?.type === "FunctionDeclaration" && localName(declaration.id) === name)
+      return declaration;
+  }
+  return void 0;
+}
+function visit(node, callback) {
+  callback(node);
+  for (const value of Object.values(node)) {
+    if (Array.isArray(value)) {
+      for (const child of value) {
+        if (child && typeof child === "object" && "type" in child)
+          visit(child, callback);
+      }
+    } else if (value && typeof value === "object" && "type" in value) {
+      visit(value, callback);
+    }
+  }
+}
+function functionCalls(functionNode, name) {
+  const calls = [];
+  if (functionNode.body && !Array.isArray(functionNode.body))
+    visit(functionNode.body, (node) => {
+      if (node.type === "CallExpression" && node.callee?.type === "Identifier" && localName(node.callee) === name)
+        calls.push(node);
+    });
+  return calls;
+}
+function exportsFunction(content, path, name) {
+  const source = parseSource(content, path);
+  return source.program.body.some((statement) => {
+    if (statement.type !== "ExportNamedDeclaration" || !statement.declaration)
+      return false;
+    const declaration = statement.declaration;
+    if (declaration.type === "FunctionDeclaration")
+      return localName(declaration.id) === name;
+    if (declaration.type !== "VariableDeclaration") return false;
+    return (declaration.declarations ?? []).some((item) => {
+      if (localName(item.id) !== name) return false;
+      let initializer = item.init;
+      while (initializer && [
+        "TSAsExpression",
+        "TSTypeAssertion",
+        "ParenthesizedExpression"
+      ].includes(initializer.type))
+        initializer = initializer.expression;
+      return initializer?.type === "ArrowFunctionExpression" || initializer?.type === "FunctionExpression";
+    });
+  });
+}
+function addAwaitCall(content, path, functionName, callName, afterCallName) {
+  const source = parseSource(content, path);
+  const functionNode = findFunction(source, functionName);
+  const body = functionNode?.body;
+  if (!body || Array.isArray(body) || body.type !== "BlockStatement" || !Array.isArray(body.body))
+    throw new Error(
+      `Cannot safely upgrade ${path}: ${functionName} function was not found.`
+    );
+  if (!functionNode.async)
+    throw new Error(
+      `Cannot safely upgrade ${path}: ${functionName} must be async before adding an awaited integration.`
+    );
+  if (functionCalls(functionNode, callName).length) return content;
+  const returnIndex = body.body.findIndex(
+    (statement) => statement.type === "ReturnStatement"
+  );
+  const candidateIndex = afterCallName ? body.body.findIndex(
+    (statement) => statement.type === "ExpressionStatement" && statement.expression?.type === "AwaitExpression" && statement.expression.argument?.type === "CallExpression" && statement.expression.argument.callee?.type === "Identifier" && localName(statement.expression.argument.callee) === afterCallName
+  ) : void 0;
+  const anchor = candidateIndex !== void 0 && candidateIndex >= 0 && (returnIndex < 0 || candidateIndex < returnIndex) ? body.body[candidateIndex] : void 0;
+  const insertion = anchor?.end ?? (returnIndex >= 0 ? body.body[returnIndex]?.start : (body.end ?? content.length) - 1);
+  if (insertion === void 0 || insertion === null)
+    throw new Error(
+      `Cannot safely upgrade ${path}: no reachable insertion point exists in ${functionName}.`
+    );
+  const lineStart = content.lastIndexOf("\n", insertion - 1) + 1;
+  const currentLine = content.slice(lineStart, insertion);
+  const indent = /^\s*/.exec(currentLine)?.[0] ?? "  ";
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  return `${content.slice(0, insertion)}${newline}${indent}await ${callName}(app);${content.slice(insertion)}`;
+}
+function addIntegration(content, path, options) {
+  const source = parseSource(content, path);
+  const imported = findNamedImport(source, options.importName);
+  const functionNode = findFunction(source, options.functionName);
+  if (!functionNode?.body)
+    throw new Error(
+      `Cannot safely upgrade ${path}: ${options.functionName} function was not found.`
+    );
+  if (imported && imported.module !== options.module)
+    throw new Error(
+      `Cannot safely upgrade ${path}: ${options.importName} is imported from ${imported.module}.`
+    );
+  const callName = imported ? localName(imported.binding.local) ?? options.importName : options.importName;
+  const alreadyCalled = functionCalls(functionNode, callName).length > 0;
+  if (alreadyCalled && !imported)
+    throw new Error(
+      `Cannot safely upgrade ${path}: ${options.importName} is called without a matching import.`
+    );
+  if (alreadyCalled) return content;
+  const withImport = addNamedImport(
+    content,
+    path,
+    options.importName,
+    options.module
+  );
+  return addAwaitCall(
+    withImport,
+    path,
+    options.functionName,
+    callName,
+    options.afterCallName
+  );
+}
+function orderMigrations(migrations) {
+  const byId = /* @__PURE__ */ new Map();
+  for (const migration of migrations) {
+    if (byId.has(migration.id))
+      throw new Error(`Duplicate migration id: ${migration.id}.`);
+    if (migration.from === migration.to)
+      throw new Error(
+        `Migration ${migration.id} cannot target its source version.`
+      );
+    byId.set(migration.id, migration);
+  }
+  const ordered = [];
+  const visiting = /* @__PURE__ */ new Set();
+  const visited = /* @__PURE__ */ new Set();
+  const visitMigration = (id) => {
+    const migration = byId.get(id);
+    if (!migration) throw new Error(`Unknown migration dependency: ${id}.`);
+    if (visited.has(id)) return;
+    if (visiting.has(id))
+      throw new Error(`Migration dependency cycle detected at ${id}.`);
+    visiting.add(id);
+    for (const dependency of [...migration.dependsOn].sort())
+      visitMigration(dependency);
+    visiting.delete(id);
+    visited.add(id);
+    ordered.push(migration);
+  };
+  for (const id of [...byId.keys()].sort()) visitMigration(id);
+  return ordered;
+}
+function resolveMigrationChain(from, to, migrations = MIGRATIONS) {
+  const ordered = orderMigrations(migrations);
+  const chain = [];
+  const visited = /* @__PURE__ */ new Set();
+  const completed = /* @__PURE__ */ new Set();
+  let version = from;
+  while (version !== to) {
+    if (visited.has(version))
+      throw new Error(`Migration cycle detected at template ${version}.`);
+    visited.add(version);
+    const candidates = ordered.filter((item) => item.from === version);
+    const available = candidates.filter(
+      (item) => item.dependsOn.every((dependency) => completed.has(dependency))
+    );
+    if (available.length > 1)
+      throw new Error(
+        `Ambiguous ordered migrations from template ${version} to ${to}.`
+      );
+    const migration = available[0];
+    if (!migration && candidates.length)
+      throw new Error(
+        `Migration dependency is not satisfied before template ${version}.`
+      );
+    if (!migration)
+      throw new Error(
+        `No ordered migration is registered from template ${version} to ${to}.`
+      );
+    chain.push(migration);
+    completed.add(migration.id);
+    version = migration.to;
+  }
+  return chain;
+}
+function validateMigrationConditions(chain, manifestVersion, stateVersion) {
+  let versions = { manifest: manifestVersion, state: stateVersion };
+  for (const migration of chain) {
+    for (const condition of migration.preconditions) {
+      const expected = migration[condition.version];
+      if (versions[condition.target] !== expected)
+        throw new Error(
+          `Migration ${migration.id} precondition failed: ${condition.target} template version must be ${expected}.`
+        );
+    }
+    versions = { manifest: migration.to, state: migration.to };
+    for (const condition of migration.postconditions) {
+      const expected = migration[condition.version];
+      if (versions[condition.target] !== expected)
+        throw new Error(
+          `Migration ${migration.id} postcondition failed: ${condition.target} template version must be ${expected}.`
+        );
+    }
+  }
+}
+function metadataMutation(projectDirectory, path, content) {
+  const absolute = resolveProjectPath(projectDirectory, path);
+  const existing = existsSync8(absolute) ? readFileSync7(absolute, "utf8") : null;
+  if (existing === content) return null;
+  return {
+    type: "write",
+    path,
+    content,
+    owner: "launchstack:metadata",
+    version: currentLaunchStackVersion(),
+    expectedSha256: existsSync8(absolute) ? hashFile(absolute) : null
+  };
+}
+function migrationFiles(projectDirectory, migration, mutations, actions, conflicts) {
+  const routeRegistry = "src/routes/launchstack.generated.ts";
+  const capabilityRegistry = "src/launchstack/capabilities/index.ts";
+  const generated = [
+    {
+      path: routeRegistry,
+      content: `import type { FastifyInstance } from "fastify";
+
+/* launchstack-routes: [] */
+export async function registerGeneratedRoutes(app: FastifyInstance): Promise<void> { void app; }
+`,
+      owner: "launchstack:core"
+    },
+    {
+      path: capabilityRegistry,
+      content: `import type { FastifyInstance } from "fastify";
+export async function registerLaunchStackCapabilities(app: FastifyInstance): Promise<void> { void app; }
+`,
+      owner: "launchstack:core"
+    }
+  ];
+  for (const file of generated) {
+    const absolute = resolveProjectPath(projectDirectory, file.path);
+    if (!existsSync8(absolute)) {
+      mutations.push({
+        type: "write",
+        path: file.path,
+        content: file.content,
+        owner: file.owner,
+        version: migration.to,
+        expectedSha256: null
+      });
+      actions.push({
+        id: `${migration.id}:${file.path}`,
+        kind: "write",
+        target: file.path,
+        detail: `create ${file.owner} registry`
+      });
+    } else {
+      const exportedName = file.path === routeRegistry ? "registerGeneratedRoutes" : "registerLaunchStackCapabilities";
+      try {
+        if (!exportsFunction(
+          readFileSync7(absolute, "utf8"),
+          file.path,
+          exportedName
+        ))
+          conflicts.push(
+            `Cannot safely upgrade ${file.path}: existing file does not export ${exportedName}.`
+          );
+      } catch (error) {
+        conflicts.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+  }
+  if (conflicts.length) return;
+  const integrationFiles = [
+    {
+      path: "src/routes/index.ts",
+      module: "./launchstack.generated",
+      importName: "registerGeneratedRoutes",
+      functionName: "registerRoutes",
+      afterCallName: "readinessRoutes"
+    },
+    {
+      path: "src/app.ts",
+      module: "./launchstack/capabilities",
+      importName: "registerLaunchStackCapabilities",
+      functionName: "buildApp",
+      afterCallName: "registerPlugins"
+    }
+  ];
+  for (const item of integrationFiles) {
+    try {
+      const current = readText(projectDirectory, item.path);
+      const next = addIntegration(current.content, item.path, item);
+      if (next !== current.content) {
+        mutations.push({
+          type: "write",
+          path: item.path,
+          content: next,
+          owner: `launchstack:integration:${item.functionName}`,
+          version: migration.to,
+          expectedSha256: current.hash,
+          baseSha256: current.hash
+        });
+        actions.push({
+          id: `${migration.id}:${item.functionName}`,
+          kind: "write",
+          target: item.path,
+          detail: `add the ${item.importName} integration while preserving surrounding source`
+        });
+      }
+    } catch (error) {
+      conflicts.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+}
+function makeDiff(projectDirectory, mutations) {
+  return mutations.map((mutation) => ({
+    path: mutation.path,
+    before: existsSync8(resolveProjectPath(projectDirectory, mutation.path)) ? readFileSync7(
+      resolveProjectPath(projectDirectory, mutation.path),
+      "utf8"
+    ) : null,
+    after: mutation.type === "write" ? mutation.content : null
+  }));
+}
+function planUpgrade(projectDirectoryInput) {
+  const projectDirectory = resolve8(projectDirectoryInput);
+  const hasManifest = existsSync8(
+    resolveProjectPath(projectDirectory, "launchstack.json")
+  );
+  const legacy = hasManifest ? null : inferLegacyProject(projectDirectory);
+  const manifest = hasManifest ? loadProjectManifest(projectDirectory) : createProjectManifest({
+    name: legacy?.name ?? "legacy-project",
+    templateVersion: legacy?.templateVersion ?? LEGACY_V2_TEMPLATE_VERSION
+  });
+  const fromVersion = manifest.project.templateVersion;
+  const state = hasManifest ? loadProjectState(projectDirectory, {
+    templateVersion: fromVersion,
+    cliVersion: currentLaunchStackVersion()
+  }) : emptyProjectState(fromVersion, currentLaunchStackVersion());
+  const actions = [];
+  const conflicts = [];
+  const mutations = [];
+  let chain = [];
+  try {
+    chain = resolveMigrationChain(fromVersion, V3_TEMPLATE_VERSION);
+    validateMigrationConditions(
+      chain,
+      manifest.project.templateVersion,
+      state.templateVersion
+    );
+  } catch (error) {
+    conflicts.push(error instanceof Error ? error.message : String(error));
+  }
+  const migration = chain[chain.length - 1] ?? {
+    from: fromVersion,
+    to: V3_TEMPLATE_VERSION,
+    id: "v3-ensure"
+  };
+  if ((chain.length || fromVersion === V3_TEMPLATE_VERSION) && !conflicts.length)
+    migrationFiles(projectDirectory, migration, mutations, actions, conflicts);
+  const nextManifest = structuredClone(manifest);
+  if (chain.length) {
+    nextManifest.project.templateVersion = V3_TEMPLATE_VERSION;
+    actions.push({
+      id: "template-migration",
+      kind: "upgrade",
+      target: "launchstack.json",
+      detail: `${fromVersion} -> ${V3_TEMPLATE_VERSION}`
+    });
+  }
+  const nextState = mutations.length ? withTrackedMutations(state, mutations) : structuredClone(state);
+  nextState.templateVersion = nextManifest.project.templateVersion;
+  const stateChanged = conflicts.length === 0 && (state.cliVersion !== currentLaunchStackVersion() || state.templateVersion !== nextState.templateVersion || mutations.length > 0 || !hasManifest);
+  if (stateChanged) {
+    nextState.cliVersion = currentLaunchStackVersion();
+    nextState.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  }
+  const nextManifestMutation = conflicts.length ? null : metadataMutation(
+    projectDirectory,
+    "launchstack.json",
+    serializeProjectManifest(nextManifest)
+  );
+  const nextStateMutation = conflicts.length ? null : metadataMutation(
+    projectDirectory,
+    ".launchstack/state.json",
+    serializeProjectState(nextState)
+  );
+  for (const item of [nextManifestMutation, nextStateMutation])
+    if (item) mutations.push(item);
+  if (nextManifestMutation || nextStateMutation)
+    actions.push({
+      id: "cli-metadata",
+      kind: "write",
+      target: ".launchstack/state.json",
+      detail: `record CLI ${currentLaunchStackVersion()} without changing template schema version`
+    });
+  return {
+    projectDirectory,
+    fromVersion,
+    toVersion: nextManifest.project.templateVersion,
+    actions,
+    conflicts,
+    mutations,
+    diffs: makeDiff(projectDirectory, mutations),
+    nextManifest,
+    nextState
+  };
+}
+function applyUpgrade(plan) {
+  if (plan.conflicts.length)
+    throw new Error(`Upgrade conflicts: ${plan.conflicts.join("; ")}`);
+  const currentState = existsSync8(
+    resolveProjectPath(plan.projectDirectory, ".launchstack/state.json")
+  ) ? loadProjectState(plan.projectDirectory) : emptyProjectState(plan.fromVersion, currentLaunchStackVersion());
+  return applyFileMutations({
+    projectDirectory: plan.projectDirectory,
+    mutations: plan.mutations,
+    state: currentState,
+    nextState: plan.nextState
+  });
+}
+
+// src/audit/types.ts
+var AUDIT_SEVERITIES = [
+  "info",
+  "low",
+  "medium",
+  "high",
+  "critical"
+];
+function severityRank(severity) {
+  return AUDIT_SEVERITIES.indexOf(severity);
+}
+
+// src/audit/run.ts
+import { existsSync as existsSync9, readFileSync as readFileSync8 } from "fs";
+import { execFileSync, spawnSync as spawnSync2 } from "child_process";
+import { join as join6, resolve as resolve9 } from "path";
+import { intersects, validRange } from "semver";
+import { parse as parseYaml2 } from "yaml";
+var readIfPresent = (root, path) => {
+  const absolute = join6(root, path);
+  return existsSync9(absolute) ? readFileSync8(absolute, "utf8") : void 0;
+};
+function packageJson(root) {
+  const content = readIfPresent(root, "package.json");
+  if (!content) return void 0;
+  try {
+    const parsed = JSON.parse(content);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+}
+var MAX_GIT_TRACKED_PATH_BYTES = 16 * 1024 * 1024;
+var MAX_NPM_AUDIT_OUTPUT_BYTES = 2 * 1024 * 1024;
+function parseNpmAuditAdvisories(output) {
+  let parsed;
+  try {
+    parsed = JSON.parse(output);
+  } catch {
+    return [
+      finding(
+        "LS024",
+        "medium",
+        "Dependency advisory check returned invalid data",
+        "npm audit did not return valid JSON advisory evidence; rerun the check and inspect npm/registry availability.",
+        false,
+        "package-lock.json"
+      )
+    ];
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+    return [
+      finding(
+        "LS024",
+        "medium",
+        "Dependency advisory check returned invalid data",
+        "npm audit did not return valid JSON advisory evidence; rerun the check and inspect npm/registry availability.",
+        false,
+        "package-lock.json"
+      )
+    ];
+  const audit = parsed;
+  if (audit.error)
+    return [
+      finding(
+        "LS024",
+        "medium",
+        "Dependency advisory check could not complete",
+        "npm audit reported a registry or lockfile error; advisory coverage is incomplete.",
+        false,
+        "package-lock.json"
+      )
+    ];
+  if (!audit.vulnerabilities || typeof audit.vulnerabilities !== "object" || Array.isArray(audit.vulnerabilities))
+    return [
+      finding(
+        "LS024",
+        "medium",
+        "Dependency advisory check returned invalid data",
+        "npm audit did not return a vulnerability map; advisory coverage is incomplete.",
+        false,
+        "package-lock.json"
+      )
+    ];
+  const safeText = (value) => value.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 200);
+  const vulnerabilities = Object.entries(
+    audit.vulnerabilities
+  ).map(([packageName, advisory]) => {
+    const record = advisory && typeof advisory === "object" ? advisory : {};
+    const severity2 = typeof record.severity === "string" && AUDIT_SEVERITIES.includes(record.severity) ? record.severity : "medium";
+    const sources = Array.isArray(record.via) ? record.via.filter(
+      (item) => Boolean(item && typeof item === "object" && !Array.isArray(item))
+    ).map(
+      (item) => typeof item.source === "number" ? `npm:${item.source}` : typeof item.name === "string" ? safeText(item.name) : typeof item.title === "string" ? safeText(item.title) : "advisory"
+    ).sort() : [];
+    const range = typeof record.range === "string" ? safeText(record.range) : "unspecified affected range";
+    return {
+      packageName: safeText(packageName),
+      severity: severity2,
+      source: sources.length ? sources.join(", ") : "advisory source unspecified",
+      range
+    };
+  }).sort((left, right) => left.packageName.localeCompare(right.packageName));
+  if (!vulnerabilities.length)
+    return [
+      finding(
+        "LS023",
+        "info",
+        "No production dependency advisories found",
+        "npm audit returned no vulnerable production dependencies.",
+        true,
+        "package-lock.json"
+      )
+    ];
+  const severity = vulnerabilities.reduce(
+    (highest, advisory) => severityRank(advisory.severity) > severityRank(highest) ? advisory.severity : highest,
+    "info"
+  );
+  const details = vulnerabilities.map(
+    (item) => `${item.packageName}: ${item.severity}, ${item.range}; evidence: ${item.source}`
+  );
+  return [
+    finding(
+      "LS023",
+      severity,
+      "Production dependency advisories detected",
+      details.join("\n"),
+      true,
+      "package-lock.json"
+    )
+  ];
+}
+function npmAdvisoryFindings(root) {
+  const result = spawnSync2(
+    "npm",
+    [
+      "audit",
+      "--json",
+      "--omit=dev",
+      "--package-lock-only",
+      "--audit-level=none"
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 3e4,
+      maxBuffer: MAX_NPM_AUDIT_OUTPUT_BYTES,
+      windowsHide: true,
+      shell: process.platform === "win32",
+      stdio: ["ignore", "pipe", "ignore"]
+    }
+  );
+  if (result.error || result.signal || result.stdout.length === 0)
+    return [
+      finding(
+        "LS024",
+        "medium",
+        "Dependency advisory check could not complete",
+        "npm audit did not complete within its 30-second limit or could not reach a registry; advisory coverage is incomplete.",
+        false,
+        "package-lock.json"
+      )
+    ];
+  return parseNpmAuditAdvisories(result.stdout);
+}
+function gitTrackedFiles(root) {
+  try {
+    const repository = execFileSync(
+      "git",
+      ["rev-parse", "--is-inside-work-tree"],
+      {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 1e4,
+        stdio: ["ignore", "pipe", "pipe"]
+      }
+    ).trim();
+    if (repository !== "true")
+      return { paths: [], complete: false, reason: "not-git" };
+  } catch (error) {
+    const stderr = error && typeof error === "object" && "stderr" in error ? String(error.stderr ?? "") : "";
+    if (/not a git repository|outside a git work tree/i.test(stderr))
+      return { paths: [], complete: false, reason: "not-git" };
+    return { paths: [], complete: false, reason: "incomplete" };
+  }
+  try {
+    return {
+      paths: execFileSync("git", ["ls-files", "-z"], {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: MAX_GIT_TRACKED_PATH_BYTES,
+        timeout: 1e4,
+        stdio: ["ignore", "pipe", "ignore"]
+      }).split("\0").filter(Boolean),
+      complete: true
+    };
+  } catch {
+    return { paths: [], complete: false, reason: "incomplete" };
+  }
+}
+function composeApiEnvironment(content) {
+  try {
+    const parsed = parseYaml2(
+      content.replace(/!reset\s+(\[\]|\{\})/g, "$1")
+    );
+    const environment = parsed?.services?.api?.environment;
+    if (Array.isArray(environment)) {
+      const values = {};
+      for (const entry of environment) {
+        if (typeof entry !== "string") continue;
+        const separator = entry.indexOf("=");
+        if (separator < 0) values[entry] = void 0;
+        else values[entry.slice(0, separator)] = entry.slice(separator + 1);
+      }
+      return values;
+    }
+    if (typeof environment === "object" && environment !== null && !Array.isArray(environment))
+      return environment;
+    return {};
+  } catch {
+    return void 0;
+  }
+}
+function composeApiEnvironmentReset(content) {
+  return /environment\s*:\s*!reset\s+(?:\[\s*\]|\{\s*\})/m.test(content);
+}
+function requiresExplicitComposeValue(environment, name) {
+  const value = environment[name];
+  return typeof value === "string" && new RegExp(`^\\$\\{${name}(?::)?\\?`).test(value);
+}
+var finding = (ruleId, severity, title, detail, verified, path) => ({ ruleId, severity, title, detail, verified, path });
+var SECRET_FILE_PATTERNS = [
+  /^\.env(?:\..+)?$/,
+  /(^|\/)\.env(?:\..+)?$/,
+  /(^|\/)secrets?\.json$/i,
+  /(^|\/).*\.pem$/i,
+  /(^|\/).*\.p12$/i,
+  /(^|\/)id_rsa$/i
+];
+function runProductionAudit(projectDirectoryInput, options = {}) {
+  const root = resolve9(projectDirectoryInput);
+  const findings = [];
+  const pkg = packageJson(root);
+  if (!existsSync9(join6(root, "package-lock.json")))
+    findings.push(
+      finding(
+        "LS001",
+        "high",
+        "Dependency graph is not locked",
+        "package-lock.json is missing; production installs are not reproducible.",
+        true,
+        "package-lock.json"
+      )
+    );
+  const cors = readIfPresent(root, "src/plugins/cors.ts") ?? "";
+  const envExample = readIfPresent(root, ".env.example") ?? "";
+  if (cors && /origin\s*:\s*true|origin\s*:\s*["']\*["']/.test(cors))
+    findings.push(
+      finding(
+        "LS002",
+        "high",
+        "Production CORS may be unrestricted",
+        "CORS source contains an unrestricted origin setting.",
+        true,
+        "src/plugins/cors.ts"
+      )
+    );
+  const authRoutes = readIfPresent(root, "src/modules/auth/auth.routes.ts") ?? "";
+  if (authRoutes && !/rateLimit|max:\s*\d+/.test(authRoutes))
+    findings.push(
+      finding(
+        "LS003",
+        "high",
+        "Authentication routes lack visible rate limits",
+        "Authentication endpoints should enforce bounded request rates before expensive work.",
+        true,
+        "src/modules/auth/auth.routes.ts"
+      )
+    );
+  for (const entry of [".env", ".env.example"].map((path) => ({ path, content: readIfPresent(root, path) })).filter((item) => item.content !== void 0))
+    if ((entry.content ?? "").split(/\r?\n/).some(
+      (line) => /^(JWT_(?:ACCESS|REFRESH)_SECRET)=\s*(?:secret|changeme|development|test|your[-_ ]?secret)\s*$/i.test(
+        line
+      )
+    ))
+      findings.push(
+        finding(
+          "LS004",
+          entry.path === ".env" ? "critical" : "high",
+          "JWT secret uses a known placeholder",
+          `A JWT secret placeholder was detected in ${entry.path}; values are intentionally not displayed.`,
+          true,
+          entry.path
+        )
+      );
+  const trackedResult = gitTrackedFiles(root);
+  if (!trackedResult.complete && trackedResult.reason === "not-git")
+    findings.push(
+      finding(
+        "LS022",
+        "medium",
+        "Project is not a Git repository",
+        "Tracked-file secret checks could not run because this directory is not inside a Git work tree. Initialize or select the project repository to include tracked paths in the audit.",
+        true
+      )
+    );
+  else if (!trackedResult.complete)
+    findings.push(
+      finding(
+        "LS022",
+        "high",
+        "Tracked paths could not be fully audited",
+        "Git path enumeration failed, timed out, or exceeded the 16 MiB audit bound; tracked-file secret results are incomplete.",
+        true
+      )
+    );
+  const tracked = trackedResult.paths.filter(
+    (path) => SECRET_FILE_PATTERNS.some((pattern) => pattern.test(path)) && !/(^|\/)\.env\.example$/.test(path)
+  );
+  if (tracked.length)
+    findings.push(
+      finding(
+        "LS005",
+        "critical",
+        "Potential secret material is tracked by Git",
+        `Sensitive-looking tracked paths: ${tracked.join(", ")}. Secret contents were not inspected or printed.`,
+        false
+      )
+    );
+  const dockerfile = readIfPresent(root, "Dockerfile");
+  if (dockerfile && !/^USER\s+[^\s]+/m.test(dockerfile))
+    findings.push(
+      finding(
+        "LS006",
+        "high",
+        "Container may run as root",
+        "Dockerfile does not declare a non-root USER in the runtime image.",
+        true,
+        "Dockerfile"
+      )
+    );
+  if (dockerfile && [
+    ...dockerfile.matchAll(
+      /^FROM\s+(?:--platform=\S+\s+)?node:(\d+)(?=[.@\-\s]|$)/gim
+    )
+  ].some((match) => Number(match[1]) <= 20))
+    findings.push(
+      finding(
+        "LS016",
+        "high",
+        "Container runtime may be end-of-life",
+        "The Dockerfile references Node 20 or earlier; verify the selected image against the Node.js support schedule.",
+        false,
+        "Dockerfile"
+      )
+    );
+  if (pkg) {
+    const engines = pkg.engines && typeof pkg.engines === "object" ? pkg.engines : {};
+    if (typeof engines.node !== "string")
+      findings.push(
+        finding(
+          "LS017",
+          "medium",
+          "Node.js support range is not declared",
+          "package.json does not declare engines.node; supported runtime compatibility cannot be checked from this manifest.",
+          true,
+          "package.json"
+        )
+      );
+    else if (validRange(engines.node) !== null && intersects(engines.node, "<=20.x", { includePrerelease: true }))
+      findings.push(
+        finding(
+          "LS018",
+          "high",
+          "Node.js support range may include an end-of-life runtime",
+          "The declared Node.js range appears to include Node 20 or earlier; review against the current Node.js release schedule.",
+          false,
+          "package.json"
+        )
+      );
+  }
+  const lockContent = readIfPresent(root, "package-lock.json");
+  if (lockContent !== void 0) {
+    try {
+      const lock = JSON.parse(lockContent);
+      if (!Number.isInteger(lock.lockfileVersion) || !lock.packages || typeof lock.packages !== "object")
+        throw new Error("invalid npm lock structure");
+      const rootPackage = lock.packages[""];
+      if (!rootPackage || pkg?.name && rootPackage.name !== pkg.name || pkg?.version && rootPackage.version !== pkg.version)
+        findings.push(
+          finding(
+            "LS019",
+            "high",
+            "Dependency lock does not match package metadata",
+            "The package-lock root name or version differs from package.json.",
+            true,
+            "package-lock.json"
+          )
+        );
+    } catch {
+      findings.push(
+        finding(
+          "LS020",
+          "high",
+          "Dependency lock is invalid",
+          "package-lock.json is not valid JSON with an npm lock structure.",
+          true,
+          "package-lock.json"
+        )
+      );
+    }
+  }
+  const baseCompose = readIfPresent(root, "docker-compose.yml");
+  const productionCompose = readIfPresent(
+    root,
+    "docker-compose.production.yml"
+  );
+  if (baseCompose !== void 0 || productionCompose !== void 0) {
+    const baseEnvironment = baseCompose ? composeApiEnvironment(baseCompose) : {};
+    const productionEnvironment = productionCompose ? composeApiEnvironment(productionCompose) : {};
+    const effectiveEnvironment = baseEnvironment && productionEnvironment ? productionCompose && composeApiEnvironmentReset(productionCompose) ? productionEnvironment : { ...baseEnvironment, ...productionEnvironment } : void 0;
+    if (!effectiveEnvironment || !requiresExplicitComposeValue(effectiveEnvironment, "CORS_ORIGIN") || !requiresExplicitComposeValue(
+      effectiveEnvironment,
+      "JWT_ACCESS_SECRET"
+    ) || !requiresExplicitComposeValue(effectiveEnvironment, "JWT_REFRESH_SECRET"))
+      findings.push(
+        finding(
+          "LS021",
+          "high",
+          "Production Compose does not require deployment settings",
+          "Production Compose should require an explicit CORS origin and JWT secrets.",
+          true,
+          productionCompose !== void 0 ? "docker-compose.production.yml" : "docker-compose.yml"
+        )
+      );
+  }
+  if (pkg) {
+    const scripts = pkg.scripts && typeof pkg.scripts === "object" ? pkg.scripts : {};
+    if (!scripts["prisma:deploy"])
+      findings.push(
+        finding(
+          "LS007",
+          "high",
+          "Production migration command is missing",
+          "package.json does not expose prisma:deploy.",
+          true,
+          "package.json"
+        )
+      );
+  }
+  if (!existsSync9(join6(root, "src/routes/health.ts")) || !existsSync9(join6(root, "src/routes/readiness.ts")))
+    findings.push(
+      finding(
+        "LS008",
+        "medium",
+        "Health/readiness coverage is incomplete",
+        "Production services should expose both liveness and readiness endpoints.",
+        true
+      )
+    );
+  const swagger = readIfPresent(root, "src/plugins/swagger.ts") ?? "";
+  if (swagger && !/NODE_ENV|SWAGGER|DOCS|enabled/i.test(swagger))
+    findings.push(
+      finding(
+        "LS009",
+        "medium",
+        "Swagger exposure has no visible production policy",
+        "Gate public production API documentation explicitly or document the choice.",
+        false,
+        "src/plugins/swagger.ts"
+      )
+    );
+  const tsconfig = readIfPresent(root, "tsconfig.json") ?? "";
+  if (/"sourceMap"\s*:\s*true|"inlineSourceMap"\s*:\s*true/.test(tsconfig))
+    findings.push(
+      finding(
+        "LS011",
+        "low",
+        "Source maps are enabled",
+        "Ensure production source maps are private.",
+        true,
+        "tsconfig.json"
+      )
+    );
+  if (envExample && /NODE_ENV=development|LOG_LEVEL=debug/.test(envExample))
+    findings.push(
+      finding(
+        "LS012",
+        "low",
+        "Development defaults are documented",
+        "Deployment configuration should override development defaults.",
+        true,
+        ".env.example"
+      )
+    );
+  if (options.dependencyAdvisories) findings.push(...npmAdvisoryFindings(root));
+  if (existsSync9(join6(root, "launchstack.json")))
+    try {
+      const manifest = loadProjectManifest(root);
+      const state = loadProjectState(root, {
+        templateVersion: manifest.project.templateVersion,
+        cliVersion: "unknown"
+      });
+      const drift = detectManagedDrift(root, state).filter(
+        (item) => item.kind !== "clean"
+      );
+      if (drift.length)
+        findings.push(
+          finding(
+            "LS013",
+            "high",
+            "LaunchStack-managed files have drift",
+            `${drift.length} managed file(s) are missing or locally modified.`,
+            true
+          )
+        );
+      const suppressions = new Map(
+        (manifest.audit?.suppressions ?? []).map((item) => [
+          item.ruleId,
+          item.reason
+        ])
+      );
+      for (const item of findings) {
+        const reason = suppressions.get(item.ruleId);
+        if (reason) {
+          item.suppressed = true;
+          item.suppressionReason = reason;
+        }
+      }
+    } catch (error) {
+      findings.push(
+        finding(
+          "LS015",
+          "high",
+          "LaunchStack project metadata is invalid",
+          error instanceof Error ? error.message : "Unable to validate metadata.",
+          true,
+          "launchstack.json"
+        )
+      );
+    }
+  findings.sort((a, b) => a.ruleId.localeCompare(b.ruleId));
+  const summary = {
+    info: 0,
+    low: 0,
+    medium: 0,
+    high: 0,
+    critical: 0,
+    suppressed: 0
+  };
+  for (const item of findings)
+    item.suppressed ? summary.suppressed += 1 : summary[item.severity] += 1;
+  return { projectDirectory: root, findings, summary };
+}
+
+// src/client/openapi.ts
+import { createHash as createHash2 } from "crypto";
+var METHODS = /* @__PURE__ */ new Set([
+  "get",
+  "post",
+  "put",
+  "patch",
+  "delete",
+  "head",
+  "options"
+]);
+var TYPES = /* @__PURE__ */ new Set([
+  "null",
+  "boolean",
+  "object",
+  "array",
+  "number",
+  "integer",
+  "string"
+]);
+var RESERVED = /* @__PURE__ */ new Set([
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "new",
+  "null",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+  "let",
+  "static",
+  "implements",
+  "interface",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "arguments",
+  "eval"
+]);
+var MAX_DOCUMENT_BYTES = 1048576;
+var MAX_DEPTH = 64;
+var MAX_NODES = 1e5;
+var object = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+function jsonSize(value) {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), "utf8");
+  } catch {
+    throw new Error("OpenAPI document must be acyclic JSON data.");
+  }
+}
+function validateTree(root) {
+  const stack = [
+    { value: root, depth: 0 }
+  ];
+  const active = /* @__PURE__ */ new WeakSet();
+  let nodes = 0;
+  while (stack.length) {
+    const item = stack.pop();
+    if (!item.value || typeof item.value !== "object") continue;
+    if (item.leaving) {
+      active.delete(item.value);
+      continue;
+    }
+    if (active.has(item.value))
+      throw new Error("OpenAPI document contains a cyclic object graph.");
+    if (++nodes > MAX_NODES)
+      throw new Error("OpenAPI document exceeds the 100000-node limit.");
+    if (item.depth > MAX_DEPTH)
+      throw new Error(
+        "OpenAPI document exceeds the maximum nesting depth of 64."
+      );
+    active.add(item.value);
+    stack.push({ value: item.value, depth: item.depth, leaving: true });
+    const values = Array.isArray(item.value) ? item.value : Object.values(item.value);
+    for (const child of values)
+      stack.push({ value: child, depth: item.depth + 1 });
+  }
+}
+function pointerParts(ref) {
+  if (!ref.startsWith("#/"))
+    throw new Error("Only local OpenAPI references are supported.");
+  return ref.slice(2).split("/").map((part) => {
+    try {
+      return decodeURIComponent(part).replace(/~1/g, "/").replace(/~0/g, "~");
+    } catch {
+      throw new Error("OpenAPI reference contains invalid pointer escaping.");
+    }
+  });
+}
+function resolveReference(root, ref) {
+  let current = root;
+  for (const part of pointerParts(ref)) {
+    if (!object(current) && !Array.isArray(current))
+      throw new Error("OpenAPI reference does not resolve: " + ref);
+    current = current[part];
+    if (current === void 0)
+      throw new Error("OpenAPI reference does not resolve: " + ref);
+  }
+  if (!object(current))
+    throw new Error("OpenAPI reference must target an object: " + ref);
+  return current;
+}
+function resolveObject(value, document) {
+  if (!object(value)) throw new Error("Referenced OpenAPI object is invalid.");
+  if (typeof value.$ref !== "string") return value;
+  return {
+    ...resolveReference(document, value.$ref),
+    ...value,
+    $ref: void 0
+  };
+}
+function validateSchema(schema, version, path, depth = 0) {
+  if (depth > MAX_DEPTH)
+    throw new Error("OpenAPI schema exceeds the maximum nesting depth of 64.");
+  if (!object(schema))
+    throw new Error("Invalid OpenAPI schema at " + path + ".");
+  if (schema.$ref !== void 0 && typeof schema.$ref !== "string")
+    throw new Error("Schema $ref must be a string at " + path + ".");
+  if (typeof schema.$ref === "string") return;
+  if (schema.type !== void 0) {
+    const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+    if (Array.isArray(schema.type) && !version.startsWith("3.1."))
+      throw new Error("Type arrays require OpenAPI 3.1 at " + path + ".");
+    if (!types.length || types.some((type) => typeof type !== "string" || !TYPES.has(type)))
+      throw new Error("Invalid schema type at " + path + ".");
+  }
+  if (schema.required !== void 0 && (!Array.isArray(schema.required) || schema.required.some((item) => typeof item !== "string")))
+    throw new Error(
+      "Schema required must be an array of property names at " + path + "."
+    );
+  if (schema.properties !== void 0) {
+    if (!object(schema.properties))
+      throw new Error("Schema properties must be an object at " + path + ".");
+    for (const name of Object.keys(schema.properties))
+      validateSchema(
+        schema.properties[name],
+        version,
+        path + ".properties." + name,
+        depth + 1
+      );
+    const propertyNames = new Set(Object.keys(schema.properties));
+    if (schema.required?.some(
+      (name) => !propertyNames.has(name)
+    ))
+      throw new Error(
+        "Schema required references an unknown property at " + path + "."
+      );
+  }
+  for (const key of ["oneOf", "anyOf", "allOf"]) {
+    if (schema[key] !== void 0) {
+      if (!Array.isArray(schema[key]) || schema[key].length === 0)
+        throw new Error(
+          "Schema " + key + " must be a non-empty array at " + path + "."
+        );
+      for (let index = 0; index < schema[key].length; index += 1)
+        validateSchema(
+          schema[key][index],
+          version,
+          path + "." + key + "[" + index + "]",
+          depth + 1
+        );
+    }
+  }
+  if (schema.items !== void 0)
+    validateSchema(schema.items, version, path + ".items", depth + 1);
+  if (schema.additionalProperties !== void 0 && typeof schema.additionalProperties !== "boolean")
+    validateSchema(
+      schema.additionalProperties,
+      version,
+      path + ".additionalProperties",
+      depth + 1
+    );
+  if (schema.enum !== void 0 && (!Array.isArray(schema.enum) || schema.enum.length === 0))
+    throw new Error("Schema enum must be a non-empty array at " + path + ".");
+}
+function resolveOperationReferences(document) {
+  const paths = document.paths;
+  for (const path of Object.keys(paths).sort()) {
+    const item = resolveObject(paths[path], document);
+    if (Array.isArray(item.parameters))
+      item.parameters = item.parameters.map(
+        (parameter) => resolveObject(parameter, document)
+      );
+    for (const method of Object.keys(item).sort()) {
+      if (!METHODS.has(method.toLowerCase()) || !object(item[method])) continue;
+      const operation = item[method];
+      const inherited = Array.isArray(item.parameters) ? item.parameters : [];
+      const local = Array.isArray(operation.parameters) ? operation.parameters.map(
+        (parameter) => resolveObject(parameter, document)
+      ) : [];
+      const seen = /* @__PURE__ */ new Map();
+      for (const parameter of [...inherited, ...local]) {
+        if (!object(parameter) || typeof parameter.name !== "string" || typeof parameter.in !== "string")
+          throw new Error("OpenAPI parameter requires a name and location.");
+        if (!"path query header cookie".split(" ").includes(parameter.in))
+          throw new Error(
+            "OpenAPI parameter has an unsupported location: " + parameter.in
+          );
+        if (parameter.in === "path" && parameter.required !== true)
+          throw new Error(
+            "OpenAPI path parameters must be required: " + parameter.name
+          );
+        if (parameter.schema !== void 0)
+          validateSchema(
+            parameter.schema,
+            String(document.openapi),
+            "parameter." + parameter.name
+          );
+        if (parameter.content !== void 0 && !object(parameter.content))
+          throw new Error(
+            "OpenAPI parameter content must be an object: " + parameter.name
+          );
+        if (parameter.schema === void 0 && parameter.content === void 0)
+          throw new Error(
+            "OpenAPI parameter requires a schema or content: " + parameter.name
+          );
+        seen.set(parameter.name + "\0" + parameter.in, parameter);
+      }
+      operation.parameters = [...seen.values()].sort(
+        (a, b) => String(a.in).localeCompare(String(b.in)) || String(a.name).localeCompare(String(b.name))
+      );
+      if (operation.requestBody)
+        operation.requestBody = resolveObject(operation.requestBody, document);
+      if (object(operation.responses)) {
+        const responses = {};
+        for (const code of Object.keys(operation.responses).sort())
+          responses[code] = resolveObject(operation.responses[code], document);
+        operation.responses = responses;
+      }
+    }
+    paths[path] = item;
+  }
+}
+function validateDocumentSchemas(document) {
+  const pending = [
+    { value: document, path: "" }
+  ];
+  const visited = /* @__PURE__ */ new WeakSet();
+  while (pending.length) {
+    const { value, path } = pending.pop();
+    if (!object(value) && !Array.isArray(value)) continue;
+    if (visited.has(value)) continue;
+    visited.add(value);
+    for (const [key, child] of Object.entries(value)) {
+      const childPath = path + "." + key;
+      if (key === "schema")
+        validateSchema(child, String(document.openapi), childPath);
+      else if (child && typeof child === "object")
+        pending.push({ value: child, path: childPath });
+    }
+    if (Array.isArray(value))
+      for (let index = 0; index < value.length; index += 1)
+        pending.push({ value: value[index], path: path + "[" + index + "]" });
+  }
+}
+function parseOpenApiDocument(value) {
+  if (!object(value) || typeof value.openapi !== "string" || !/^3\.(0|1)\.\d+$/.test(value.openapi) || !object(value.paths))
+    throw new Error(
+      "OpenAPI document must contain a supported 3.0/3.1 version and paths object."
+    );
+  if (jsonSize(value) > MAX_DOCUMENT_BYTES)
+    throw new Error("OpenAPI document exceeds the 1 MiB size limit.");
+  validateTree(value);
+  const document = JSON.parse(JSON.stringify(value));
+  const paths = document.paths;
+  if (Object.keys(paths).length > 1e3)
+    throw new Error("OpenAPI document exceeds the 1000-path limit.");
+  const schemas = object(document.components) && object(document.components.schemas) ? document.components.schemas : {};
+  if (Object.keys(schemas).length > 1e3)
+    throw new Error("OpenAPI document exceeds the 1000-schema limit.");
+  for (const [name, schema] of Object.entries(schemas))
+    validateSchema(
+      schema,
+      document.openapi,
+      "components.schemas." + name
+    );
+  const references = [];
+  const referenceStack = [document];
+  while (referenceStack.length) {
+    const current = referenceStack.pop();
+    if (Array.isArray(current)) referenceStack.push(...current);
+    else if (object(current)) {
+      if (typeof current.$ref === "string") references.push(current.$ref);
+      referenceStack.push(...Object.values(current));
+    }
+  }
+  for (const ref of references) resolveReference(document, ref);
+  resolveOperationReferences(document);
+  validateDocumentSchemas(document);
+  return document;
+}
+function sanitize(input) {
+  const words = input.replace(/[^A-Za-z0-9_$]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  let result = words.map(
+    (word, index) => index === 0 ? word.charAt(0).toLowerCase() + word.slice(1) : word.charAt(0).toUpperCase() + word.slice(1)
+  ).join("");
+  if (!result) result = "operation";
+  if (/^[0-9]/.test(result)) result = "op" + result;
+  result = result.replace(/[^A-Za-z0-9_$]/g, "");
+  return RESERVED.has(result) ? "api_" + result : result;
+}
+function collectOperations(document) {
+  const raw = [];
+  for (const path of Object.keys(document.paths).sort()) {
+    const item = document.paths[path] ?? {};
+    for (const method of Object.keys(item).sort()) {
+      if (!METHODS.has(method.toLowerCase())) continue;
+      const operation = item[method];
+      if (!object(operation)) continue;
+      const typed = operation;
+      raw.push({
+        method: method.toUpperCase(),
+        path,
+        operation: typed,
+        preferredName: sanitize(
+          typed.operationId ?? method + "-" + path.replace(/[{}]/g, "")
+        )
+      });
+    }
+  }
+  const counts = /* @__PURE__ */ new Map();
+  for (const item of raw)
+    counts.set(item.preferredName, (counts.get(item.preferredName) ?? 0) + 1);
+  return raw.map(({ preferredName, ...item }) => ({
+    ...item,
+    name: (counts.get(preferredName) ?? 0) > 1 ? preferredName + "_" + createHash2("sha256").update(item.method + " " + item.path).digest("hex").slice(0, 8) : preferredName
+  }));
+}
+function decodeRefName(ref) {
+  return pointerParts(ref).pop() ?? "Unknown";
+}
+function componentTypeNames(document) {
+  const result = /* @__PURE__ */ Object.create(null);
+  const used = /* @__PURE__ */ new Set();
+  for (const name of Object.keys(document.components?.schemas ?? {}).sort()) {
+    let candidate = name.replace(/[^A-Za-z0-9_$]+/g, "_");
+    if (!candidate || /^[0-9]/.test(candidate))
+      candidate = "Schema_" + candidate;
+    if (RESERVED.has(candidate)) candidate = "Schema_" + candidate;
+    if (used.has(candidate))
+      candidate += "_" + createHash2("sha256").update(name).digest("hex").slice(0, 8);
+    used.add(candidate);
+    result[name] = candidate;
+  }
+  return result;
+}
+function schemaToType(schema, names = {}) {
+  if (!schema) return "unknown";
+  const types = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
+  const nullable = schema.nullable === true || types.includes("null");
+  let rendered;
+  if (schema.$ref) {
+    const name = decodeRefName(schema.$ref);
+    rendered = names[name] ?? componentTypeNames({
+      openapi: "3.1.0",
+      paths: {},
+      components: { schemas: { [name]: {} } }
+    })[name] ?? "unknown";
+  } else if (schema.enum?.length) {
+    rendered = schema.enum.map((value) => value === null ? "null" : JSON.stringify(value)).join(" | ");
+  } else if (schema.oneOf?.length) {
+    rendered = schema.oneOf.map((item) => schemaToType(item, names)).join(" | ");
+  } else if (schema.anyOf?.length) {
+    rendered = schema.anyOf.map((item) => schemaToType(item, names)).join(" | ");
+  } else if (schema.allOf?.length) {
+    rendered = schema.allOf.map((item) => schemaToType(item, names)).join(" & ");
+  } else {
+    const type = types.find((entry) => entry !== "null");
+    if (type === "string") rendered = "string";
+    else if (type === "integer" || type === "number") rendered = "number";
+    else if (type === "boolean") rendered = "boolean";
+    else if (type === "array")
+      rendered = "Array<" + schemaToType(schema.items, names) + ">";
+    else if (schema.properties) {
+      const required = new Set(schema.required ?? []);
+      rendered = "{ " + Object.keys(schema.properties).sort().map(
+        (key) => JSON.stringify(key) + (required.has(key) ? "" : "?") + ": " + schemaToType(schema.properties?.[key], names) + ";"
+      ).join(" ") + " }";
+    } else if (schema.additionalProperties && typeof schema.additionalProperties === "object")
+      rendered = "Record<string, " + schemaToType(schema.additionalProperties, names) + ">";
+    else if (schema.additionalProperties === false) rendered = "{}";
+    else rendered = "Record<string, unknown>";
+  }
+  return nullable && !rendered.split(" | ").includes("null") ? rendered + " | null" : rendered;
+}
+function jsonMedia(content) {
+  if (!content) return void 0;
+  const names = Object.keys(content).sort();
+  return names.find(
+    (name) => name.toLowerCase() === "application/json" || name.toLowerCase().endsWith("+json")
+  ) ? content[names.find(
+    (name) => name.toLowerCase() === "application/json" || name.toLowerCase().endsWith("+json")
+  )] : content[names[0]];
+}
+function responseSchema(operation) {
+  const responses = operation.responses ?? {};
+  const codes = Object.keys(responses).filter((value) => /^2(?:\d\d|xx)$/i.test(value)).sort();
+  const selected = codes.length ? codes : Object.keys(responses).includes("default") ? ["default"] : [];
+  const schemas = [];
+  for (const code of selected) {
+    const content = responses[code]?.content;
+    const schema = jsonMedia(content)?.schema;
+    if (schema) schemas.push(schema);
+  }
+  if (!schemas.length) return void 0;
+  if (schemas.length === 1) return schemas[0];
+  return { oneOf: schemas };
+}
+function requestBodySchema(operation) {
+  return jsonMedia(operation.requestBody?.content)?.schema;
+}
+
+// src/client/generate.ts
+import { lookup } from "dns/promises";
+import { isIP } from "net";
+import { Agent, request as httpsRequest } from "https";
+
+// src/client/remote-network.ts
+import { BlockList } from "net";
+var nonPublicIPv4 = new BlockList();
+for (const [network, prefix] of [
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.0.0.0", 24],
+  ["192.0.2.0", 24],
+  ["192.88.99.0", 24],
+  ["192.168.0.0", 16],
+  ["198.18.0.0", 15],
+  ["198.51.100.0", 24],
+  ["203.0.113.0", 24],
+  ["224.0.0.0", 4],
+  ["240.0.0.0", 4]
+])
+  nonPublicIPv4.addSubnet(network, prefix, "ipv4");
+var globalIPv6 = new BlockList();
+globalIPv6.addSubnet("2000::", 3, "ipv6");
+var nonPublicIPv6 = new BlockList();
+for (const [network, prefix] of [
+  ["2001::", 23],
+  ["2001:db8::", 32],
+  ["2002::", 16],
+  ["3fff::", 20],
+  ["64:ff9b::", 96],
+  ["64:ff9b:1::", 48],
+  ["fc00::", 7],
+  ["fe80::", 10],
+  ["ff00::", 8],
+  ["::", 96]
+])
+  nonPublicIPv6.addSubnet(network, prefix, "ipv6");
+function isPublicAddress(address, family) {
+  if (family === 4) return !nonPublicIPv4.check(address, "ipv4");
+  return family === 6 && globalIPv6.check(address, "ipv6") && !nonPublicIPv6.check(address, "ipv6");
+}
+function validateRemoteAddresses(addresses) {
+  if (addresses.length === 0 || addresses.some(({ address, family }) => !isPublicAddress(address, family)))
+    throw new Error(
+      "Remote OpenAPI schema host resolves to a non-public address."
+    );
+  return addresses;
+}
+function createPinnedLookup(addresses) {
+  return (_requestedHostname, options, callback) => {
+    if (options?.all) {
+      callback(null, addresses);
+    } else {
+      const selected = addresses[0];
+      if (!selected)
+        callback(new Error("Remote host has no usable address."), "", 0);
+      else callback(null, selected.address, selected.family);
+    }
+  };
+}
+
+// src/client/generate.ts
+var MAX_GENERATED_BYTES = 2097152;
+var MAX_REMOTE_SCHEMA_BYTES = 1048576;
+async function fetchRemoteSchema(url, hostname) {
+  const resolved = isIP(hostname) !== 0 ? [{ address: hostname, family: isIP(hostname) }] : await lookup(hostname, { all: true, verbatim: true });
+  const addresses = validateRemoteAddresses(resolved);
+  const agent = new Agent({
+    keepAlive: false,
+    lookup: createPinnedLookup(addresses)
+  });
+  return await new Promise((resolve16, reject) => {
+    const request = httpsRequest(
+      url,
+      {
+        agent,
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(1e4)
+      },
+      (response) => {
+        const fail = (error) => {
+          response.destroy();
+          agent.destroy();
+          reject(error);
+        };
+        if (response.statusCode !== 200) {
+          fail(new Error("OpenAPI request failed with " + response.statusCode));
+          return;
+        }
+        const contentType = response.headers["content-type"] ?? "";
+        if (!/^(application\/json|application\/[^;]+\+json)(;|$)/i.test(
+          contentType
+        )) {
+          fail(
+            new Error(
+              "OpenAPI endpoint returned unsupported content type: " + (contentType || "unknown")
+            )
+          );
+          return;
+        }
+        const declared = Number(response.headers["content-length"]);
+        if (Number.isFinite(declared) && declared > MAX_REMOTE_SCHEMA_BYTES) {
+          fail(new Error("OpenAPI response exceeds the 1 MiB size limit."));
+          return;
+        }
+        const chunks = [];
+        let total = 0;
+        response.on("data", (chunk) => {
+          const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          total += bytes.byteLength;
+          if (total > MAX_REMOTE_SCHEMA_BYTES) {
+            fail(new Error("OpenAPI response exceeds the 1 MiB size limit."));
+            return;
+          }
+          chunks.push(bytes);
+        });
+        response.on("end", () => {
+          agent.destroy();
+          resolve16(Buffer.concat(chunks, total).toString("utf8"));
+        });
+        response.on("error", (error) => {
+          agent.destroy();
+          reject(error);
+        });
+      }
+    );
+    request.on("error", (error) => {
+      agent.destroy();
+      reject(error);
+    });
+    request.end();
+  });
+}
+function boundedJoin(items, separator, render) {
+  const output = [];
+  let bytes = 0;
+  for (const item of items) {
+    const chunk = render(item);
+    bytes += Buffer.byteLength(chunk, "utf8") + (output.length ? Buffer.byteLength(separator, "utf8") : 0);
+    if (bytes > MAX_GENERATED_BYTES)
+      throw new Error(
+        "Generated OpenAPI client exceeds the 2 MiB output limit."
+      );
+    output.push(chunk);
+  }
+  return output.join(separator);
+}
+async function loadOpenApiSource(source) {
+  if (/^https?:\/\//i.test(source)) {
+    const url = new URL(source);
+    if (url.protocol !== "https:" || url.username || url.password)
+      throw new Error(
+        "Remote OpenAPI schemas require HTTPS without embedded credentials."
+      );
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname === "0.0.0.0" || hostname === "::1")
+      throw new Error("Remote OpenAPI schema host is not allowed.");
+    let parsed2;
+    try {
+      parsed2 = JSON.parse(await fetchRemoteSchema(url, hostname));
+    } catch (error) {
+      if (error instanceof SyntaxError)
+        throw new Error("OpenAPI endpoint returned invalid JSON.");
+      throw error;
+    }
+    return parseOpenApiDocument(parsed2);
+  }
+  const file = readRegularFileNoFollow(source, 1048576);
+  let parsed;
+  try {
+    parsed = JSON.parse(file.content);
+  } catch (error) {
+    if (error instanceof SyntaxError)
+      throw new Error("OpenAPI file contains invalid JSON.");
+    throw error;
+  }
+  return parseOpenApiDocument(parsed);
+}
+function renderSchemas(document, names) {
+  return boundedJoin(
+    Object.keys(document.components?.schemas ?? {}).sort(),
+    "\n",
+    (name) => "export type " + names[name] + " = " + schemaToType(document.components?.schemas?.[name], names) + ";"
+  );
+}
+function property(name) {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
+}
+function javascriptStringLiteral(value) {
+  return JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+}
+function access(name) {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? "." + name : "[" + JSON.stringify(name) + "]";
+}
+function renderInputs(document, names, operations) {
+  return boundedJoin(operations, "\n", (item) => {
+    const parameters = item.operation.parameters ?? [];
+    const body = requestBodySchema(item.operation);
+    if (!parameters.length && !body) return "";
+    const name = item.name.charAt(0).toUpperCase() + item.name.slice(1) + "Input";
+    const groups = [];
+    for (const location of ["path", "query", "header", "cookie"]) {
+      const selected = parameters.filter(
+        (parameter) => parameter.in === location
+      );
+      if (!selected.length) continue;
+      const fields = selected.map(
+        (parameter) => property(parameter.name) + (location !== "path" && !parameter.required ? "?" : "") + ": " + schemaToType(parameter.schema, names) + ";"
+      ).join(" ");
+      const groupName = location === "cookie" ? "cookies" : location === "header" ? "headers" : location;
+      const optional = location !== "path" && selected.every((parameter) => !parameter.required);
+      groups.push(groupName + (optional ? "?" : "") + ": { " + fields + " };");
+    }
+    if (body)
+      groups.push(
+        "body" + (item.operation.requestBody?.required ? "" : "?") + ": " + schemaToType(body, names) + ";"
+      );
+    return "export type " + name + " = { " + groups.join(" ") + " };";
+  }).trim();
+}
+function renderMethod(item, names) {
+  const parameters = item.operation.parameters ?? [];
+  const body = requestBodySchema(item.operation);
+  const hasInput = parameters.length > 0 || Boolean(body);
+  const inputName = item.name.charAt(0).toUpperCase() + item.name.slice(1) + "Input";
+  const output = schemaToType(responseSchema(item.operation), names);
+  const paths = parameters.filter((parameter) => parameter.in === "path").map(
+    (parameter) => "path = path.replace(" + JSON.stringify("{" + parameter.name + "}") + ", encodeURIComponent(String(input.path" + access(parameter.name) + ")));"
+  ).join("\n    ");
+  const query = parameters.filter((parameter) => parameter.in === "query").map((parameter) => {
+    const value = "input.query?" + access(parameter.name);
+    const name = JSON.stringify(parameter.name);
+    return "if (" + value + " !== undefined) { const parameterValue = " + value + "; if (Array.isArray(parameterValue)) { for (const item of parameterValue) query.append(" + name + ', String(item)); } else if (parameterValue !== null && typeof parameterValue === "object") { for (const [key, item] of Object.entries(parameterValue)) query.append(' + name + ' + "[" + key + "]", String(item)); } else query.set(' + name + ", String(parameterValue)); }";
+  }).join("\n    ");
+  const headerParameters = parameters.filter((parameter) => parameter.in === "header").map(
+    (parameter) => "if (input.headers?" + access(parameter.name) + " !== undefined) headers.set(" + JSON.stringify(parameter.name) + ", String(input.headers" + access(parameter.name) + "));"
+  ).join("\n    ");
+  const cookieParameters = parameters.filter((parameter) => parameter.in === "cookie").map(
+    (parameter) => "if (input.cookies?" + access(parameter.name) + " !== undefined) cookies.push(encodeURIComponent(" + JSON.stringify(parameter.name) + ') + "=" + encodeURIComponent(String(input.cookies' + access(parameter.name) + ")));"
+  ).join("\n    ");
+  const requestHeaders = headerParameters + (cookieParameters ? "\n    const cookies: string[] = [];\n    " + cookieParameters + '\n    if (cookies.length) headers.set("cookie", cookies.join("; "));' : "");
+  const requestBody = body ? 'headers.set("content-type", "application/json");' : "";
+  const bodyValue = body ? "body: input.body === undefined ? undefined : JSON.stringify(input.body)," : "";
+  return "  async " + item.name + "(" + (hasInput ? "input: " + inputName : "input: Record<string, never> = {}") + "): Promise<" + output + "> {\n    let path = " + JSON.stringify(item.path) + ";\n    " + paths + "\n    const query = new URLSearchParams();\n    " + query + '\n    const headers = new Headers({ accept: "application/json" });\n    ' + requestHeaders + '\n    const token = await this.tokenProvider?.();\n    if (token) headers.set("authorization", "Bearer " + token);\n    ' + requestBody + "\n    const url = new URL(path, this.baseUrl);\n    if ([...query].length > 0) url.search = query.toString();\n    const response = await this.fetchImpl(url, { method: " + JSON.stringify(item.method) + ", headers, " + bodyValue + ' signal: AbortSignal.timeout(this.timeoutMs) });\n    const contentType = response.headers.get("content-type") ?? "";\n    const payload: unknown = response.status === 204 ? undefined : contentType.includes("json") ? await response.json() : await response.text();\n    if (!response.ok) throw new ApiError(response.status, response.statusText, payload);\n    return payload as ' + output + ";\n  }";
+}
+function generateTypeScriptClient(document, target = "typescript") {
+  const names = componentTypeNames(document);
+  const operations = collectOperations(document).map((operation) => {
+    const name = operation.name;
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name))
+      throw new Error(
+        "OpenAPI operation identifier is not a safe TypeScript name."
+      );
+    return { ...operation, name };
+  });
+  if (operations.length > 3e3)
+    throw new Error("OpenAPI document exceeds the 3000-operation limit.");
+  const schemas = renderSchemas(document, names);
+  const inputs = renderInputs(document, names, operations);
+  const methods = boundedJoin(
+    operations,
+    "\n\n",
+    (item) => renderMethod(item, names)
+  );
+  const react = target === "react" ? `
+${boundedJoin(
+    operations.map(
+      (item, index) => `export const operationQueryKey${index} = (baseUrl: string | URL, cacheScope: string, input: unknown) => ["launchstack", new URL(baseUrl).href, cacheScope, ${javascriptStringLiteral(`${item.method} ${item.path}`)}, input] as const;`
+    ),
+    "\n",
+    (line) => line
+  )}
+` : target === "react-native" ? '\nexport const launchStackClientTarget = "react-native" as const;\n' : "";
+  const output = `/* eslint-disable */
+// Generated by LaunchStack CLI. Do not edit directly.
+export type TokenProvider = () => string | undefined | null | Promise<string | undefined | null>;
+export class ApiError extends Error { constructor(public readonly status: number, public readonly statusText: string, public readonly body: unknown) { super(\`API request failed: \${status} \${statusText}\`); this.name = "ApiError"; } }
+${schemas}
+${inputs}
+export class LaunchStackClient { private readonly baseUrl: URL; private readonly tokenProvider?: TokenProvider; private readonly fetchImpl: typeof fetch; private readonly timeoutMs: number; constructor(options: { baseUrl: string | URL; tokenProvider?: TokenProvider; fetch?: typeof fetch; timeoutMs?: number }) { this.baseUrl = new URL(options.baseUrl); this.tokenProvider = options.tokenProvider; this.fetchImpl = options.fetch ?? globalThis.fetch; this.timeoutMs = options.timeoutMs ?? 10000; if (!Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0) throw new Error("timeoutMs must be positive"); }
+${methods}
+}
+${react}`;
+  if (Buffer.byteLength(output, "utf8") > MAX_GENERATED_BYTES)
+    throw new Error("Generated OpenAPI client exceeds the 2 MiB output limit.");
+  return output;
+}
+
+// src/generator/files.ts
+import {
+  cpSync,
+  existsSync as existsSync10,
+  lstatSync as lstatSync5,
+  mkdirSync as mkdirSync3,
+  readdirSync as readdirSync2,
+  renameSync as renameSync3,
+  unlinkSync as unlinkSync2
+} from "fs";
+import { basename as basename2, dirname as dirname4, resolve as resolve10 } from "path";
+var RENAMED_TEMPLATE_FILES = {
+  _gitignore: ".gitignore",
+  _dockerignore: ".dockerignore",
+  _npmrc: ".npmrc",
+  _env: ".env",
+  "_env.example": ".env.example"
+};
+function ensureDestinationAvailable(destinationDirectory, overwrite = false) {
+  if (!existsSync10(destinationDirectory)) {
+    return;
+  }
+  const contents = readdirSync2(destinationDirectory);
+  if (contents.length > 0 && !overwrite) {
+    throw new Error(
+      `Destination is not empty: ${destinationDirectory}. Use --force to overwrite it.`
+    );
+  }
+}
+function copyDirectory(sourceDirectory, destinationDirectory, overwriteRenamedFiles = false) {
+  if (!existsSync10(sourceDirectory)) {
+    throw new Error(`Template directory not found: ${sourceDirectory}`);
+  }
+  rejectTemplateLinks(sourceDirectory);
+  mkdirSync3(destinationDirectory, { recursive: true });
+  cpSync(sourceDirectory, destinationDirectory, {
+    recursive: true,
+    force: true
+  });
+  renameTemplateFiles(destinationDirectory, overwriteRenamedFiles);
+}
+function rejectTemplateLinks(directory) {
+  for (const entry of readdirSync2(directory)) {
+    const path = resolve10(directory, entry);
+    const stats = lstatSync5(path);
+    if (stats.isSymbolicLink())
+      throw new Error(
+        `Template contains an unsupported symbolic link: ${path}`
+      );
+    if (stats.isDirectory()) rejectTemplateLinks(path);
+  }
+}
+function renameTemplateFiles(directory, overwriteRenamedFiles) {
+  for (const entry of readdirSync2(directory)) {
+    const currentPath = resolve10(directory, entry);
+    const stats = lstatSync5(currentPath);
+    if (stats.isSymbolicLink()) continue;
+    if (stats.isDirectory()) {
+      renameTemplateFiles(currentPath, overwriteRenamedFiles);
+      continue;
+    }
+    const replacementName = RENAMED_TEMPLATE_FILES[basename2(currentPath)];
+    if (!replacementName) {
+      continue;
+    }
+    const replacementPath = resolve10(dirname4(currentPath), replacementName);
+    if (existsSync10(replacementPath)) {
+      if (overwriteRenamedFiles) {
+        unlinkSync2(replacementPath);
+        renameSync3(currentPath, replacementPath);
+        continue;
+      }
+      const existingContent = Buffer.from(
+        readRegularFileNoFollow(replacementPath, 1e7).content
+      );
+      const sourceContent = Buffer.from(
+        readRegularFileNoFollow(currentPath, 1e7).content
+      );
+      if (!existingContent.equals(sourceContent)) {
+        throw new Error(
+          `Cannot rename template file because the destination exists: ${replacementPath}`
+        );
+      }
+      unlinkSync2(currentPath);
+      continue;
+    }
+    renameSync3(currentPath, replacementPath);
+  }
+}
+
+// src/generator/names.ts
+var PROJECT_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+function validateProjectName(projectName) {
+  if (!projectName.trim()) {
+    throw new Error("Project name is required.");
+  }
+  if (!PROJECT_NAME_PATTERN.test(projectName)) {
+    throw new Error(
+      "Project name must use lowercase letters, numbers, and hyphens only."
+    );
+  }
+}
+function toDisplayName(projectName) {
+  return projectName.split("-").filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+// src/generator/paths.ts
+import { existsSync as existsSync11 } from "fs";
+import { resolve as resolve11 } from "path";
+function getRuntimeDirectory() {
+  if (typeof __dirname === "string") {
+    return __dirname;
+  }
+  return process.cwd();
+}
+function getPackageRoot() {
+  const runtimeDirectory = getRuntimeDirectory();
+  const candidates = [
+    process.cwd(),
+    runtimeDirectory,
+    resolve11(runtimeDirectory, ".."),
+    resolve11(runtimeDirectory, "../.."),
+    resolve11(process.cwd(), ".."),
+    resolve11(process.cwd(), "../..")
+  ];
+  for (const candidate of candidates) {
+    if (existsSync11(resolve11(candidate, "package.json"))) {
+      return candidate;
+    }
+  }
+  throw new Error("Could not locate the LaunchStack package root.");
+}
+function getTemplateDirectory(templateName) {
+  const runtimeDirectory = getRuntimeDirectory();
+  const packageRoot = getPackageRoot();
+  const candidates = [
+    resolve11(runtimeDirectory, "templates", templateName),
+    resolve11(packageRoot, "dist", "templates", templateName),
+    resolve11(packageRoot, "src", "templates", templateName),
+    resolve11(packageRoot, "templates", templateName)
+  ];
+  const templateDirectory = candidates.find(
+    (candidate) => existsSync11(candidate)
+  );
+  if (!templateDirectory) {
+    throw new Error(
+      `Template "${templateName}" could not be found in the LaunchStack installation.`
+    );
+  }
+  return templateDirectory;
+}
+
+// src/generator/template.ts
+import { existsSync as existsSync12, lstatSync as lstatSync6, readdirSync as readdirSync3 } from "fs";
+import { basename as basename3, extname, join as join7 } from "path";
+var TEXT_EXTENSIONS = /* @__PURE__ */ new Set([
+  ".cjs",
+  ".css",
+  ".example",
+  ".html",
+  ".js",
+  ".json",
+  ".md",
+  ".mjs",
+  ".prisma",
+  ".sh",
+  ".toml",
+  ".ts",
+  ".tsx",
+  ".txt",
+  ".yaml",
+  ".yml"
+]);
+var TEXT_FILENAMES = /* @__PURE__ */ new Set([
+  ".dockerignore",
+  ".env",
+  ".env.example",
+  ".gitignore",
+  ".npmrc",
+  "Dockerfile",
+  "LICENSE"
+]);
+function renderTemplate(content, variables) {
+  return content.replace(
+    /{{([A-Z0-9_]+)}}/g,
+    (token, key) => Object.prototype.hasOwnProperty.call(variables, key) ? variables[key] ?? token : token
+  );
+}
+function isTextTemplateFile(path) {
+  const name = basename3(path);
+  return TEXT_FILENAMES.has(name) || TEXT_EXTENSIONS.has(extname(name).toLowerCase());
+}
+function renderDirectory(directory, variables) {
+  if (!existsSync12(directory)) {
+    throw new Error(`Directory not found: ${directory}`);
+  }
+  for (const entry of readdirSync3(directory)) {
+    const path = join7(directory, entry);
+    const stats = lstatSync6(path);
+    if (stats.isSymbolicLink()) continue;
+    if (stats.isDirectory()) {
+      renderDirectory(path, variables);
+      continue;
+    }
+    if (!isTextTemplateFile(path)) {
+      continue;
+    }
+    const snapshot = readRegularFileNoFollow(path, 16 * 1024 * 1024);
+    const content = snapshot.content;
+    const rendered = renderTemplate(content, variables);
+    if (rendered !== content) {
+      atomicWriteText(
+        path,
+        rendered,
+        process.platform === "win32" ? void 0 : snapshot.mode & 511
+      );
+    }
+  }
+}
+
+// src/generator/generate.ts
+import {
+  chmodSync as chmodSync3,
+  cpSync as cpSync2,
+  existsSync as existsSync14,
+  mkdirSync as mkdirSync4,
+  mkdtempSync as mkdtempSync2,
+  readFileSync as readFileSync9,
+  readdirSync as readdirSync4,
+  renameSync as renameSync4,
+  rmSync as rmSync4,
+  writeFileSync as writeFileSync5
+} from "fs";
+import { randomBytes, randomUUID as randomUUID3 } from "crypto";
+import { basename as basename4, dirname as dirname5, join as join9, resolve as resolve12 } from "path";
+
+// src/docker-assets.ts
+import { existsSync as existsSync13, writeFileSync as writeFileSync4 } from "fs";
+import { join as join8 } from "path";
+function packageInstallCommand(hasLockfile, productionOnly = false) {
+  if (hasLockfile) {
+    return productionOnly ? "npm ci --omit=dev" : "npm ci";
+  }
+  return productionOnly ? "npm install --omit=dev" : "npm install";
+}
+function dockerJsonCommand(command) {
+  return JSON.stringify(command);
+}
+function renderDockerfile(options) {
+  const install = packageInstallCommand(options.hasLockfile);
+  const productionInstall = packageInstallCommand(options.hasLockfile, true);
+  const startCommand = options.startCommand ?? ["npm", "start"];
+  const port = options.port ?? 3e3;
+  const packageFiles = options.hasLockfile ? "COPY package.json package-lock.json ./" : "COPY package.json ./";
+  const productionPackageFiles = options.hasLockfile ? "COPY --chown=node:node package.json package-lock.json ./" : "COPY --chown=node:node package.json ./";
+  const prismaCopy = options.prisma ? "COPY prisma ./prisma\n" : "";
+  const prismaRuntimeCopy = options.prisma ? "COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma\nCOPY --from=build /app/node_modules/@prisma ./node_modules/@prisma\n" : "";
+  const healthcheckCopy = options.healthcheck ? "COPY --chown=node:node scripts/healthcheck.cjs ./scripts/healthcheck.cjs\n" : "";
+  const healthcheckDirective = options.healthcheck ? `HEALTHCHECK --interval=10s --timeout=5s --retries=10 CMD ["node","scripts/healthcheck.cjs"]
+` : "";
+  return `# syntax=docker/dockerfile:1.7
+FROM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS dependencies
+
+WORKDIR /app
+
+${packageFiles}
+${prismaCopy}
+RUN --mount=type=secret,id=npmca,required=false if [ -f /run/secrets/npmca ]; then NODE_EXTRA_CA_CERTS=/run/secrets/npmca ${install}; else ${install}; fi
+
+FROM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS build
+
+WORKDIR /app
+
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY . .
+
+RUN ${options.buildCommand}
+
+FROM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS production
+
+ENV NODE_ENV=production
+
+WORKDIR /app
+
+${productionPackageFiles}
+${prismaCopy}
+RUN --mount=type=secret,id=npmca,required=false if [ -f /run/secrets/npmca ]; then NODE_EXTRA_CA_CERTS=/run/secrets/npmca ${productionInstall}; else ${productionInstall}; fi && npm cache clean --force
+
+COPY --from=build /app/${options.outputDirectory} ./${options.outputDirectory}
+${prismaRuntimeCopy}
+${healthcheckCopy}
+USER node
+
+EXPOSE ${port}
+${healthcheckDirective}
+
+CMD ${dockerJsonCommand(startCommand)}
+`;
+}
+function renderDockerIgnore() {
+  return `node_modules
+dist
+coverage
+.git
+.github
+.env
+.env.*
+!.env.example
+.launchstack
+*.log
+npm-debug.log*
+docker-compose*.yml
+`;
+}
+function writeCanonicalDockerAssets(projectDirectory, options) {
+  const hasLockfile = options.hasLockfile ?? existsSync13(join8(projectDirectory, "package-lock.json"));
+  const prisma = options.prisma ?? existsSync13(join8(projectDirectory, "prisma", "schema.prisma"));
+  const healthcheck = existsSync13(
+    join8(projectDirectory, "scripts", "healthcheck.cjs")
+  );
+  writeFileSync4(
+    join8(projectDirectory, "Dockerfile"),
+    renderDockerfile({
+      ...options,
+      hasLockfile,
+      prisma,
+      healthcheck
+    })
+  );
+  writeFileSync4(join8(projectDirectory, ".dockerignore"), renderDockerIgnore());
+}
+
+// src/generator/generate.ts
+function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
+  if (!existsSync14(destinationDirectory)) {
+    renameSync4(stagedDirectory, destinationDirectory);
+    return;
+  }
+  if (!overwrite) {
+    if (readdirSync4(destinationDirectory).length === 0) {
+      rmSync4(destinationDirectory, {
+        recursive: true,
+        force: true
+      });
+      renameSync4(stagedDirectory, destinationDirectory);
+      return;
+    }
+    throw new Error(`Destination already exists: ${destinationDirectory}`);
+  }
+  if (resolve12(destinationDirectory) === resolve12(process.cwd())) {
+    throw new Error(
+      "Refusing to replace the current working directory with --force. Choose a parent directory instead."
+    );
+  }
+  const backupDirectory = join9(
+    dirname5(destinationDirectory),
+    `.${basename4(destinationDirectory)}.launchstack-backup-${randomUUID3()}`
+  );
+  renameSync4(destinationDirectory, backupDirectory);
+  try {
+    renameSync4(stagedDirectory, destinationDirectory);
+    rmSync4(backupDirectory, {
+      recursive: true,
+      force: true
+    });
+  } catch (error) {
+    if (existsSync14(destinationDirectory)) {
+      rmSync4(destinationDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+    renameSync4(backupDirectory, destinationDirectory);
+    throw error;
+  }
+}
+function generateProject(options) {
+  options.onProgress?.("Validating project name and destination");
+  validateProjectName(options.projectName);
+  const destinationDirectory = resolve12(options.destinationDirectory);
+  const overwrite = options.overwrite ?? false;
+  ensureDestinationAvailable(destinationDirectory, overwrite);
+  const templateDirectory = getTemplateDirectory(options.template);
+  const parentDirectory = dirname5(destinationDirectory);
+  mkdirSync4(parentDirectory, { recursive: true });
+  const stagedDirectory = mkdtempSync2(
+    join9(
+      parentDirectory,
+      `.${basename4(destinationDirectory)}.launchstack-stage-`
+    )
+  );
+  try {
+    options.onProgress?.("Staging project template");
+    if (overwrite && existsSync14(destinationDirectory)) {
+      cpSync2(destinationDirectory, stagedDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+    copyDirectory(templateDirectory, stagedDirectory, overwrite);
+    renderDirectory(stagedDirectory, {
+      PROJECT_NAME: options.projectName,
+      PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
+    });
+    if (options.template === "api") {
+      options.onProgress?.("Generating project secrets");
+      const environmentPath = join9(stagedDirectory, ".env");
+      const environment = readFileSync9(environmentPath, "utf8");
+      const securedEnvironment = environment.replace(
+        /^JWT_ACCESS_SECRET=.*$/m,
+        `JWT_ACCESS_SECRET=${randomBytes(48).toString("base64url")}`
+      ).replace(
+        /^JWT_REFRESH_SECRET=.*$/m,
+        `JWT_REFRESH_SECRET=${randomBytes(48).toString("base64url")}`
+      );
+      writeFileSync5(environmentPath, securedEnvironment, { mode: 384 });
+      if (process.platform !== "win32") chmodSync3(environmentPath, 384);
+    }
+    if (options.template === "api") {
+      options.onProgress?.("Preparing Docker assets");
+      writeCanonicalDockerAssets(stagedDirectory, {
+        buildCommand: "npm run build",
+        outputDirectory: "dist",
+        hasLockfile: true,
+        prisma: true,
+        startCommand: ["node", "dist/server.js"],
+        port: 3e3
+      });
+    }
+    options.onProgress?.("Writing project files");
+    commitStagedProject(stagedDirectory, destinationDirectory, overwrite);
+  } catch (error) {
+    if (existsSync14(stagedDirectory)) {
+      rmSync4(stagedDirectory, {
+        recursive: true,
+        force: true
+      });
+    }
+    throw error;
+  }
+  return destinationDirectory;
+}
+
+// src/generator/install.ts
+import { execFileSync as execFileSync2 } from "child_process";
+function installDependencies(projectDirectory) {
+  const npmExecutable = process.platform === "win32" ? "npm.cmd" : "npm";
+  execFileSync2(npmExecutable, ["install"], {
+    cwd: projectDirectory,
+    stdio: "inherit"
+  });
+}
+
+// src/stages/manager.ts
+import { createHash as createHash5 } from "crypto";
+import { existsSync as existsSync17 } from "fs";
+import { resolve as resolve14 } from "path";
+
+// src/git.ts
+import { execFileSync as execFileSync3 } from "child_process";
+function run(args, cwd) {
+  return execFileSync3("git", args, {
+    cwd,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "ignore"]
+  }).trim();
+}
+function getGitMetadata(cwd = process.cwd()) {
+  try {
+    const status = run(["status", "--porcelain=v2", "--branch"], cwd);
+    const lines = status.split("\n").filter(Boolean);
+    const branch = lines.find((line) => line.startsWith("# branch.head "))?.slice("# branch.head ".length);
+    const commitHash = lines.find((line) => line.startsWith("# branch.oid "))?.slice("# branch.oid ".length);
+    if (!commitHash || commitHash === "(initial)") {
+      return null;
+    }
+    const commitMessage = run(["log", "-1", "--pretty=%B"], cwd);
+    return {
+      branch: !branch || branch === "(detached)" ? "HEAD" : branch,
+      commitHash,
+      commitMessage,
+      dirty: lines.some((line) => !line.startsWith("# "))
+    };
+  } catch {
+    return null;
+  }
+}
+
+// src/stages/docker.ts
+import { execFileSync as execFileSync4 } from "child_process";
+import { createHash as createHash4 } from "crypto";
+import {
+  existsSync as existsSync16,
+  mkdtempSync as mkdtempSync3,
+  rmSync as rmSync5,
+  statSync,
+  writeFileSync as writeFileSync7
+} from "fs";
+import { tmpdir as tmpdir3 } from "os";
+import { join as join11 } from "path";
+import { createServer as createServer2 } from "net";
+
+// src/dev/orchestrator.ts
+import { createHash as createHash3 } from "crypto";
+import { spawn } from "child_process";
+import {
+  closeSync as closeSync4,
+  existsSync as existsSync15,
+  lstatSync as lstatSync7,
+  openSync as openSync4,
+  unlinkSync as unlinkSync3,
+  writeFileSync as writeFileSync6
+} from "fs";
+import { createServer } from "net";
+import { join as join10, resolve as resolve13 } from "path";
+import { tmpdir as tmpdir2 } from "os";
+async function acquireHostPortLock() {
+  const path = join10(tmpdir2(), "launchstack-dev-port-allocation.lock");
+  const token = `${process.pid}:${createHash3("sha256").update(`${Date.now()}:${Math.random()}`).digest("hex")}`;
+  const deadline = Date.now() + 3e5;
+  while (Date.now() < deadline) {
+    try {
+      const descriptor = openSync4(path, "wx", 384);
+      try {
+        writeFileSync6(descriptor, token, "utf8");
+      } finally {
+        closeSync4(descriptor);
+      }
+      return () => {
+        try {
+          if (readRegularFileNoFollow(path, 512).content === token)
+            unlinkSync3(path);
+        } catch {
+        }
+      };
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      try {
+        const lockFile = readRegularFileNoFollow(path, 512);
+        const ownerContents = lockFile.content;
+        if (!ownerContents.trim()) {
+          await new Promise((done) => setTimeout(done, 50));
+          continue;
+        }
+        const ownerPid = Number(ownerContents.split(":", 1)[0]);
+        if (!Number.isSafeInteger(ownerPid) || ownerPid < 1)
+          throw new Error(
+            "Development port allocation lock has an invalid owner."
+          );
+        let alive = true;
+        try {
+          process.kill(ownerPid, 0);
+        } catch (probeError) {
+          if (probeError.code === "ESRCH")
+            alive = false;
+        }
+        if (!alive) {
+          const current = lstatSync7(path);
+          if (current.dev === lockFile.dev && current.ino === lockFile.ino)
+            unlinkSync3(path);
+          continue;
+        }
+      } catch (readError) {
+        if (readError.code === "ENOENT") continue;
+        throw readError;
+      }
+      await new Promise((done) => setTimeout(done, 50));
+    }
+  }
+  throw new Error("Timed out waiting for the host port allocation lock.");
+}
+var defaultAdapters = {
+  spawn(command, args, options) {
+    return spawn(command, args, {
+      ...options,
+      shell: false,
+      detached: process.platform !== "win32"
+    });
+  },
+  reservePort(port) {
+    return new Promise((done) => {
+      const server = createServer();
+      server.unref();
+      server.once("error", () => done(void 0));
+      server.listen(
+        { host: "127.0.0.1", port },
+        () => done({
+          port,
+          release: () => new Promise((resolve16) => server.close(() => resolve16()))
+        })
+      );
+    });
+  },
+  acquirePortLock: acquireHostPortLock,
+  async probeHttp(url, timeoutMs) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  },
+  signal(child, signal) {
+    if (child.pid && process.platform !== "win32") {
+      try {
+        process.kill(-child.pid, signal);
+        return;
+      } catch {
+      }
+    }
+    try {
+      child.kill(signal);
+    } catch {
+    }
+  },
+  sleep(ms) {
+    return new Promise((done) => setTimeout(done, ms));
+  }
+};
+function safeProjectNamespace(name, directory) {
+  const normalized = name.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/^[^a-z0-9]+/, "").slice(0, 24) || "project";
+  const suffix = createHash3("sha256").update(resolve13(directory)).digest("hex").slice(0, 10);
+  return `ls-${normalized}-${suffix}`;
+}
+function readDotEnv(projectDirectory) {
+  const path = resolve13(projectDirectory, ".env");
+  if (!existsSync15(path)) return {};
+  return Object.fromEntries(
+    readRegularFileNoFollow(path, 1048576).content.split(/\r?\n/).flatMap((line) => {
+      const match = /^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
+      if (!match) return [];
+      const value = match[2].replace(/^(['"])(.*)\1$/, "$2");
+      return [[match[1], value]];
+    })
+  );
+}
+function loopbackDatabaseUrl(value, port) {
+  if (!value)
+    throw new Error(
+      "DATABASE_URL is missing; set it in .env before running development migrations."
+    );
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(
+      "DATABASE_URL is invalid; refusing to run development migrations."
+    );
+  }
+  const host = url.hostname.toLowerCase();
+  if (!["localhost", "127.0.0.1", "::1"].includes(host) || /(^|[_-])prod(uction)?($|[_-])/i.test(url.pathname))
+    throw new Error(
+      "Refusing automatic development migrations against a non-loopback or production-looking database URL."
+    );
+  url.hostname = "127.0.0.1";
+  url.port = String(port);
+  return url.toString();
+}
+function topologicalServices(services) {
+  const byId = new Map(services.map((item) => [item.id, item]));
+  const indegree = /* @__PURE__ */ new Map();
+  const dependents = /* @__PURE__ */ new Map();
+  for (const item of services) {
+    indegree.set(item.id, item.dependencies.length);
+    for (const dep of item.dependencies) {
+      if (!byId.has(dep))
+        throw new Error(`Unknown dev service dependency ${dep} for ${item.id}`);
+      const list = dependents.get(dep) ?? [];
+      list.push(item.id);
+      dependents.set(dep, list);
+    }
+  }
+  const compare = (left, right) => left.id.localeCompare(right.id);
+  const queue2 = [];
+  const push = (item) => {
+    let index = queue2.length;
+    queue2.push(item);
+    while (index > 0) {
+      const parent = index - 1 >> 1;
+      if (compare(queue2[parent], item) <= 0) break;
+      queue2[index] = queue2[parent];
+      index = parent;
+    }
+    queue2[index] = item;
+  };
+  const pop = () => {
+    const first = queue2[0];
+    const last = queue2.pop();
+    if (queue2.length && last) {
+      let index = 0;
+      while (true) {
+        const left = index * 2 + 1;
+        if (left >= queue2.length) break;
+        const right = left + 1;
+        const child = right < queue2.length && compare(queue2[right], queue2[left]) < 0 ? right : left;
+        if (compare(queue2[child], last) >= 0) break;
+        queue2[index] = queue2[child];
+        index = child;
+      }
+      queue2[index] = last;
+    }
+    return first;
+  };
+  for (const item of services)
+    if ((indegree.get(item.id) ?? 0) === 0) push(item);
+  for (const ids of dependents.values()) ids.sort();
+  const ordered = [];
+  while (queue2.length) {
+    const item = pop();
+    if (!item) break;
+    ordered.push(item);
+    for (const id of dependents.get(item.id) ?? []) {
+      const next = (indegree.get(id) ?? 0) - 1;
+      indegree.set(id, next);
+      if (next === 0) {
+        const dependent = byId.get(id);
+        if (dependent) push(dependent);
+      }
+    }
+  }
+  if (ordered.length !== services.length)
+    throw new Error("Development service dependency cycle detected.");
+  return ordered;
+}
+function createDevPlan(projectDirectoryInput) {
+  const projectDirectory = resolve13(projectDirectoryInput);
+  const manifest = loadProjectManifest(projectDirectory);
+  const capabilities = new Set(Object.keys(manifest.capabilities));
+  const namespace = safeProjectNamespace(
+    manifest.project.name,
+    projectDirectory
+  );
+  const composeArgs2 = ["compose", "-p", namespace, "-f", "docker-compose.yml"];
+  if (existsSync15(resolve13(projectDirectory, "docker-compose.launchstack.yml")))
+    composeArgs2.push("-f", "docker-compose.launchstack.yml");
+  const services = [
+    {
+      id: "postgres",
+      kind: "infrastructure",
+      dependencies: [],
+      command: "docker",
+      args: [...composeArgs2, "up", "-d", "--wait", "postgres"],
+      port: 5432,
+      portEnvironment: "LAUNCHSTACK_POSTGRES_PORT",
+      readiness: "compose",
+      required: true
+    }
+  ];
+  if (capabilities.has("redis") || capabilities.has("queue"))
+    services.push({
+      id: "redis",
+      kind: "infrastructure",
+      dependencies: [],
+      command: "docker",
+      args: [...composeArgs2, "up", "-d", "--wait", "redis"],
+      port: 6379,
+      portEnvironment: "LAUNCHSTACK_REDIS_PORT",
+      readiness: "compose",
+      required: true
+    });
+  services.push({
+    id: "migrations",
+    kind: "migration",
+    dependencies: ["postgres"],
+    command: "npm",
+    args: ["run", "dev:migrate"],
+    required: true
+  });
+  services.push({
+    id: "api",
+    kind: "process",
+    dependencies: [
+      "postgres",
+      ...capabilities.has("redis") || capabilities.has("queue") ? ["redis"] : [],
+      "migrations"
+    ],
+    command: "npm",
+    args: ["run", "dev"],
+    port: 3e3,
+    portEnvironment: "PORT",
+    readiness: "http",
+    healthPath: "/ready",
+    required: true
+  });
+  if (capabilities.has("queue"))
+    services.push({
+      id: "worker",
+      kind: "process",
+      dependencies: ["redis", "migrations"],
+      command: "npm",
+      args: ["run", "worker"],
+      port: 3101,
+      portEnvironment: "LAUNCHSTACK_WORKER_HEALTH_PORT",
+      readiness: "http",
+      healthPath: "/healthz",
+      required: true
+    });
+  if (capabilities.has("cron"))
+    services.push({
+      id: "scheduler",
+      kind: "process",
+      dependencies: ["migrations"],
+      command: "npm",
+      args: ["run", "scheduler"],
+      port: 3102,
+      portEnvironment: "LAUNCHSTACK_SCHEDULER_HEALTH_PORT",
+      readiness: "http",
+      healthPath: "/healthz",
+      required: false
+    });
+  return {
+    projectDirectory,
+    namespace,
+    services: topologicalServices(services)
+  };
+}
+function selectDevPlan(plan, options) {
+  let services = plan.services;
+  if (options.noMigrate)
+    services = services.filter((item) => item.id !== "migrations").map((item) => ({
+      ...item,
+      dependencies: item.dependencies.filter((dep) => dep !== "migrations")
+    }));
+  if (options.service) {
+    const byId = new Map(services.map((item) => [item.id, item]));
+    if (!byId.has(options.service))
+      throw new Error(`Unknown dev service: ${options.service}`);
+    const selected = /* @__PURE__ */ new Set();
+    const visit2 = (id) => {
+      if (selected.has(id)) return;
+      const item = byId.get(id);
+      if (!item) throw new Error(`Missing selected dependency: ${id}`);
+      selected.add(id);
+      for (const dep of item.dependencies) visit2(dep);
+    };
+    visit2(options.service);
+    services = services.filter((item) => selected.has(item.id));
+  }
+  return { ...plan, services: topologicalServices(services) };
+}
+function waitForExit(child, timeoutMs) {
+  return new Promise((done, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        reject(
+          new Error(
+            `Process ${child.pid ?? "unknown"} did not exit within ${timeoutMs}ms`
+          )
+        );
+      }
+    }, timeoutMs);
+    child.once("exit", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      done(code);
+    });
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+async function waitUntilReady(service, port, adapters, timeoutMs, child) {
+  if (service.readiness === "exit" || service.readiness === "compose") return;
+  if (service.readiness !== "http")
+    throw new Error(`Service ${service.id} has no readiness probe configured.`);
+  const deadline = Date.now() + timeoutMs;
+  let lastStatus = "no response";
+  let exited = false;
+  child.once("exit", (code) => {
+    exited = true;
+    lastStatus = `process exited with code ${String(code)}`;
+  });
+  while (Date.now() < deadline) {
+    if (exited)
+      throw new Error(
+        `Service ${service.id} exited before its readiness probe passed: ${lastStatus}.`
+      );
+    const ready = await adapters.probeHttp(
+      `http://127.0.0.1:${port}${service.healthPath ?? "/health"}`,
+      Math.min(1e3, timeoutMs)
+    );
+    if (ready) return;
+    lastStatus = "HTTP readiness endpoint did not return a successful response";
+    await adapters.sleep(100);
+  }
+  throw new Error(
+    `Timed out waiting for ${service.id} readiness at 127.0.0.1:${port}${service.healthPath ?? "/health"}: ${lastStatus}.`
+  );
+}
+var DevOrchestrator = class {
+  constructor(plan, adapters = defaultAdapters, report = () => {
+  }) {
+    this.plan = plan;
+    this.adapters = adapters;
+    this.report = report;
+    this.children = /* @__PURE__ */ new Set();
+    this.processGroups = /* @__PURE__ */ new Set();
+    this.stopped = false;
+    this.stopPromise = null;
+    this.composeStarted = false;
+    this.ports = /* @__PURE__ */ new Map();
+    this.portLeases = /* @__PURE__ */ new Map();
+    this.releasePortLock = null;
+    this.environment = readDotEnv(plan.projectDirectory);
+  }
+  async allocatePort(service) {
+    if (service.port === void 0) return void 0;
+    for (let candidate = service.port; candidate <= Math.min(service.port + 1e3, 65535); candidate += 1) {
+      const lease = await this.adapters.reservePort(candidate);
+      if (lease) return lease;
+    }
+    throw new Error(
+      `No available port found for ${service.id} near ${service.port}.`
+    );
+  }
+  async reservePorts() {
+    for (const service of this.plan.services) {
+      if (service.port === void 0) continue;
+      const lease = await this.allocatePort(service);
+      if (!lease) continue;
+      this.portLeases.set(service.id, lease);
+      this.ports.set(service.id, lease.port);
+      if (service.portEnvironment)
+        this.environment[service.portEnvironment] = String(lease.port);
+    }
+  }
+  serviceEnvironment(service) {
+    const env = {
+      ...process.env,
+      ...this.environment,
+      ...service.environment
+    };
+    if (service.id === "migrations")
+      env.DATABASE_URL = loopbackDatabaseUrl(
+        this.environment.DATABASE_URL ?? process.env.DATABASE_URL,
+        this.ports.get("postgres") ?? 5432
+      );
+    if (["api", "worker"].includes(service.id) && this.ports.has("redis"))
+      env.REDIS_URL = `redis://127.0.0.1:${this.ports.get("redis")}`;
+    if (["api", "worker"].includes(service.id) && this.ports.has("postgres"))
+      env.DATABASE_URL = loopbackDatabaseUrl(
+        this.environment.DATABASE_URL ?? process.env.DATABASE_URL,
+        this.ports.get("postgres")
+      );
+    return env;
+  }
+  async start(options = {}) {
+    const timeoutMs = options.readinessTimeoutMs ?? 3e4;
+    try {
+      this.releasePortLock = await this.adapters.acquirePortLock();
+      await this.reservePorts();
+      const pendingInfrastructure = new Set(
+        this.plan.services.filter((service) => service.kind === "infrastructure").map((service) => service.id)
+      );
+      for (const service of this.plan.services) {
+        if (this.releasePortLock && pendingInfrastructure.size === 0 && service.kind !== "infrastructure") {
+          this.releasePortLock();
+          this.releasePortLock = null;
+        }
+        if (service.kind === "migration") {
+          const databaseUrl = this.environment.DATABASE_URL ?? process.env.DATABASE_URL;
+          if (this.environment.NODE_ENV === "production" || process.env.NODE_ENV === "production")
+            throw new Error(
+              "Refusing to run automatic development migrations when NODE_ENV is production."
+            );
+          loopbackDatabaseUrl(databaseUrl, this.ports.get("postgres") ?? 5432);
+        }
+        if (service.kind === "infrastructure") this.composeStarted = true;
+        const lease = this.portLeases.get(service.id);
+        this.report(
+          service.id,
+          "started",
+          lease ? `loopback port ${lease.port}` : void 0
+        );
+        if (lease) {
+          await lease.release();
+          this.portLeases.delete(service.id);
+        }
+        const child = this.adapters.spawn(service.command, service.args, {
+          cwd: this.plan.projectDirectory,
+          stdio: "inherit",
+          env: this.serviceEnvironment(service)
+        });
+        this.children.add(child);
+        this.processGroups.add(child);
+        child.once("exit", (code) => {
+          this.children.delete(child);
+          if (service.kind === "infrastructure" && code === 0)
+            this.composeStarted = true;
+          if (!this.stopped && service.kind === "process") {
+            const detail = `process exited unexpectedly with code ${String(code)}`;
+            this.report(
+              service.id,
+              service.required ? "failed" : "degraded",
+              detail
+            );
+            if (service.required) void this.stop();
+          }
+        });
+        child.once("error", (error) => {
+          this.children.delete(child);
+          if (!this.stopped && service.kind === "process") {
+            const detail = `process failed to spawn: ${error.message}`;
+            this.report(
+              service.id,
+              service.required ? "failed" : "degraded",
+              detail
+            );
+            if (service.required) void this.stop();
+          }
+        });
+        if (service.kind !== "process") {
+          const code = await waitForExit(child, timeoutMs);
+          this.children.delete(child);
+          if (code !== 0 && service.required)
+            throw new Error(
+              `${service.id} failed with exit code ${String(code)}.`
+            );
+          if (service.kind === "infrastructure" && code === 0)
+            this.composeStarted = true;
+        }
+        if (service.readiness === "http") {
+          const port = this.ports.get(service.id);
+          if (!port)
+            throw new Error(`${service.id} has no allocated readiness port.`);
+          await waitUntilReady(service, port, this.adapters, timeoutMs, child);
+        }
+        this.report(service.id, "ready");
+        if (service.kind === "infrastructure") {
+          pendingInfrastructure.delete(service.id);
+          if (pendingInfrastructure.size === 0 && this.releasePortLock) {
+            this.releasePortLock();
+            this.releasePortLock = null;
+          }
+        }
+      }
+      if (this.releasePortLock) {
+        this.releasePortLock();
+        this.releasePortLock = null;
+      }
+    } catch (error) {
+      this.report(
+        "environment",
+        "failed",
+        error instanceof Error ? error.message : String(error)
+      );
+      await this.stop();
+      throw error;
+    }
+  }
+  async stop() {
+    if (this.stopPromise) return this.stopPromise;
+    this.stopped = true;
+    this.stopPromise = (async () => {
+      await Promise.all(
+        [...this.portLeases.values()].map((lease) => lease.release())
+      );
+      this.portLeases.clear();
+      if (this.releasePortLock) {
+        this.releasePortLock();
+        this.releasePortLock = null;
+      }
+      const children = [...this.children];
+      const exitWaits = children.map((child) => waitForExit(child, 5e3));
+      for (const child of this.processGroups)
+        this.adapters.signal(child, "SIGTERM");
+      await Promise.race([
+        Promise.allSettled(exitWaits),
+        this.adapters.sleep(5100)
+      ]);
+      for (const child of this.processGroups)
+        this.adapters.signal(child, "SIGKILL");
+      this.children.clear();
+      this.processGroups.clear();
+      if (this.composeStarted) {
+        const args = [
+          "compose",
+          "-p",
+          this.plan.namespace,
+          "-f",
+          "docker-compose.yml"
+        ];
+        if (existsSync15(
+          resolve13(
+            this.plan.projectDirectory,
+            "docker-compose.launchstack.yml"
+          )
+        ))
+          args.push("-f", "docker-compose.launchstack.yml");
+        const child = this.adapters.spawn(
+          "docker",
+          [...args, "down", "--remove-orphans"],
+          {
+            cwd: this.plan.projectDirectory,
+            stdio: "inherit",
+            env: { ...process.env, ...this.environment }
+          }
+        );
+        const code = await waitForExit(child, 3e4).catch(() => {
+          this.adapters.signal(child, "SIGTERM");
+          return null;
+        });
+        if (code !== 0)
+          this.report(
+            "compose",
+            "degraded",
+            "owned Compose project could not be fully stopped; its named project is preserved for inspection"
+          );
+      }
+      this.report("environment", "stopped");
+    })();
+    return this.stopPromise;
+  }
+};
+
+// src/stages/docker.ts
+function run2(projectDirectory, args, environment = {}) {
+  return execFileSync4("docker", args, {
+    cwd: projectDirectory,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ...environment }
+  });
+}
+function composeArgs(projectDirectory, resourceId) {
+  const args = ["compose", "-p", resourceId, "-f", "docker-compose.yml"];
+  if (existsSync16(join11(projectDirectory, "docker-compose.launchstack.yml")))
+    args.push("-f", "docker-compose.launchstack.yml");
+  return args;
+}
+function portAvailable(port) {
+  return new Promise((resolve16) => {
+    const server = createServer2();
+    server.unref();
+    server.once("error", () => resolve16(false));
+    server.listen(
+      { host: "127.0.0.1", port },
+      () => server.close(() => resolve16(true))
+    );
+  });
+}
+async function allocatePort(start) {
+  for (let port = start; port < start + 1e3 && port < 65536; port += 1)
+    if (await portAvailable(port)) return port;
+  throw new Error(`No free preview port near ${start}.`);
+}
+var dockerStageAdapter = {
+  id: "docker",
+  capabilities: { create: true, inspect: true, update: true, destroy: true },
+  async create(input) {
+    const releasePortLock = await acquireHostPortLock();
+    const seed = createHash4("sha256").update(input.resourceId).digest("hex");
+    const postgresStart = 2e4 + Number.parseInt(seed.slice(0, 6), 16) % 1e4;
+    const redisStart = 3e4 + Number.parseInt(seed.slice(6, 12), 16) % 1e4;
+    const apiStart = 4e4 + Number.parseInt(seed.slice(6, 12), 16) % 1e4;
+    let buildOverrideDirectory;
+    try {
+      const postgresPort = Number(input.environment.LAUNCHSTACK_POSTGRES_PORT) || await allocatePort(postgresStart);
+      const hasCapabilities = existsSync16(
+        join11(input.projectDirectory, "docker-compose.launchstack.yml")
+      );
+      const redisPort = hasCapabilities ? Number(input.environment.LAUNCHSTACK_REDIS_PORT) || await allocatePort(redisStart) : void 0;
+      let apiPort = Number(input.environment.LAUNCHSTACK_API_PORT) || await allocatePort(apiStart);
+      while (apiPort === postgresPort || apiPort === redisPort)
+        apiPort = await allocatePort(apiPort + 1);
+      const environment = {
+        ...input.environment,
+        LAUNCHSTACK_POSTGRES_PORT: String(postgresPort),
+        ...redisPort ? { LAUNCHSTACK_REDIS_PORT: String(redisPort) } : {},
+        LAUNCHSTACK_API_PORT: String(apiPort)
+      };
+      const args = composeArgs(input.projectDirectory, input.resourceId);
+      const caFile = process.env.NODE_EXTRA_CA_CERTS;
+      if (caFile) {
+        try {
+          if (statSync(caFile).isFile()) {
+            buildOverrideDirectory = mkdtempSync3(
+              join11(tmpdir3(), "launchstack-stage-build-")
+            );
+            const override = {
+              services: { api: { build: { secrets: ["npmca"] } } },
+              secrets: { npmca: { file: caFile } }
+            };
+            writeFileSync7(
+              join11(buildOverrideDirectory, "compose.yml"),
+              JSON.stringify(override),
+              { mode: 384 }
+            );
+            args.push("-f", join11(buildOverrideDirectory, "compose.yml"));
+          }
+        } catch {
+        }
+      }
+      args.push("up", "-d", "--build", "--wait", "--wait-timeout", "120");
+      run2(input.projectDirectory, args, environment);
+      return {
+        resourceId: input.resourceId,
+        url: process.env.LAUNCHSTACK_PREVIEW_URL ?? `http://127.0.0.1:${apiPort}`
+      };
+    } finally {
+      if (buildOverrideDirectory)
+        rmSync5(buildOverrideDirectory, { recursive: true, force: true });
+      releasePortLock();
+    }
+  },
+  inspect(input) {
+    try {
+      const output = run2(input.projectDirectory, [
+        ...composeArgs(input.projectDirectory, input.resourceId),
+        "ps",
+        "--format",
+        "json"
+      ]).trim();
+      if (!output) return { exists: false };
+      const records = output.split(/\r?\n/).flatMap((line) => {
+        try {
+          const value = JSON.parse(line);
+          return Array.isArray(value) ? value : [value];
+        } catch {
+          return [];
+        }
+      });
+      if (!records.length) return { exists: false };
+      const healthy = records.every(
+        (record) => record && typeof record === "object" && String(record.State).toLowerCase() === "running" && String(record.Health).toLowerCase() === "healthy"
+      );
+      return { exists: true, status: healthy ? "healthy" : "degraded" };
+    } catch {
+      return { exists: false };
+    }
+  },
+  destroy(input) {
+    run2(
+      input.projectDirectory,
+      [
+        ...composeArgs(input.projectDirectory, input.resourceId),
+        "down",
+        "--remove-orphans",
+        "--volumes"
+      ],
+      input.environment
+    );
+  }
+};
+
+// src/stages/manager.ts
+var ADAPTERS = {
+  docker: dockerStageAdapter
+};
+function validateStageName(stage) {
+  if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(stage))
+    throw new Error(
+      "Stage names must use lowercase letters, numbers, and hyphens and be at most 48 characters."
+    );
+  return stage;
+}
+function stageResourceId(projectDirectory, projectName, stage) {
+  const directoryHash = createHash5("sha256").update(resolve14(projectDirectory)).digest("hex").slice(0, 10);
+  const stageHash = createHash5("sha256").update(`${resolve14(projectDirectory)}\0${stage}`).digest("hex").slice(0, 8);
+  const name = projectName.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 16) || "project";
+  return `ls-${directoryHash}-${name}-${stage.slice(0, 16)}-${stageHash}`;
+}
+var stageEnvironment = (stage, values) => ({
+  ...values ?? {},
+  LAUNCHSTACK_STAGE: stage
+});
+function stateMutation(projectDirectory, state) {
+  const path = ".launchstack/state.json";
+  const absolute = resolveProjectPath(projectDirectory, path);
+  return {
+    type: "write",
+    path,
+    content: serializeProjectState(state),
+    owner: "launchstack:metadata",
+    version: currentLaunchStackVersion(),
+    expectedSha256: existsSync17(absolute) ? hashFile(absolute) : null
+  };
+}
+function persist(projectDirectory, previous, next) {
+  return applyFileMutations({
+    projectDirectory,
+    mutations: [stateMutation(projectDirectory, next)],
+    state: previous,
+    nextState: next
+  });
+}
+function writeStageState(projectDirectory, stage, value, expectedStatus) {
+  let lastError;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const previous = loadProjectState(projectDirectory);
+    const current = previous.stages[stage];
+    if (current && current.resourceId !== value.resourceId)
+      throw new Error(`Stage ${stage} is already owned by another resource.`);
+    if (expectedStatus && current?.status !== expectedStatus)
+      throw new Error(
+        `Stage ${stage} changed while its provider operation was running.`
+      );
+    if (value.status === "creating" && current?.status === "creating")
+      throw new Error(`Stage ${stage} is already being created.`);
+    const next = structuredClone(previous);
+    next.stages[stage] = value;
+    next.updatedAt = value.updatedAt;
+    try {
+      return persist(projectDirectory, previous, next);
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof Error) || !error.message.includes("File changed since planning"))
+        throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`Unable to update state for stage ${stage}.`);
+}
+function adapter(provider) {
+  const value = ADAPTERS[provider];
+  if (!value)
+    throw new Error(
+      `Provider ${provider} does not implement preview lifecycle operations. Supported: ${Object.keys(ADAPTERS).join(", ")}.`
+    );
+  return value;
+}
+async function createOrUpdateStage(input) {
+  const projectDirectory = resolve14(input.projectDirectory);
+  const stage = validateStageName(input.stage);
+  const manifest = loadProjectManifest(projectDirectory);
+  const desired = manifest.stages[stage];
+  const production = input.production === true;
+  if (desired?.production === true && !production)
+    throw new Error(
+      `Stage ${stage} is declared production. Re-run with --production.`
+    );
+  if (production && desired?.production !== true)
+    throw new Error(
+      `Refusing to infer ${stage} as production. Declare it in launchstack.json first.`
+    );
+  const provider = desired?.provider ?? manifest.provider?.id ?? "docker";
+  const providerAdapter = adapter(provider);
+  const previous = loadProjectState(projectDirectory, {
+    templateVersion: manifest.project.templateVersion,
+    cliVersion: currentLaunchStackVersion()
+  });
+  const resourceId = stageResourceId(
+    projectDirectory,
+    manifest.project.name,
+    stage
+  );
+  const existing = previous.stages[stage];
+  if (existing && existing.resourceId !== resourceId)
+    throw new Error(
+      `Stored resource identity for ${stage} does not match this project.`
+    );
+  if (existing && existing.provider !== provider)
+    throw new Error(`Stage ${stage} is already owned by ${existing.provider}.`);
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const git = getGitMetadata(projectDirectory);
+  const creating = {
+    name: stage,
+    provider,
+    resourceId,
+    status: "creating",
+    sourceCommit: git?.commitHash,
+    url: existing?.url,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+    production
+  };
+  writeStageState(projectDirectory, stage, creating);
+  try {
+    const result = await providerAdapter.create({
+      projectDirectory,
+      stage,
+      resourceId,
+      environment: stageEnvironment(stage, desired?.env),
+      sourceCommit: git?.commitHash,
+      production
+    });
+    if (result.resourceId !== resourceId)
+      throw new Error(
+        `Provider returned unexpected resource identity for stage ${stage}.`
+      );
+    const ready = {
+      ...creating,
+      status: "ready",
+      url: result.url,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    writeStageState(projectDirectory, stage, ready, "creating");
+    return ready;
+  } catch (error) {
+    const failed = {
+      ...creating,
+      status: "failed",
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    try {
+      writeStageState(projectDirectory, stage, failed, "creating");
+    } catch {
+    }
+    throw error;
+  }
+}
+function inspectStage(projectDirectoryInput, stageInput) {
+  const projectDirectory = resolve14(projectDirectoryInput);
+  const stage = validateStageName(stageInput);
+  const manifest = loadProjectManifest(projectDirectory);
+  const state = loadProjectState(projectDirectory, {
+    templateVersion: manifest.project.templateVersion,
+    cliVersion: currentLaunchStackVersion()
+  });
+  const stored = state.stages[stage] ?? null;
+  if (!stored) return { stage, state: null };
+  const check = adapter(stored.provider).inspect({
+    projectDirectory,
+    resourceId: stored.resourceId
+  });
+  return {
+    stage,
+    state: stored,
+    providerExists: check.exists,
+    providerStatus: check.status
+  };
+}
+function destroyStage(input) {
+  const projectDirectory = resolve14(input.projectDirectory);
+  const stage = validateStageName(input.stage);
+  const manifest = loadProjectManifest(projectDirectory);
+  const previous = loadProjectState(projectDirectory, {
+    templateVersion: manifest.project.templateVersion,
+    cliVersion: currentLaunchStackVersion()
+  });
+  const stored = previous.stages[stage];
+  if (!stored) throw new Error(`Stage ${stage} is not recorded.`);
+  if (stored.production !== Boolean(input.production))
+    throw new Error(
+      `Production acknowledgement does not match stored stage ${stage}.`
+    );
+  const expected = stageResourceId(
+    projectDirectory,
+    manifest.project.name,
+    stage
+  );
+  if (stored.resourceId !== expected)
+    throw new Error(
+      `Stored resource identity for ${stage} failed verification; refusing destroy.`
+    );
+  adapter(stored.provider).destroy({
+    projectDirectory,
+    resourceId: stored.resourceId,
+    environment: stageEnvironment(stage, manifest.stages[stage]?.env)
+  });
+  const next = structuredClone(previous);
+  delete next.stages[stage];
+  next.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  persist(projectDirectory, previous, next);
+}
+
+// src/generator/module.ts
+import { existsSync as existsSync18, readFileSync as readFileSync10 } from "fs";
+import { resolve as resolve15 } from "path";
+var RESERVED_FIELDS = /* @__PURE__ */ new Set([
+  "id",
+  "ownerId",
+  "createdAt",
+  "updatedAt",
+  "model",
+  "enum",
+  "type",
+  "view",
+  "datasource",
+  "generator",
+  "config",
+  "future",
+  "constructor",
+  "prototype",
+  "toString",
+  "valueOf",
+  "hasOwnProperty",
+  "__defineGetter__",
+  "__defineSetter__"
+]);
+var RESERVED_SCHEMA_IDENTIFIERS = /* @__PURE__ */ new Set([
+  "String",
+  "Boolean",
+  "Int",
+  "BigInt",
+  "Float",
+  "Decimal",
+  "DateTime",
+  "Json",
+  "Bytes",
+  "Unsupported",
+  "Prisma",
+  "PrismaClient"
+]);
+var FIELD_TYPES = /* @__PURE__ */ new Set([
+  "string",
+  "number",
+  "boolean",
+  "date"
+]);
+var validateName = (name) => {
+  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name) || name.length > 49)
+    throw new Error(
+      "Generated names must use lowercase letters, numbers, and single hyphens between lowercase words."
+    );
+  if (RESERVED_SCHEMA_IDENTIFIERS.has(pascal(name)))
+    throw new Error(
+      `Generated name maps to reserved Prisma identifier: ${pascal(name)}`
+    );
+  return name;
+};
+function validateFields(fields) {
+  const names = /* @__PURE__ */ new Set();
+  for (const field of fields) {
+    if (!/^[a-z][A-Za-z0-9_]{0,48}$/.test(field.name))
+      throw new Error(`Invalid field name: ${field.name}`);
+    if (RESERVED_FIELDS.has(field.name) || RESERVED_SCHEMA_IDENTIFIERS.has(field.name))
+      throw new Error(`Field name is reserved: ${field.name}`);
+    if (!FIELD_TYPES.has(field.type))
+      throw new Error(`Unsupported field type: ${String(field.type)}`);
+    if (names.has(field.name))
+      throw new Error(`Duplicate field name: ${field.name}`);
+    names.add(field.name);
+  }
+  return fields;
+}
+var camel = (name) => name.replace(/-([a-z0-9])/g, (_, value) => value.toUpperCase());
+var pascal = (name) => {
+  const value = camel(name);
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
+var plural = (name) => name.endsWith("s") ? `${name}es` : name.endsWith("y") ? `${name.slice(0, -1)}ies` : `${name}s`;
+function parseFieldSpec(spec) {
+  const match = spec.match(
+    /^([a-z][A-Za-z0-9_]{0,48}):(string|number|boolean|date)(\?)?$/
+  );
+  if (!match) throw new Error(`Invalid field specification: ${spec}`);
+  const [, name, type, optional] = match;
+  return validateFields([
+    {
+      name: name ?? "field",
+      type,
+      optional: Boolean(optional)
+    }
+  ])[0];
+}
+function zodType(field) {
+  const base = field.type === "string" ? "z.string().trim().min(1).max(500)" : field.type === "number" ? "z.number().finite()" : field.type === "boolean" ? "z.boolean()" : "z.coerce.date()";
+  return field.optional ? `${base}.optional()` : base;
+}
+function prismaType(field) {
+  const base = field.type === "string" ? "String" : field.type === "number" ? "Float" : field.type === "boolean" ? "Boolean" : "DateTime";
+  return `${base}${field.optional ? "?" : ""}`;
+}
+function moduleFiles(name) {
+  const cls = pascal(name);
+  return {
+    [`src/modules/${name}/${name}.service.ts`]: `export class ${cls}Service { health(): { module: string; ready: true } { return { module: ${JSON.stringify(name)}, ready: true }; } }
+`,
+    [`src/modules/${name}/${name}.controller.ts`]: `import type { FastifyReply, FastifyRequest } from "fastify";
+import { ${cls}Service } from "./${name}.service";
+export class ${cls}Controller { constructor(private readonly service = new ${cls}Service()) {} health = async (_request: FastifyRequest, reply: FastifyReply): Promise<void> => { await reply.send(this.service.health()); }; }
+`,
+    [`src/modules/${name}/${name}.routes.ts`]: `import type { FastifyInstance } from "fastify";
+import { ${cls}Controller } from "./${name}.controller";
+export async function ${camel(name)}Routes(app: FastifyInstance): Promise<void> { const controller = new ${cls}Controller(); app.get("/health", { preHandler: [app.authenticate] }, controller.health); }
+`
+  };
+}
+function resourceFiles(name, fields) {
+  const cls = pascal(name);
+  const delegate = camel(name);
+  const values = fields.length ? fields : [{ name: "title", type: "string" }];
+  const schemaFields = values.map((field) => `  ${field.name}: ${zodType(field)}`).join(",\n");
+  const updateFields = values.map((field) => `  ${field.name}: ${zodType({ ...field, optional: true })}`).join(",\n");
+  const assignments = values.map((field) => `${field.name}: input.${field.name}`).join(", ");
+  const modelFields = values.map((field) => `  ${field.name} ${prismaType(field)}`).join("\n");
+  return {
+    [`src/modules/${name}/${name}.schemas.ts`]: `import { z } from "zod";
+export const create${cls}Schema = z.object({
+${schemaFields}
+}).strict();
+export const update${cls}Schema = z.object({
+${updateFields}
+}).strict().refine((value) => Object.keys(value).length > 0, "At least one field is required");
+export const ${delegate}IdSchema = z.object({ id: z.string().min(1).max(128) }).strict();
+export const list${cls}Schema = z.object({ cursor: z.string().max(256).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).strict();
+export type Create${cls}Input = z.infer<typeof create${cls}Schema>;
+export type Update${cls}Input = z.infer<typeof update${cls}Schema>;
+export type List${cls}Input = z.infer<typeof list${cls}Schema>;
+`,
+    [`src/modules/${name}/${name}.repository.ts`]: `import { PrismaClient } from "@prisma/client";
+import { ApplicationError } from "../../core/errors/application-error";
+import type { Create${cls}Input, List${cls}Input, Update${cls}Input } from "./${name}.schemas";
+function decodeCursor(value: string): { id: string; createdAt: Date } { try { const cursor = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as { id?: unknown; createdAt?: unknown }; if (typeof cursor.id !== "string" || typeof cursor.createdAt !== "string") throw new Error(); const createdAt = new Date(cursor.createdAt); if (!Number.isFinite(createdAt.getTime())) throw new Error(); return { id: cursor.id, createdAt }; } catch { throw new ApplicationError({ statusCode: 400, code: "INVALID_CURSOR", message: "Invalid pagination cursor." }); } }
+function encodeCursor(value: { id: string; createdAt: Date }): string { return Buffer.from(JSON.stringify({ id: value.id, createdAt: value.createdAt.toISOString() })).toString("base64url"); }
+export class ${cls}Repository { constructor(private readonly prisma: PrismaClient) {} create(ownerId: string, input: Create${cls}Input) { return this.prisma.${delegate}.create({ data: { ownerId, ${assignments} } }); } async list(ownerId: string, input: List${cls}Input) { const cursor = input.cursor ? decodeCursor(input.cursor) : undefined; const rows = await this.prisma.${delegate}.findMany({ where: { ownerId, ...(cursor ? { OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] } : {}) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: input.limit + 1 }); const hasNext = rows.length > input.limit; const items = hasNext ? rows.slice(0, input.limit) : rows; return { items, hasNext, nextCursor: hasNext && items.length ? encodeCursor(items[items.length - 1]!) : null }; } findOwned(id: string, ownerId: string) { return this.prisma.${delegate}.findFirst({ where: { id, ownerId } }); } async updateOwned(id: string, ownerId: string, input: Update${cls}Input) { const rows = await this.prisma.${delegate}.updateManyAndReturn({ where: { id, ownerId }, data: input }); return rows[0] ?? null; } deleteOwned(id: string, ownerId: string): Promise<boolean> { return this.prisma.${delegate}.deleteMany({ where: { id, ownerId } }).then((result) => result.count === 1); } }
+`,
+    [`src/modules/${name}/${name}.service.ts`]: `import { ApplicationError } from "../../core/errors/application-error";
+import { prisma } from "../../lib/prisma";
+import { ${cls}Repository } from "./${name}.repository";
+import type { Create${cls}Input, List${cls}Input, Update${cls}Input } from "./${name}.schemas";
+export class ${cls}Service { constructor(private readonly repository = new ${cls}Repository(prisma)) {} create(ownerId: string, input: Create${cls}Input) { return this.repository.create(ownerId, input); } list(ownerId: string, input: List${cls}Input) { return this.repository.list(ownerId, input); } async get(ownerId: string, id: string) { const value = await this.repository.findOwned(id, ownerId); if (!value) throw new ApplicationError({ statusCode: 404, code: "RESOURCE_NOT_FOUND", message: ${JSON.stringify(`${cls} not found.`)} }); return value; } async update(ownerId: string, id: string, input: Update${cls}Input) { const value = await this.repository.updateOwned(id, ownerId, input); if (!value) throw new ApplicationError({ statusCode: 404, code: "RESOURCE_NOT_FOUND", message: ${JSON.stringify(`${cls} not found.`)} }); return value; } async remove(ownerId: string, id: string): Promise<void> { if (!(await this.repository.deleteOwned(id, ownerId))) throw new ApplicationError({ statusCode: 404, code: "RESOURCE_NOT_FOUND", message: ${JSON.stringify(`${cls} not found.`)} }); } }
+`,
+    [`src/modules/${name}/${name}.controller.ts`]: `import type { FastifyReply, FastifyRequest } from "fastify";
+import { create${cls}Schema, ${delegate}IdSchema, list${cls}Schema, update${cls}Schema } from "./${name}.schemas";
+import { ${cls}Service } from "./${name}.service";
+export class ${cls}Controller { constructor(private readonly service = new ${cls}Service()) {} create = async (request: FastifyRequest, reply: FastifyReply) => reply.code(201).send(await this.service.create(request.user.sub, create${cls}Schema.parse(request.body))); list = async (request: FastifyRequest, reply: FastifyReply) => reply.send(await this.service.list(request.user.sub, list${cls}Schema.parse(request.query))); get = async (request: FastifyRequest, reply: FastifyReply) => { const { id } = ${delegate}IdSchema.parse(request.params); return reply.send(await this.service.get(request.user.sub, id)); }; update = async (request: FastifyRequest, reply: FastifyReply) => { const { id } = ${delegate}IdSchema.parse(request.params); return reply.send(await this.service.update(request.user.sub, id, update${cls}Schema.parse(request.body))); }; remove = async (request: FastifyRequest, reply: FastifyReply) => { const { id } = ${delegate}IdSchema.parse(request.params); await this.service.remove(request.user.sub, id); return reply.code(204).send(); }; }
+`,
+    [`src/modules/${name}/${name}.routes.ts`]: `import type { FastifyInstance } from "fastify";
+import { ${cls}Controller } from "./${name}.controller";
+export async function ${delegate}Routes(app: FastifyInstance): Promise<void> { const controller = new ${cls}Controller(); const auth = { preHandler: [app.authenticate] }; app.post("/", auth, controller.create); app.get("/", auth, controller.list); app.get("/:id", auth, controller.get); app.patch("/:id", auth, controller.update); app.delete("/:id", auth, controller.remove); }
+`,
+    [`docs/generated/${name}-prisma.md`]: `# ${cls} data model
+
+Run \`npm run prisma:migrate -- --name add-${name}\` before shipping. Every generated lookup/update/delete is owner-scoped by \`ownerId\`; add domain RBAC and invariants in the service.
+`,
+    [`.__launchstack_model_${name}`]: `model ${cls} {
+  id String @id @default(cuid())
+  ownerId String
+${modelFields}
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId, createdAt, id])
+}
+`
+  };
+}
+function parseRoutes(content) {
+  const marker = content.match(/\/\* launchstack-routes: (\[[^\n]*\]) \*\//);
+  if (!marker?.[1]) return [];
+  const parsed = JSON.parse(marker[1]);
+  return Array.isArray(parsed) && parsed.every((value) => typeof value === "string") ? parsed : [];
+}
+function renderRoutes(names) {
+  const sorted = [...new Set(names)].sort();
+  const imports = sorted.map(
+    (name) => `import { ${camel(name)}Routes } from "../modules/${name}/${name}.routes";`
+  ).join("\n");
+  const registrations = sorted.map(
+    (name) => `  await app.register(${camel(name)}Routes, { prefix: ${JSON.stringify(`/api/${plural(name)}`)} });`
+  ).join("\n");
+  return `import type { FastifyInstance } from "fastify";
+${imports ? `${imports}
+` : ""}
+/* launchstack-routes: ${JSON.stringify(sorted)} */
+export async function registerGeneratedRoutes(app: FastifyInstance): Promise<void> {
+${registrations || "  void app;"}
+}
+`;
+}
+function planModuleGeneration(input) {
+  const projectDirectory = resolve15(input.projectDirectory);
+  const name = validateName(input.name);
+  const fields = input.kind === "resource" ? validateFields(input.fields ?? []) : [];
+  const manifest = loadProjectManifest(projectDirectory);
+  const state = loadProjectState(projectDirectory, {
+    templateVersion: manifest.project.templateVersion,
+    cliVersion: currentLaunchStackVersion()
+  });
+  const files = input.kind === "resource" ? resourceFiles(name, fields) : moduleFiles(name);
+  const mutations = [];
+  const owner = `generator:${input.kind}:${name}`;
+  for (const [path, content] of Object.entries(files)) {
+    if (path.startsWith(".__launchstack_model_")) continue;
+    const absolute = resolveProjectPath(projectDirectory, path);
+    if (existsSync18(absolute))
+      throw new Error(`Generation collision: ${path} already exists.`);
+    mutations.push({
+      type: "write",
+      path,
+      content,
+      owner,
+      version: currentLaunchStackVersion(),
+      expectedSha256: null
+    });
+  }
+  const registryPath = "src/routes/launchstack.generated.ts";
+  const registryAbsolute = resolveProjectPath(projectDirectory, registryPath);
+  const registryCurrent = existsSync18(registryAbsolute) ? readFileSync10(registryAbsolute, "utf8") : `import type { FastifyInstance } from "fastify";
+
+/* launchstack-routes: [] */
+export async function registerGeneratedRoutes(app: FastifyInstance): Promise<void> { void app; }
+`;
+  const names = parseRoutes(registryCurrent);
+  const routePrefix = `/api/${plural(name)}`;
+  const conflictingName = names.find(
+    (existing) => existing !== name && `/api/${plural(existing)}` === routePrefix
+  );
+  if (conflictingName)
+    throw new Error(
+      `Generated route prefix ${routePrefix} conflicts with resource ${conflictingName}.`
+    );
+  if (!names.includes(name)) names.push(name);
+  const nextRegistry = renderRoutes(names);
+  if (nextRegistry !== registryCurrent)
+    mutations.push({
+      type: "write",
+      path: registryPath,
+      content: nextRegistry,
+      owner: "launchstack:metadata",
+      version: currentLaunchStackVersion(),
+      expectedSha256: existsSync18(registryAbsolute) ? hashFile(registryAbsolute) : null
+    });
+  let migrationCommand;
+  if (input.kind === "resource") {
+    const schemaPath = "prisma/schema.prisma";
+    const schemaAbsolute = resolveProjectPath(projectDirectory, schemaPath);
+    if (!existsSync18(schemaAbsolute))
+      throw new Error(
+        "Cannot generate a CRUD resource without prisma/schema.prisma."
+      );
+    const schema = readFileSync10(schemaAbsolute, "utf8");
+    const model = files[`.__launchstack_model_${name}`] ?? "";
+    if (new RegExp(`\\bmodel\\s+${pascal(name)}\\b`).test(schema))
+      throw new Error(`Prisma model ${pascal(name)} already exists.`);
+    mutations.push({
+      type: "write",
+      path: schemaPath,
+      content: `${schema.trimEnd()}
+
+${model}`,
+      owner: "launchstack:metadata",
+      version: currentLaunchStackVersion(),
+      expectedSha256: hashFile(schemaAbsolute)
+    });
+    migrationCommand = `npm run prisma:migrate -- --name add-${name}`;
+  }
+  const nextState = withTrackedMutations(state, mutations);
+  nextState.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const statePath = ".launchstack/state.json";
+  const stateAbsolute = resolveProjectPath(projectDirectory, statePath);
+  mutations.push({
+    type: "write",
+    path: statePath,
+    content: serializeProjectState(nextState),
+    owner: "launchstack:metadata",
+    version: currentLaunchStackVersion(),
+    expectedSha256: existsSync18(stateAbsolute) ? hashFile(stateAbsolute) : null
+  });
+  return {
+    projectDirectory,
+    kind: input.kind,
+    name,
+    files: mutations.map((mutation) => mutation.path).sort(),
+    mutations,
+    nextState,
+    migrationCommand
+  };
+}
+function applyModuleGeneration(plan) {
+  return applyFileMutations({
+    projectDirectory: plan.projectDirectory,
+    mutations: plan.mutations,
+    state: loadProjectState(plan.projectDirectory),
+    nextState: plan.nextState
+  });
+}
+
+export {
+  FIRST_PARTY_EXTENSIONS,
+  listFirstPartyExtensions,
+  MANIFEST_SCHEMA_URL,
+  MANIFEST_SCHEMA_VERSION,
+  STATE_SCHEMA_VERSION,
+  emptyProjectState,
+  projectManifestSchema,
+  MANIFEST_FILENAME,
+  parseProjectManifest,
+  loadProjectManifest,
+  serializeProjectManifest,
+  createProjectManifest,
+  projectStateSchema,
+  STATE_DIRECTORY,
+  STATE_FILENAME,
+  sha256,
+  hashFile,
+  parseProjectState,
+  loadProjectState,
+  serializeProjectState,
+  detectManagedDrift,
+  readRegularFileNoFollow,
+  atomicWriteText,
+  readJsonFile,
+  currentLaunchStackVersion,
+  resolveExtensionOrder,
+  composeMutation,
+  planExtensionInstall,
+  applyExtensionInstall,
+  planExtensionRemoval,
+  applyExtensionRemoval,
+  planReconciliation,
+  applyReconciliation,
+  projectHasManifest,
+  V3_TEMPLATE_VERSION,
+  resolveMigrationChain,
+  planUpgrade,
+  applyUpgrade,
+  AUDIT_SEVERITIES,
+  severityRank,
+  parseNpmAuditAdvisories,
+  runProductionAudit,
+  parseOpenApiDocument,
+  collectOperations,
+  componentTypeNames,
+  schemaToType,
+  responseSchema,
+  requestBodySchema,
+  loadOpenApiSource,
+  generateTypeScriptClient,
+  renderDockerfile,
+  renderDockerIgnore,
+  ensureDestinationAvailable,
+  copyDirectory,
+  validateProjectName,
+  toDisplayName,
+  getPackageRoot,
+  getTemplateDirectory,
+  renderTemplate,
+  renderDirectory,
+  generateProject,
+  installDependencies,
+  getGitMetadata,
+  createDevPlan,
+  selectDevPlan,
+  DevOrchestrator,
+  validateStageName,
+  stageResourceId,
+  createOrUpdateStage,
+  inspectStage,
+  destroyStage,
+  parseFieldSpec,
+  planModuleGeneration,
+  applyModuleGeneration
+};
+//# sourceMappingURL=chunk-VVVC34HH.mjs.map
