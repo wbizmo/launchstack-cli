@@ -75,6 +75,7 @@ function commitStagedProject(
 }
 
 export function generateProject(options: GenerateProjectOptions): string {
+  options.onProgress?.("Validating project name and destination");
   validateProjectName(options.projectName);
 
   const destinationDirectory = resolve(options.destinationDirectory);
@@ -94,6 +95,7 @@ export function generateProject(options: GenerateProjectOptions): string {
   );
 
   try {
+    options.onProgress?.("Staging project template");
     if (overwrite && existsSync(destinationDirectory)) {
       cpSync(destinationDirectory, stagedDirectory, {
         recursive: true,
@@ -109,6 +111,7 @@ export function generateProject(options: GenerateProjectOptions): string {
     });
 
     if (options.template === "api") {
+      options.onProgress?.("Generating project secrets");
       const environmentPath = join(stagedDirectory, ".env");
       const environment = readFileSync(environmentPath, "utf8");
       const securedEnvironment = environment
@@ -125,6 +128,7 @@ export function generateProject(options: GenerateProjectOptions): string {
     }
 
     if (options.template === "api") {
+      options.onProgress?.("Preparing Docker assets");
       writeCanonicalDockerAssets(stagedDirectory, {
         buildCommand: "npm run build",
         outputDirectory: "dist",
@@ -135,6 +139,7 @@ export function generateProject(options: GenerateProjectOptions): string {
       });
     }
 
+    options.onProgress?.("Writing project files");
     commitStagedProject(stagedDirectory, destinationDirectory, overwrite);
   } catch (error) {
     if (existsSync(stagedDirectory)) {

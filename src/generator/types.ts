@@ -15,4 +15,5 @@ export type GenerateProjectOptions = {
   destinationDirectory: string;
   template: TemplateName;
   overwrite?: boolean;
+  onProgress?: (message: string) => void;
 };

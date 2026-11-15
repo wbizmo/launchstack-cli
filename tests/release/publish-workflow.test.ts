@@ -20,7 +20,7 @@ describe("npm publish workflow authorization", () => {
   });
 
   it("pins this authorization workflow to the reviewed package version", () => {
-    expect(workflow).toContain('if [ "$VERSION" != "3.0.4" ]');
+    expect(workflow).toContain('if [ "$VERSION" != "3.0.5" ]');
     expect(workflow).toContain("npm run release:check");
     expect(workflow).toContain("npm publish --access public --provenance");
   });

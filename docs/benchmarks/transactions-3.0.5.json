@@ -1,0 +1,45 @@
+{
+  "version": "3.0.5",
+  "node": "v24.22.1",
+  "platform": "linux x64",
+  "cpu": "AMD EPYC 9V74 80-Core Processor",
+  "visible_cpus": 5,
+  "memory_bytes": 35743748096,
+  "workload": {
+    "mutation": "new small files with expectedSha256=null in an isolated temporary project",
+    "sizes": [100, 1000, 10000],
+    "repetitions_per_size": 3,
+    "warmup": 0,
+    "network": "none",
+    "measurement": "parent-observed wall time; child /proc VmRSS sampled every 5ms",
+    "limitations": "RSS sampling can miss short peaks; p95 from three samples is diagnostic; physical device I/O and syscall counts were not traced; this host/runtime sample is not directly comparable with the v3.0.4 candidate"
+  },
+  "results": [
+    {
+      "files": 100,
+      "bytes": 1090,
+      "latency_ms": { "p50": 82.726, "p95": 89.97 },
+      "sampled_peak_rss_kb": 62160,
+      "errors": 0
+    },
+    {
+      "files": 1000,
+      "bytes": 11890,
+      "latency_ms": { "p50": 546.489, "p95": 547.537 },
+      "sampled_peak_rss_kb": 71376,
+      "errors": 0
+    },
+    {
+      "files": 10000,
+      "bytes": 128890,
+      "latency_ms": { "p50": 5124.154, "p95": 6192.299 },
+      "sampled_peak_rss_kb": 81728,
+      "errors": 0
+    }
+  ],
+  "concurrency": {
+    "writers": [8, 32],
+    "result": "all processes completed; unique files from every writer were present and intact",
+    "test": "tests/project-lifecycle-v3.test.ts"
+  }
+}

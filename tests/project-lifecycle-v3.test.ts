@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readdirSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
   readFileSync,
   existsSync,
@@ -86,7 +87,12 @@ describe("v3 project lifecycle primitives", () => {
     mkdirSync(join(root, ".launchstack"), { recursive: true });
     writeFileSync(
       join(root, ".launchstack", "mutation.lock"),
-      JSON.stringify({ pid: process.pid, createdAt: 0 }),
+      JSON.stringify({
+        version: 1,
+        id: "2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31",
+        pid: process.pid,
+        createdAt: 0,
+      }),
     );
     expect(() =>
       applyFileMutations({
@@ -95,6 +101,83 @@ describe("v3 project lifecycle primitives", () => {
         mutations: [],
       }),
     ).toThrow(/already running/i);
+  }, 10_000);
+
+  test("reclaims a stale directory lock without relying on hard links", () => {
+    const root = fixture();
+    const lock = join(root, ".launchstack", "mutation.lock");
+    mkdirSync(join(root, ".launchstack"), { recursive: true });
+    mkdirSync(lock);
+    writeFileSync(
+      join(lock, "owner-2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31.json"),
+      JSON.stringify({
+        version: 1,
+        id: "2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31",
+        pid: 2_147_483_647,
+        createdAt: Date.now(),
+      }),
+    );
+
+    expect(
+      applyFileMutations({
+        projectDirectory: root,
+        state: emptyProjectState("3.0.5", "3.0.5"),
+        mutations: [],
+      }),
+    ).toBeTruthy();
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  test("does not reclaim a stale legacy lock without coordinating with older CLIs", () => {
+    const root = fixture();
+    const lock = join(root, ".launchstack", "mutation.lock");
+    mkdirSync(join(root, ".launchstack"), { recursive: true });
+    writeFileSync(
+      lock,
+      JSON.stringify({
+        version: 1,
+        id: "2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31",
+        pid: 2_147_483_647,
+        createdAt: Date.now(),
+      }),
+    );
+
+    expect(() =>
+      applyFileMutations({
+        projectDirectory: root,
+        state: emptyProjectState("3.0.5", "3.0.5"),
+        mutations: [],
+      }),
+    ).toThrow(/stale mutation lock file.*manual cleanup/i);
+    expect(existsSync(lock)).toBe(true);
+  });
+
+  test("cleans abandoned temporary owner metadata from an interrupted lock setup", () => {
+    const root = fixture();
+    const metadata = join(root, ".launchstack");
+    const lock = join(metadata, "mutation.lock");
+    const id = "3c13b7b8-72c0-4db6-ae5c-9f2b776d6b32";
+    mkdirSync(lock, { recursive: true });
+    writeFileSync(
+      join(lock, `.owner-${id}.tmp`),
+      JSON.stringify({
+        version: 1,
+        id,
+        pid: 2_147_483_647,
+        createdAt: Date.now() - 60_000,
+      }),
+    );
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lock, old, old);
+
+    expect(
+      applyFileMutations({
+        projectDirectory: root,
+        state: emptyProjectState("3.0.5", "3.0.5"),
+        mutations: [],
+      }),
+    ).toBeTruthy();
+    expect(existsSync(lock)).toBe(false);
   });
 
   test("cleans staging directories when preflight validation fails", () => {
@@ -227,9 +310,11 @@ describe("v3 project lifecycle primitives", () => {
       const root = fixture();
       if (count === 8) {
         const metadata = join(root, ".launchstack");
+        const lock = join(metadata, "mutation.lock");
         mkdirSync(metadata, { recursive: true });
+        mkdirSync(lock);
         writeFileSync(
-          join(metadata, "mutation.lock"),
+          join(lock, "owner-2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31.json"),
           JSON.stringify({
             version: 1,
             id: "2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31",

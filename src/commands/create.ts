@@ -8,15 +8,27 @@ type CreateCommandOptions = {
   directory?: string;
   force?: boolean;
   install: boolean;
+  verbose?: boolean;
 };
+
+export function resolveCreateDestination(
+  projectName: string,
+  directory?: string,
+  workingDirectory = process.cwd(),
+): string {
+  return directory
+    ? resolve(workingDirectory, directory, projectName)
+    : resolve(workingDirectory, projectName);
+}
 
 export const createCommand = new Command("create")
   .description("Create a new backend API project")
   .argument("<project-name>", "Name of the project to create")
   .option(
     "-d, --directory <path>",
-    "Directory where the project should be created",
+    "Parent directory where <project-name> should be created",
   )
+  .option("--verbose", "Show project generation progress")
   .option(
     "-f, --force",
     "Allow replacing a non-empty destination after staging succeeds",
@@ -24,9 +36,10 @@ export const createCommand = new Command("create")
   .option("--no-install", "Skip dependency installation")
   .action((projectName: string, options: CreateCommandOptions) => {
     try {
-      const destinationDirectory = options.directory
-        ? resolve(options.directory)
-        : resolve(process.cwd(), projectName);
+      const destinationDirectory = resolveCreateDestination(
+        projectName,
+        options.directory,
+      );
 
       const destinationAlreadyExists = existsSync(destinationDirectory);
 
@@ -37,6 +50,9 @@ export const createCommand = new Command("create")
         destinationDirectory,
         template: "api",
         overwrite: options.force ?? false,
+        onProgress: options.verbose
+          ? (message) => console.log(`  ${message}...`)
+          : undefined,
       });
 
       console.log(`Project files created in ${generatedDirectory}`);

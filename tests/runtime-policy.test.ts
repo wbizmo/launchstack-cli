@@ -7,7 +7,7 @@ const read = (path: string) => readFileSync(join(root, path), "utf8");
 
 describe("supported Node runtime policy", () => {
   it("keeps package manifests and lockfiles on the tested 24/26 lines", () => {
-    const policy = ">=24.22.3 <25 || >=26.13.1 <27";
+    const policy = ">=24.22.0 <25 || >=26.13.0 <27";
     for (const path of ["package.json", "src/templates/api/package.json"]) {
       expect(JSON.parse(read(path)).engines.node).toBe(policy);
     }

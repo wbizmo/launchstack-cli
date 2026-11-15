@@ -57,8 +57,8 @@ jobs:
           TAG="v${VERSION}"
           NOTES="RELEASE_NOTES_${VERSION}.md"
 
-          if [ "$VERSION" != "3.0.4" ]; then
-            echo "::error::This approval workflow is scoped to v3.0.4, found ${VERSION}"
+          if [ "$VERSION" != "3.0.5" ]; then
+            echo "::error::This approval workflow is scoped to v3.0.5, found ${VERSION}"
             exit 1
           fi
           if [ ! -f "$NOTES" ]; then

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createCommand } from "../../src/commands/create";
+import {
+  createCommand,
+  resolveCreateDestination,
+} from "../../src/commands/create";
 
 describe("create command", () => {
   it("is registered with the expected name", () => {
@@ -17,5 +20,19 @@ describe("create command", () => {
     const optionFlags = createCommand.options.map((option) => option.flags);
 
     expect(optionFlags).toContain("--no-install");
+  });
+
+  it("creates the named project inside the selected parent directory", () => {
+    expect(resolveCreateDestination("my-api", "/tmp/projects", "/work")).toBe(
+      "/tmp/projects/my-api",
+    );
+    expect(resolveCreateDestination("my-api", undefined, "/work")).toBe(
+      "/work/my-api",
+    );
+  });
+
+  it("offers verbose generation progress", () => {
+    const optionFlags = createCommand.options.map((option) => option.flags);
+    expect(optionFlags).toContain("--verbose");
   });
 });

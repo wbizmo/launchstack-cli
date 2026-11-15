@@ -3,6 +3,7 @@ import {
   AUDIT_SEVERITIES,
   DevOrchestrator,
   FIRST_PARTY_EXTENSIONS,
+  MANIFEST_FILENAME,
   applyExtensionInstall,
   applyExtensionRemoval,
   applyModuleGeneration,
@@ -36,7 +37,7 @@ import {
   runProductionAudit,
   selectDevPlan,
   severityRank
-} from "./chunk-YJ2SLDUG.mjs";
+} from "./chunk-YYP64PUL.mjs";
 
 // src/cli.ts
 import { Command as Command22 } from "commander";
@@ -306,22 +307,29 @@ var clientCommand = new Command4("client").description("Generate and verify type
 import { existsSync as existsSync2 } from "fs";
 import { relative, resolve as resolve2 } from "path";
 import { Command as Command5 } from "commander";
+function resolveCreateDestination(projectName, directory2, workingDirectory = process.cwd()) {
+  return directory2 ? resolve2(workingDirectory, directory2, projectName) : resolve2(workingDirectory, projectName);
+}
 var createCommand = new Command5("create").description("Create a new backend API project").argument("<project-name>", "Name of the project to create").option(
   "-d, --directory <path>",
-  "Directory where the project should be created"
-).option(
+  "Parent directory where <project-name> should be created"
+).option("--verbose", "Show project generation progress").option(
   "-f, --force",
   "Allow replacing a non-empty destination after staging succeeds"
 ).option("--no-install", "Skip dependency installation").action((projectName, options) => {
   try {
-    const destinationDirectory = options.directory ? resolve2(options.directory) : resolve2(process.cwd(), projectName);
+    const destinationDirectory = resolveCreateDestination(
+      projectName,
+      options.directory
+    );
     const destinationAlreadyExists = existsSync2(destinationDirectory);
     console.log(`Creating ${projectName}...`);
     const generatedDirectory = generateProject({
       projectName,
       destinationDirectory,
       template: "api",
-      overwrite: options.force ?? false
+      overwrite: options.force ?? false,
+      onProgress: options.verbose ? (message) => console.log(`  ${message}...`) : void 0
     });
     console.log(`Project files created in ${generatedDirectory}`);
     if (options.install) {
@@ -451,8 +459,8 @@ function writeConfig(config) {
   atomicWriteText(getConfigPath(), `${JSON.stringify(validated, null, 2)}
 `);
 }
-function readConfig() {
-  const raw = readFileSync2(getConfigPath(), "utf-8");
+function readConfig(path = getConfigPath()) {
+  const raw = readFileSync2(path, "utf-8");
   const parsed = JSON.parse(raw);
   return launchStackConfigSchema.parse(parsed);
 }
@@ -1447,7 +1455,7 @@ async function promptHiddenSecret() {
       "Interactive secret entry requires a TTY. Pipe the value and use --stdin instead."
     );
   }
-  return new Promise((resolve9, reject) => {
+  return new Promise((resolve10, reject) => {
     let value = "";
     const input = process.stdin;
     const cleanup = () => {
@@ -1461,7 +1469,7 @@ async function promptHiddenSecret() {
         if (character === "\r" || character === "\n") {
           cleanup();
           process.stdout.write("\n");
-          resolve9(value);
+          resolve10(value);
           return;
         }
         if (character === "") {
@@ -1649,15 +1657,43 @@ var statusCommand = new Command20("status").description("Show LaunchStack projec
 
 // src/commands/validate.ts
 import { Command as Command21 } from "commander";
-var validateCommand = new Command21("validate").description("Validate the LaunchStack config file").action(() => {
+import { existsSync as existsSync11 } from "fs";
+import { join as join3, resolve as resolve9 } from "path";
+function validateProject(directory2 = process.cwd()) {
+  const root = resolve9(directory2);
+  if (existsSync11(join3(root, MANIFEST_FILENAME))) {
+    const manifest = loadProjectManifest(root);
+    return {
+      kind: "manifest",
+      name: manifest.project.name,
+      templateVersion: manifest.project.templateVersion,
+      provider: manifest.provider?.id ?? "none"
+    };
+  }
+  const config = readConfig(join3(root, CONFIG_FILE_NAME));
+  return {
+    kind: "config",
+    appName: config.appName,
+    provider: config.provider,
+    environment: config.environment
+  };
+}
+var validateCommand = new Command21("validate").description("Validate the LaunchStack project manifest or config file").action(() => {
   try {
-    const config = readConfig();
-    console.log("LaunchStack config is valid");
-    console.log(`App: ${config.appName}`);
-    console.log(`Provider: ${config.provider}`);
-    console.log(`Environment: ${config.environment}`);
+    const project = validateProject();
+    if (project.kind === "manifest") {
+      console.log("LaunchStack project manifest is valid");
+      console.log(`Project: ${project.name}`);
+      console.log(`Template: ${project.templateVersion}`);
+      console.log(`Provider: ${project.provider}`);
+    } else {
+      console.log("LaunchStack config is valid");
+      console.log(`App: ${project.appName}`);
+      console.log(`Provider: ${project.provider}`);
+      console.log(`Environment: ${project.environment}`);
+    }
   } catch (error) {
-    console.log("LaunchStack config is invalid");
+    console.log("LaunchStack project is invalid");
     if (error instanceof Error) {
       console.log(error.message);
     }

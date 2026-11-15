@@ -872,71 +872,169 @@ function acquireLock(projectDirectory) {
   const lockPath = (0, import_node_path5.join)(directory2, "mutation.lock");
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const lockId = (0, import_node_crypto3.randomUUID)();
-    const temporaryLockPath = (0, import_node_path5.join)(directory2, `.mutation-lock-${lockId}.tmp`);
+    const ownerPath = (0, import_node_path5.join)(lockPath, `owner-${lockId}.json`);
+    const temporaryOwnerPath = (0, import_node_path5.join)(lockPath, `.owner-${lockId}.tmp`);
     const startToken = processStartToken(process.pid);
-    (0, import_node_fs5.writeFileSync)(
-      temporaryLockPath,
-      JSON.stringify({
+    let createdDirectory;
+    try {
+      (0, import_node_fs5.mkdirSync)(lockPath, { mode: 448 });
+      const lockDirectory = (0, import_node_fs5.lstatSync)(lockPath);
+      createdDirectory = { dev: lockDirectory.dev, ino: lockDirectory.ino };
+      const owner = {
         version: 1,
         id: lockId,
         pid: process.pid,
         processStartToken: startToken,
         createdAt: Date.now()
-      }),
-      { mode: 384, flag: "wx" }
-    );
-    syncFile(temporaryLockPath);
-    try {
-      (0, import_node_fs5.linkSync)(temporaryLockPath, lockPath);
-      (0, import_node_fs5.unlinkSync)(temporaryLockPath);
+      };
+      (0, import_node_fs5.writeFileSync)(temporaryOwnerPath, JSON.stringify(owner), {
+        mode: 384,
+        flag: "wx"
+      });
+      syncFile(temporaryOwnerPath);
+      (0, import_node_fs5.renameSync)(temporaryOwnerPath, ownerPath);
+      syncDirectory(lockPath);
+      const currentDirectory = (0, import_node_fs5.lstatSync)(lockPath);
+      if (currentDirectory.isSymbolicLink() || !currentDirectory.isDirectory() || currentDirectory.dev !== lockDirectory.dev || currentDirectory.ino !== lockDirectory.ino) {
+        (0, import_node_fs5.unlinkSync)(ownerPath);
+        throw new Error("Mutation lock directory changed during acquisition.");
+      }
       syncDirectory(directory2);
       return () => {
         try {
           const current = JSON.parse(
-            readRegularFileNoFollow(lockPath, 4096).content
+            readRegularFileNoFollow(ownerPath, 4096).content
           );
-          if (current.id === lockId) (0, import_node_fs5.unlinkSync)(lockPath);
+          const currentDirectory2 = (0, import_node_fs5.lstatSync)(lockPath);
+          if (current.id === lockId && currentDirectory2.isDirectory() && !currentDirectory2.isSymbolicLink()) {
+            (0, import_node_fs5.unlinkSync)(ownerPath);
+            (0, import_node_fs5.rmdirSync)(lockPath);
+            syncDirectory(directory2);
+          }
         } catch {
         }
       };
     } catch (error) {
-      try {
-        (0, import_node_fs5.unlinkSync)(temporaryLockPath);
-      } catch {
-      }
-      if (!(0, import_node_fs5.existsSync)(lockPath)) {
-        if (error.code === "EEXIST") continue;
+      if (error.code !== "EEXIST") {
+        if (createdDirectory) {
+          try {
+            (0, import_node_fs5.unlinkSync)(temporaryOwnerPath);
+          } catch {
+          }
+          try {
+            (0, import_node_fs5.unlinkSync)(ownerPath);
+          } catch {
+          }
+          try {
+            const current = (0, import_node_fs5.lstatSync)(lockPath);
+            if (current.isDirectory() && current.dev === createdDirectory.dev && current.ino === createdDirectory.ino)
+              (0, import_node_fs5.rmdirSync)(lockPath);
+          } catch {
+          }
+        }
+        if (error.code === "ENOENT") continue;
         throw error;
       }
+      if (!(0, import_node_fs5.existsSync)(lockPath)) continue;
       let stale = false;
+      let staleLegacyLock = false;
       try {
-        const lockFile = readRegularFileNoFollow(lockPath, 4096);
-        const contents = lockFile.content;
-        const lock = JSON.parse(contents);
-        if (lock.version !== 1 || typeof lock.id !== "string" || !Number.isInteger(lock.pid) || !Number.isFinite(lock.createdAt) || lock.processStartToken !== void 0 && typeof lock.processStartToken !== "string")
-          throw new Error("malformed lock");
-        stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
-        if (stale) {
-          const reclaimPath = (0, import_node_path5.join)(
-            directory2,
-            `.mutation-reclaim-${lockFile.dev}-${lockFile.ino}`
+        const lockStat = (0, import_node_fs5.lstatSync)(lockPath);
+        if (lockStat.isSymbolicLink())
+          throw new Error("Mutation lock must not be a symbolic link.");
+        if (lockStat.isDirectory()) {
+          const ownerNames = (0, import_node_fs5.readdirSync)(lockPath);
+          const ownerName = ownerNames.find(
+            (name) => name.startsWith("owner-")
           );
-          try {
-            (0, import_node_fs5.linkSync)(lockPath, reclaimPath);
-          } catch (claimError) {
-            if (claimError.code === "EEXIST")
+          if (!ownerName) {
+            if (Date.now() - lockStat.mtimeMs > 3e4) {
+              let abandoned = true;
+              for (const name of ownerNames) {
+                if (!/^\.owner-[0-9a-f-]{36}\.tmp$/i.test(name)) {
+                  abandoned = false;
+                  break;
+                }
+                const temporaryOwner = (0, import_node_path5.join)(lockPath, name);
+                const temporaryStat = (0, import_node_fs5.lstatSync)(temporaryOwner);
+                if (temporaryStat.isSymbolicLink() || !temporaryStat.isFile()) {
+                  abandoned = false;
+                  break;
+                }
+                const temporaryFile = readRegularFileNoFollow(
+                  temporaryOwner,
+                  4096
+                );
+                let temporaryLock = {};
+                try {
+                  temporaryLock = JSON.parse(
+                    temporaryFile.content
+                  );
+                } catch {
+                }
+                if (temporaryLock.id && name !== `.owner-${temporaryLock.id}.tmp`) {
+                  abandoned = false;
+                  break;
+                }
+                if (temporaryLock.pid !== void 0 && processIsAlive(
+                  temporaryLock.pid,
+                  temporaryLock.processStartToken
+                )) {
+                  abandoned = false;
+                  break;
+                }
+                const confirmedTemporary = readRegularFileNoFollow(
+                  temporaryOwner,
+                  4096
+                );
+                if (confirmedTemporary.dev !== temporaryFile.dev || confirmedTemporary.ino !== temporaryFile.ino || confirmedTemporary.content !== temporaryFile.content) {
+                  abandoned = false;
+                  break;
+                }
+                (0, import_node_fs5.unlinkSync)(temporaryOwner);
+              }
+              if (abandoned) {
+                try {
+                  (0, import_node_fs5.rmdirSync)(lockPath);
+                  syncDirectory(directory2);
+                } catch {
+                }
+              }
               continue;
-            throw claimError;
-          }
-          try {
-            const confirmed = readRegularFileNoFollow(lockPath, 4096);
-            if (confirmed.content === contents && confirmed.dev === lockFile.dev && confirmed.ino === lockFile.ino && !processIsAlive(lock.pid ?? -1, lock.processStartToken)) {
-              (0, import_node_fs5.unlinkSync)(lockPath);
-              syncDirectory(directory2);
             }
-          } finally {
-            (0, import_node_fs5.unlinkSync)(reclaimPath);
+            waitForLockRetry();
+            continue;
           }
+          if (ownerNames.length !== 1 || !/^owner-[0-9a-f-]{36}\.json$/i.test(ownerName))
+            throw new Error(
+              "Mutation lock directory contains invalid owner data."
+            );
+          const currentOwnerPath = (0, import_node_path5.join)(lockPath, ownerName);
+          const lockFile = readRegularFileNoFollow(currentOwnerPath, 4096);
+          const contents = lockFile.content;
+          const lock = JSON.parse(contents);
+          if (lock.version !== 1 || typeof lock.id !== "string" || ownerName !== `owner-${lock.id}.json` || !Number.isInteger(lock.pid) || !Number.isFinite(lock.createdAt) || lock.processStartToken !== void 0 && typeof lock.processStartToken !== "string")
+            throw new Error("malformed lock");
+          stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
+          if (stale) {
+            const confirmed = readRegularFileNoFollow(currentOwnerPath, 4096);
+            if (confirmed.content === contents && confirmed.dev === lockFile.dev && confirmed.ino === lockFile.ino && !processIsAlive(lock.pid ?? -1, lock.processStartToken)) {
+              try {
+                (0, import_node_fs5.unlinkSync)(currentOwnerPath);
+                (0, import_node_fs5.rmdirSync)(lockPath);
+                syncDirectory(directory2);
+              } catch {
+              }
+            }
+          }
+        } else {
+          const lockFile = readRegularFileNoFollow(lockPath, 4096);
+          const contents = lockFile.content;
+          const lock = JSON.parse(contents);
+          if (lock.version !== 1 || typeof lock.id !== "string" || !Number.isInteger(lock.pid) || !Number.isFinite(lock.createdAt) || lock.processStartToken !== void 0 && typeof lock.processStartToken !== "string")
+            throw new Error("malformed lock");
+          stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
+          staleLegacyLock = stale;
         }
       } catch (error2) {
         if (lockChangedDuringRead(error2)) continue;
@@ -945,6 +1043,10 @@ function acquireLock(projectDirectory) {
           "Another LaunchStack mutation is already running; its lock identity cannot be verified."
         );
       }
+      if (staleLegacyLock)
+        throw new Error(
+          "A stale mutation lock file from an earlier LaunchStack release needs manual cleanup. Verify that no LaunchStack mutation is running, remove .launchstack/mutation.lock, and retry."
+        );
       if (!stale) {
         if (attempt === 99)
           throw new Error(
@@ -1187,7 +1289,7 @@ function applyFileMutations(input) {
 function currentLaunchStackVersion() {
   if (process.env.LAUNCHSTACK_VERSION_OVERRIDE)
     return process.env.LAUNCHSTACK_VERSION_OVERRIDE;
-  return true ? "3.0.4" : "0.0.0-dev";
+  return true ? "3.0.5" : "0.0.0-dev";
 }
 
 // src/extensions/engine.ts
@@ -3687,7 +3789,7 @@ async function fetchRemoteSchema(url, hostname) {
     keepAlive: false,
     lookup: createPinnedLookup(addresses)
   });
-  return await new Promise((resolve24, reject) => {
+  return await new Promise((resolve25, reject) => {
     const request = (0, import_node_https.request)(
       url,
       {
@@ -3734,7 +3836,7 @@ async function fetchRemoteSchema(url, hostname) {
         });
         response.on("end", () => {
           agent.destroy();
-          resolve24(Buffer.concat(chunks, total).toString("utf8"));
+          resolve25(Buffer.concat(chunks, total).toString("utf8"));
         });
         response.on("error", (error) => {
           agent.destroy();
@@ -4316,6 +4418,7 @@ function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
   }
 }
 function generateProject(options) {
+  options.onProgress?.("Validating project name and destination");
   validateProjectName(options.projectName);
   const destinationDirectory = (0, import_node_path16.resolve)(options.destinationDirectory);
   const overwrite = options.overwrite ?? false;
@@ -4330,6 +4433,7 @@ function generateProject(options) {
     )
   );
   try {
+    options.onProgress?.("Staging project template");
     if (overwrite && (0, import_node_fs16.existsSync)(destinationDirectory)) {
       (0, import_node_fs16.cpSync)(destinationDirectory, stagedDirectory, {
         recursive: true,
@@ -4342,6 +4446,7 @@ function generateProject(options) {
       PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
     });
     if (options.template === "api") {
+      options.onProgress?.("Generating project secrets");
       const environmentPath = (0, import_node_path16.join)(stagedDirectory, ".env");
       const environment = (0, import_node_fs16.readFileSync)(environmentPath, "utf8");
       const securedEnvironment = environment.replace(
@@ -4355,6 +4460,7 @@ function generateProject(options) {
       if (process.platform !== "win32") (0, import_node_fs16.chmodSync)(environmentPath, 384);
     }
     if (options.template === "api") {
+      options.onProgress?.("Preparing Docker assets");
       writeCanonicalDockerAssets(stagedDirectory, {
         buildCommand: "npm run build",
         outputDirectory: "dist",
@@ -4364,6 +4470,7 @@ function generateProject(options) {
         port: 3e3
       });
     }
+    options.onProgress?.("Writing project files");
     commitStagedProject(stagedDirectory, destinationDirectory, overwrite);
   } catch (error) {
     if ((0, import_node_fs16.existsSync)(stagedDirectory)) {
@@ -4388,22 +4495,29 @@ function installDependencies(projectDirectory) {
 }
 
 // src/commands/create.ts
+function resolveCreateDestination(projectName, directory2, workingDirectory = process.cwd()) {
+  return directory2 ? (0, import_node_path17.resolve)(workingDirectory, directory2, projectName) : (0, import_node_path17.resolve)(workingDirectory, projectName);
+}
 var createCommand = new import_commander5.Command("create").description("Create a new backend API project").argument("<project-name>", "Name of the project to create").option(
   "-d, --directory <path>",
-  "Directory where the project should be created"
-).option(
+  "Parent directory where <project-name> should be created"
+).option("--verbose", "Show project generation progress").option(
   "-f, --force",
   "Allow replacing a non-empty destination after staging succeeds"
 ).option("--no-install", "Skip dependency installation").action((projectName, options) => {
   try {
-    const destinationDirectory = options.directory ? (0, import_node_path17.resolve)(options.directory) : (0, import_node_path17.resolve)(process.cwd(), projectName);
+    const destinationDirectory = resolveCreateDestination(
+      projectName,
+      options.directory
+    );
     const destinationAlreadyExists = (0, import_node_fs17.existsSync)(destinationDirectory);
     console.log(`Creating ${projectName}...`);
     const generatedDirectory = generateProject({
       projectName,
       destinationDirectory,
       template: "api",
-      overwrite: options.force ?? false
+      overwrite: options.force ?? false,
+      onProgress: options.verbose ? (message) => console.log(`  ${message}...`) : void 0
     });
     console.log(`Project files created in ${generatedDirectory}`);
     if (options.install) {
@@ -4533,8 +4647,8 @@ function writeConfig(config) {
   atomicWriteText(getConfigPath(), `${JSON.stringify(validated, null, 2)}
 `);
 }
-function readConfig() {
-  const raw = (0, import_node_fs18.readFileSync)(getConfigPath(), "utf-8");
+function readConfig(path = getConfigPath()) {
+  const raw = (0, import_node_fs18.readFileSync)(path, "utf-8");
   const parsed = JSON.parse(raw);
   return launchStackConfigSchema.parse(parsed);
 }
@@ -4711,7 +4825,7 @@ var defaultAdapters = {
         { host: "127.0.0.1", port },
         () => done({
           port,
-          release: () => new Promise((resolve24) => server.close(() => resolve24()))
+          release: () => new Promise((resolve25) => server.close(() => resolve25()))
         })
       );
     });
@@ -5262,13 +5376,13 @@ function composeArgs(projectDirectory, resourceId) {
   return args;
 }
 function portAvailable(port) {
-  return new Promise((resolve24) => {
+  return new Promise((resolve25) => {
     const server = (0, import_node_net4.createServer)();
     server.unref();
-    server.once("error", () => resolve24(false));
+    server.once("error", () => resolve25(false));
     server.listen(
       { host: "127.0.0.1", port },
-      () => server.close(() => resolve24(true))
+      () => server.close(() => resolve25(true))
     );
   });
 }
@@ -6832,7 +6946,7 @@ async function promptHiddenSecret() {
       "Interactive secret entry requires a TTY. Pipe the value and use --stdin instead."
     );
   }
-  return new Promise((resolve24, reject) => {
+  return new Promise((resolve25, reject) => {
     let value = "";
     const input = process.stdin;
     const cleanup = () => {
@@ -6846,7 +6960,7 @@ async function promptHiddenSecret() {
         if (character === "\r" || character === "\n") {
           cleanup();
           process.stdout.write("\n");
-          resolve24(value);
+          resolve25(value);
           return;
         }
         if (character === "") {
@@ -7034,15 +7148,43 @@ var statusCommand = new import_commander20.Command("status").description("Show L
 
 // src/commands/validate.ts
 var import_commander21 = require("commander");
-var validateCommand = new import_commander21.Command("validate").description("Validate the LaunchStack config file").action(() => {
+var import_node_fs30 = require("fs");
+var import_node_path30 = require("path");
+function validateProject(directory2 = process.cwd()) {
+  const root = (0, import_node_path30.resolve)(directory2);
+  if ((0, import_node_fs30.existsSync)((0, import_node_path30.join)(root, MANIFEST_FILENAME))) {
+    const manifest = loadProjectManifest(root);
+    return {
+      kind: "manifest",
+      name: manifest.project.name,
+      templateVersion: manifest.project.templateVersion,
+      provider: manifest.provider?.id ?? "none"
+    };
+  }
+  const config = readConfig((0, import_node_path30.join)(root, CONFIG_FILE_NAME));
+  return {
+    kind: "config",
+    appName: config.appName,
+    provider: config.provider,
+    environment: config.environment
+  };
+}
+var validateCommand = new import_commander21.Command("validate").description("Validate the LaunchStack project manifest or config file").action(() => {
   try {
-    const config = readConfig();
-    console.log("LaunchStack config is valid");
-    console.log(`App: ${config.appName}`);
-    console.log(`Provider: ${config.provider}`);
-    console.log(`Environment: ${config.environment}`);
+    const project = validateProject();
+    if (project.kind === "manifest") {
+      console.log("LaunchStack project manifest is valid");
+      console.log(`Project: ${project.name}`);
+      console.log(`Template: ${project.templateVersion}`);
+      console.log(`Provider: ${project.provider}`);
+    } else {
+      console.log("LaunchStack config is valid");
+      console.log(`App: ${project.appName}`);
+      console.log(`Provider: ${project.provider}`);
+      console.log(`Environment: ${project.environment}`);
+    }
   } catch (error) {
-    console.log("LaunchStack config is invalid");
+    console.log("LaunchStack project is invalid");
     if (error instanceof Error) {
       console.log(error.message);
     }
