@@ -6,7 +6,7 @@
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "bin": {
-    "launchstack": "./dist/cli.js"
+    "launchstack": "./bin/launchstack.cjs"
   },
   "repository": {
     "type": "git",
@@ -69,6 +69,7 @@
   "author": "Williams Ashibuogwu",
   "license": "MIT",
   "files": [
+    "bin",
     "dist",
     "README.md",
     "LICENSE"

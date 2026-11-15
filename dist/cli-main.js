@@ -1,7 +1,6 @@
-#!/usr/bin/env node
 "use strict";
 
-// src/cli.ts
+// src/cli-main.ts
 var import_commander22 = require("commander");
 
 // src/commands/add.ts
@@ -2768,6 +2767,7 @@ var import_node_fs10 = require("fs");
 var import_node_child_process2 = require("child_process");
 var import_node_path10 = require("path");
 var import_semver = require("semver");
+var import_yaml2 = require("yaml");
 
 // src/audit/types.ts
 var AUDIT_SEVERITIES = [
@@ -2964,6 +2964,36 @@ function gitTrackedFiles(root) {
     return { paths: [], complete: false, reason: "incomplete" };
   }
 }
+function composeApiEnvironment(content) {
+  try {
+    const parsed = (0, import_yaml2.parse)(
+      content.replace(/!reset\s+(\[\]|\{\})/g, "$1")
+    );
+    const environment = parsed?.services?.api?.environment;
+    if (Array.isArray(environment)) {
+      const values = {};
+      for (const entry of environment) {
+        if (typeof entry !== "string") continue;
+        const separator = entry.indexOf("=");
+        if (separator < 0) values[entry] = void 0;
+        else values[entry.slice(0, separator)] = entry.slice(separator + 1);
+      }
+      return values;
+    }
+    if (typeof environment === "object" && environment !== null && !Array.isArray(environment))
+      return environment;
+    return {};
+  } catch {
+    return void 0;
+  }
+}
+function composeApiEnvironmentReset(content) {
+  return /environment\s*:\s*!reset\s+(?:\[\s*\]|\{\s*\})/m.test(content);
+}
+function requiresExplicitComposeValue(environment, name) {
+  const value = environment[name];
+  return typeof value === "string" && new RegExp(`^\\$\\{${name}(?::)?\\?`).test(value);
+}
 var finding = (ruleId, severity, title, detail, verified, path) => ({ ruleId, severity, title, detail, verified, path });
 var SECRET_FILE_PATTERNS = [
   /^\.env(?:\..+)?$/,
@@ -3146,21 +3176,30 @@ function runProductionAudit(projectDirectoryInput, options = {}) {
       );
     }
   }
-  const productionCompose = [
-    readIfPresent(root, "docker-compose.yml") ?? "",
-    readIfPresent(root, "docker-compose.production.yml") ?? ""
-  ].join("\n");
-  if (productionCompose && (!/CORS_ORIGIN:\s*\$\{CORS_ORIGIN:\?/.test(productionCompose) || !/JWT_(?:ACCESS|REFRESH)_SECRET:\s*\$\{JWT_/.test(productionCompose)))
-    findings.push(
-      finding(
-        "LS021",
-        "high",
-        "Production Compose does not require deployment settings",
-        "Production Compose should require an explicit CORS origin and JWT secrets.",
-        true,
-        "docker-compose.yml"
-      )
-    );
+  const baseCompose = readIfPresent(root, "docker-compose.yml");
+  const productionCompose = readIfPresent(
+    root,
+    "docker-compose.production.yml"
+  );
+  if (baseCompose !== void 0 || productionCompose !== void 0) {
+    const baseEnvironment = baseCompose ? composeApiEnvironment(baseCompose) : {};
+    const productionEnvironment = productionCompose ? composeApiEnvironment(productionCompose) : {};
+    const effectiveEnvironment = baseEnvironment && productionEnvironment ? productionCompose && composeApiEnvironmentReset(productionCompose) ? productionEnvironment : { ...baseEnvironment, ...productionEnvironment } : void 0;
+    if (!effectiveEnvironment || !requiresExplicitComposeValue(effectiveEnvironment, "CORS_ORIGIN") || !requiresExplicitComposeValue(
+      effectiveEnvironment,
+      "JWT_ACCESS_SECRET"
+    ) || !requiresExplicitComposeValue(effectiveEnvironment, "JWT_REFRESH_SECRET"))
+      findings.push(
+        finding(
+          "LS021",
+          "high",
+          "Production Compose does not require deployment settings",
+          "Production Compose should require an explicit CORS origin and JWT secrets.",
+          true,
+          productionCompose !== void 0 ? "docker-compose.production.yml" : "docker-compose.yml"
+        )
+      );
+  }
   if (pkg) {
     const scripts = pkg.scripts && typeof pkg.scripts === "object" ? pkg.scripts : {};
     if (!scripts["prisma:deploy"])
@@ -7248,26 +7287,7 @@ var validateCommand = new import_commander21.Command("validate").description("Va
   }
 });
 
-// src/runtime-policy.ts
-var import_semver2 = require("semver");
-var SUPPORTED_NODE_RANGE = ">=24.22.0 <25 || >=26.13.0 <27";
-var informationalArguments = /* @__PURE__ */ new Set(["--help", "-h", "--version", "-V"]);
-function unsupportedRuntimeMessage(runtimeVersion, args) {
-  if ((0, import_semver2.satisfies)(runtimeVersion, SUPPORTED_NODE_RANGE)) return void 0;
-  if (args.length === 0 || args[0] === "help" || args.some((argument) => informationalArguments.has(argument)))
-    return void 0;
-  return `LaunchStack CLI requires Node.js ${SUPPORTED_NODE_RANGE}. Current runtime: ${runtimeVersion}. Install a supported Node.js 24 or 26 release and retry.`;
-}
-
-// src/cli.ts
-var runtimeMessage = unsupportedRuntimeMessage(
-  process.version,
-  process.argv.slice(2)
-);
-if (runtimeMessage) {
-  console.error(runtimeMessage);
-  process.exitCode = 1;
-}
+// src/cli-main.ts
 var program = new import_commander22.Command();
 program.name("launchstack").description(
   "Backend API scaffolding and lifecycle platform for production TypeScript services"
@@ -7299,9 +7319,8 @@ program.addCommand(historyCommand);
 program.addCommand(rollbackCommand);
 program.addCommand(dockerCommand);
 program.addCommand(githubCommand);
-if (!runtimeMessage)
-  program.parseAsync().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  });
-//# sourceMappingURL=cli.js.map
+program.parseAsync().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});
+//# sourceMappingURL=cli-main.js.map

@@ -1,40 +1,52 @@
 {
-  "version": "3.0.6",
+  "repository": "/workspace/launchstack-cli",
   "node": "v24.22.1",
   "platform": "linux x64",
-  "cpu": "AMD EPYC 9V74 80-Core Processor",
-  "visible_cpus": 4,
-  "memory_bytes": 35743748096,
-  "workload": {
-    "mutation": "new small files with expectedSha256=null in an isolated temporary project",
-    "sizes": [100, 1000, 10000],
-    "repetitions_per_size": 3,
-    "warmup": 0,
-    "network": "none",
-    "measurement": "parent-observed wall time; child /proc VmRSS sampled every 5ms",
-    "limitations": "RSS sampling can miss short peaks; p95 from three samples is diagnostic; physical device I/O and syscall counts were not traced; not directly comparable with prior host samples."
-  },
+  "source_sha256": "d9702a06fe9edb073af01fd0b0bb9222487f37c8bffab1664a0ef8d113642b9c",
+  "source_identity_files": ["src/project/transaction.ts", "bench/mutations.ts"],
+  "worker_count": 3,
+  "warmup": 0,
+  "isolation": "one fresh process and temporary project per repetition",
+  "measurements": "parent-observed wall time; /proc VmRSS sampled every 5ms",
   "results": [
     {
       "files": 100,
       "bytes": 1090,
-      "latency_ms": { "p50": 78.75, "p95": 83.674 },
-      "sampled_peak_rss_kb": 62376,
-      "errors": 0
+      "repetitions": 3,
+      "latency_ms": {
+        "p50": 110.175,
+        "p95": 115.113
+      },
+      "latency_samples_ms": [115.113, 89.126, 110.175],
+      "sampled_peak_rss_kb": 61172,
+      "errors": 0,
+      "content_checks": true
     },
     {
       "files": 1000,
       "bytes": 11890,
-      "latency_ms": { "p50": 594.435, "p95": 661.872 },
-      "sampled_peak_rss_kb": 72004,
-      "errors": 0
+      "repetitions": 3,
+      "latency_ms": {
+        "p50": 727.163,
+        "p95": 731.493
+      },
+      "latency_samples_ms": [731.493, 639.872, 727.163],
+      "sampled_peak_rss_kb": 71636,
+      "errors": 0,
+      "content_checks": true
     },
     {
       "files": 10000,
       "bytes": 128890,
-      "latency_ms": { "p50": 6229.597, "p95": 6407.101 },
-      "sampled_peak_rss_kb": 83768,
-      "errors": 0
+      "repetitions": 3,
+      "latency_ms": {
+        "p50": 6062.339,
+        "p95": 6277.066
+      },
+      "latency_samples_ms": [5992.082, 6277.066, 6062.339],
+      "sampled_peak_rss_kb": 82416,
+      "errors": 0,
+      "content_checks": true
     }
   ]
 }

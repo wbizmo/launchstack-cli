@@ -75,7 +75,7 @@ async function main() {
     const port = await freePort();
     env.LAUNCHSTACK_API_PORT = String(port);
     run(node, [
-      join(root, "dist", "cli.js"),
+      join(root, "bin", "launchstack.cjs"),
       "create",
       "docker-smoke",
       "--directory",

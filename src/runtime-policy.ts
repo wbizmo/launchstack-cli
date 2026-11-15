@@ -1,19 +1,31 @@
-import { satisfies } from "semver";
-
 export const SUPPORTED_NODE_RANGE = ">=24.22.0 <25 || >=26.13.0 <27";
 
-const informationalArguments = new Set(["--help", "-h", "--version", "-V"]);
+function isSupportedNode(runtimeVersion: string): boolean {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(runtimeVersion);
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  return (major === 24 && minor >= 22) || (major === 26 && minor >= 13);
+}
+
+export function isRuntimeVersionRequest(args: string[]): boolean {
+  return args.length === 1 && (args[0] === "--version" || args[0] === "-V");
+}
+
+export function isRuntimeHelpRequest(args: string[]): boolean {
+  return (
+    args.length === 0 ||
+    args[0] === "help" ||
+    (args.length === 1 && (args[0] === "--help" || args[0] === "-h"))
+  );
+}
 
 export function unsupportedRuntimeMessage(
   runtimeVersion: string,
   args: string[],
 ): string | undefined {
-  if (satisfies(runtimeVersion, SUPPORTED_NODE_RANGE)) return undefined;
-  if (
-    args.length === 0 ||
-    args[0] === "help" ||
-    args.some((argument) => informationalArguments.has(argument))
-  )
+  if (isSupportedNode(runtimeVersion)) return undefined;
+  if (isRuntimeHelpRequest(args) || isRuntimeVersionRequest(args))
     return undefined;
 
   return `LaunchStack CLI requires Node.js ${SUPPORTED_NODE_RANGE}. Current runtime: ${runtimeVersion}. Install a supported Node.js 24 or 26 release and retry.`;

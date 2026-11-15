@@ -1,32 +1,48 @@
 {
   "version": "3.0.6",
+  "repository": "/workspace/launchstack-cli",
   "node": "v24.22.1",
   "platform": "linux x64",
-  "cpu": "AMD EPYC 9V74 80-Core Processor",
-  "visible_cpus": 4,
-  "memory_bytes": 35743748096,
-  "workload": {
-    "operation": "plan and apply one fresh capability-install transaction with locked re-planning and metadata compare-and-swap preconditions",
-    "capability_and_file_counts": [1, 10, 100],
-    "repetitions_per_size": 3,
-    "isolation": "fresh temporary project for each sample",
-    "limitations": "Synthetic file-only capabilities; excludes npm resolution, database work, container startup and warmup; three samples per size make p95 diagnostic; values are host-specific and are not a direct comparison with earlier reports."
-  },
+  "source_sha256": "25adffbf4c47382831f059a3476dfa0005b109909085eb406fabb603c4fda093",
+  "source_identity_files": [
+    "src/extensions/engine.ts",
+    "src/project/transaction.ts",
+    "bench/capability-mutations.ts"
+  ],
+  "isolation": "fresh project per repetition; includes planning, CAS metadata, staging and commit",
   "results": [
     {
       "capabilities": 1,
       "files": 1,
-      "latency_ms": { "p50": 17.395, "p95": 24.049 }
+      "repetitions": 3,
+      "latency_ms": {
+        "p50": 20.518,
+        "p95": 21.381
+      },
+      "latency_samples_ms": [20.518, 21.381, 12.939],
+      "content_checks": "passed"
     },
     {
       "capabilities": 10,
       "files": 10,
-      "latency_ms": { "p50": 19.966, "p95": 24.131 }
+      "repetitions": 3,
+      "latency_ms": {
+        "p50": 20.921,
+        "p95": 21.128
+      },
+      "latency_samples_ms": [21.128, 19.487, 20.921],
+      "content_checks": "passed"
     },
     {
       "capabilities": 100,
       "files": 100,
-      "latency_ms": { "p50": 81.576, "p95": 85.312 }
+      "repetitions": 3,
+      "latency_ms": {
+        "p50": 96.562,
+        "p95": 101.719
+      },
+      "latency_samples_ms": [101.719, 95.119, 96.562],
+      "content_checks": "passed"
     }
   ]
 }

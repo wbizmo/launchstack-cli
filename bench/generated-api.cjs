@@ -232,7 +232,7 @@ async function main() {
   ]);
   databaseCreated = true;
   setupTimings.template_create_ms = timedRun(node, [
-    join(root, "dist", "cli.js"),
+    join(root, "bin", "launchstack.cjs"),
     "create",
     "benchmark-api",
     "--directory",
@@ -240,7 +240,7 @@ async function main() {
     "--no-install",
   ]).elapsedMs;
   setupTimings.resource_generation_ms = timedRun(node, [
-    join(root, "dist", "cli.js"),
+    join(root, "bin", "launchstack.cjs"),
     "generate",
     "resource",
     "bench-record",

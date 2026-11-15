@@ -14,15 +14,34 @@ describe("supported Node runtime policy", () => {
     expect(
       unsupportedRuntimeMessage("v20.19.0", ["--version"]),
     ).toBeUndefined();
+    expect(unsupportedRuntimeMessage("v20.19.0", ["--help"])).toBeUndefined();
     expect(
-      unsupportedRuntimeMessage("v20.19.0", ["create", "--help"]),
-    ).toBeUndefined();
+      unsupportedRuntimeMessage("v20.19.0", [
+        "create",
+        "my-api",
+        "--directory",
+        "--help",
+        "--no-install",
+      ]),
+    ).toMatch(/requires Node\.js/);
+    expect(unsupportedRuntimeMessage("v20.19.0", ["create", "--help"])).toMatch(
+      /requires Node\.js/,
+    );
     expect(
       unsupportedRuntimeMessage("v24.22.1", ["create", "my-api"]),
     ).toBeUndefined();
     expect(
       unsupportedRuntimeMessage("v26.13.1", ["create", "my-api"]),
     ).toBeUndefined();
+    expect(unsupportedRuntimeMessage("v24.21.9", ["create"])).toMatch(
+      /requires Node\.js/,
+    );
+    expect(unsupportedRuntimeMessage("v26.12.9", ["create"])).toMatch(
+      /requires Node\.js/,
+    );
+    expect(unsupportedRuntimeMessage("v24.22.0-alpha.1", ["create"])).toMatch(
+      /requires Node\.js/,
+    );
   });
 
   it("keeps package manifests and lockfiles on the tested 24/26 lines", () => {

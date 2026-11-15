@@ -138,8 +138,84 @@ describe("v3 production audit", () => {
     );
     writeFileSync(
       join(root, "docker-compose.production.yml"),
-      "services:\n  api:\n    environment:\n      NODE_ENV: production\n",
+      [
+        "services:",
+        "  postgres:",
+        "    ports: !reset []",
+        "  api:",
+        "    environment:",
+        "      NODE_ENV: production",
+        "",
+      ].join("\n"),
     );
+
+    expect(
+      runProductionAudit(root).findings.map((item) => item.ruleId),
+    ).not.toContain("LS021");
+  });
+
+  test("reports unsafe effective Compose overrides", () => {
+    const root = mkdtempSync(
+      join(tmpdir(), "launchstack-audit-compose-override-"),
+    );
+    writeFileSync(
+      join(root, "docker-compose.yml"),
+      [
+        "services:",
+        "  api:",
+        "    environment:",
+        "      CORS_ORIGIN: ${CORS_ORIGIN:?Set an explicit production origin}",
+        "      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set a production access secret}",
+        "      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set a production refresh secret}",
+        "",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(root, "docker-compose.production.yml"),
+      [
+        "services:",
+        "  api:",
+        "    environment:",
+        '      CORS_ORIGIN: "*"',
+        '      JWT_ACCESS_SECRET: "development-access-secret"',
+        '      JWT_REFRESH_SECRET: "development-refresh-secret"',
+        "",
+      ].join("\n"),
+    );
+
+    expect(
+      runProductionAudit(root).findings.map((item) => item.ruleId),
+    ).toContain("LS021");
+  });
+
+  test("reports production Compose environment resets that remove required settings", () => {
+    const root = mkdtempSync(
+      join(tmpdir(), "launchstack-audit-compose-reset-"),
+    );
+    writeFileSync(
+      join(root, "docker-compose.yml"),
+      [
+        "services:",
+        "  api:",
+        "    environment:",
+        "      CORS_ORIGIN: ${CORS_ORIGIN:?Set an explicit production origin}",
+        "      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set a production access secret}",
+        "      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set a production refresh secret}",
+        "",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(root, "docker-compose.production.yml"),
+      "services:\n  api:\n    environment: !reset []\n",
+    );
+
+    expect(
+      runProductionAudit(root).findings.map((item) => item.ruleId),
+    ).toContain("LS021");
+  });
+
+  test("skips Compose policy findings when both Compose files are absent", () => {
+    const root = mkdtempSync(join(tmpdir(), "launchstack-audit-no-compose-"));
 
     expect(
       runProductionAudit(root).findings.map((item) => item.ruleId),

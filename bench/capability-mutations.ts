@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdtempSync,
   mkdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -14,6 +16,14 @@ import type { ExtensionManifest } from "../src/extensions/types";
 const repository = resolve(process.env.LAUNCHSTACK_BENCH_REPO ?? process.cwd());
 const workloads = [1, 10, 100];
 const repetitions = 3;
+
+function sourceSha256(): string {
+  const hash = createHash("sha256");
+  for (const path of ["src/extensions/engine.ts", "src/project/transaction.ts"])
+    hash.update(readFileSync(join(repository, path)));
+  hash.update(readFileSync(__filename));
+  return hash.digest("hex");
+}
 
 function percentile(values: number[], proportion: number): number {
   const sorted = [...values].sort((left, right) => left - right);
@@ -74,6 +84,7 @@ async function main(): Promise<void> {
         return id;
       });
       const started = performance.now();
+      let elapsed = 0;
       try {
         const plan = engineModule.planExtensionInstall({
           projectDirectory: project,
@@ -81,13 +92,17 @@ async function main(): Promise<void> {
           registry,
         });
         engineModule.applyExtensionInstall(plan);
-        if (
-          requested.some(
-            (id) => !existsSync(join(project, `src/generated/${id}.ts`)),
+        elapsed = performance.now() - started;
+        for (const id of requested) {
+          const path = join(project, `src/generated/${id}.ts`);
+          const expectedContent = registry[id]?.files?.[0]?.content;
+          if (
+            !existsSync(path) ||
+            readFileSync(path, "utf8") !== expectedContent
           )
-        )
-          throw new Error(`Not all ${count} capability files were committed.`);
-        samples.push(performance.now() - started);
+            throw new Error(`Content check failed for ${path}.`);
+        }
+        samples.push(elapsed);
       } finally {
         rmSync(project, { recursive: true, force: true });
       }
@@ -100,6 +115,8 @@ async function main(): Promise<void> {
         p50: percentile(samples, 0.5),
         p95: percentile(samples, 0.95),
       },
+      latency_samples_ms: samples.map((sample) => Number(sample.toFixed(3))),
+      content_checks: "passed",
     };
   });
   const packageJson = JSON.parse(
@@ -114,6 +131,12 @@ async function main(): Promise<void> {
         repository,
         node: process.version,
         platform: `${process.platform} ${process.arch}`,
+        source_sha256: sourceSha256(),
+        source_identity_files: [
+          "src/extensions/engine.ts",
+          "src/project/transaction.ts",
+          "bench/capability-mutations.ts",
+        ],
         isolation:
           "fresh project per repetition; includes planning, CAS metadata, staging and commit",
         results,

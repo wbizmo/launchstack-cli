@@ -45,8 +45,8 @@ try {
     temp,
     "node_modules",
     "launchstack-cli",
-    "dist",
-    "cli.js",
+    "bin",
+    "launchstack.cjs",
   );
   const version = run(node, [cliPath, "--version"], {
     cwd: temp,

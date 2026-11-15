@@ -22,8 +22,9 @@ RUN --mount=type=secret,id=npmca,required=false \
     npm ci --omit=dev && npm cache clean --force
 
 COPY --chown=node:node --from=build /app/dist ./dist
+COPY --chown=node:node --from=build /app/bin ./bin
 
 USER node
 
-ENTRYPOINT ["node", "dist/cli.js"]
+ENTRYPOINT ["node", "bin/launchstack.cjs"]
 CMD ["--help"]

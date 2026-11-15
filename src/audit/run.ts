@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { intersects, validRange } from "semver";
+import { parse as parseYaml } from "yaml";
 import { loadProjectManifest } from "../project/manifest";
 import { detectManagedDrift, loadProjectState } from "../project/state";
 import {
@@ -250,6 +251,50 @@ function gitTrackedFiles(
     return { paths: [], complete: false, reason: "incomplete" };
   }
 }
+function composeApiEnvironment(
+  content: string,
+): Record<string, unknown> | undefined {
+  try {
+    const parsed = parseYaml(
+      content.replace(/!reset\s+(\[\]|\{\})/g, "$1"),
+    ) as {
+      services?: Record<string, { environment?: unknown }>;
+    } | null;
+    const environment = parsed?.services?.api?.environment;
+    if (Array.isArray(environment)) {
+      const values: Record<string, unknown> = {};
+      for (const entry of environment) {
+        if (typeof entry !== "string") continue;
+        const separator = entry.indexOf("=");
+        if (separator < 0) values[entry] = undefined;
+        else values[entry.slice(0, separator)] = entry.slice(separator + 1);
+      }
+      return values;
+    }
+    if (
+      typeof environment === "object" &&
+      environment !== null &&
+      !Array.isArray(environment)
+    )
+      return environment as Record<string, unknown>;
+    return {};
+  } catch {
+    return undefined;
+  }
+}
+function composeApiEnvironmentReset(content: string): boolean {
+  return /environment\s*:\s*!reset\s+(?:\[\s*\]|\{\s*\})/m.test(content);
+}
+function requiresExplicitComposeValue(
+  environment: Record<string, unknown>,
+  name: string,
+): boolean {
+  const value = environment[name];
+  return (
+    typeof value === "string" &&
+    new RegExp(`^\\$\\{${name}(?::)?\\?`).test(value)
+  );
+}
 const finding = (
   ruleId: string,
   severity: AuditSeverity,
@@ -471,25 +516,46 @@ export function runProductionAudit(
       );
     }
   }
-  const productionCompose = [
-    readIfPresent(root, "docker-compose.yml") ?? "",
-    readIfPresent(root, "docker-compose.production.yml") ?? "",
-  ].join("\n");
-  if (
-    productionCompose &&
-    (!/CORS_ORIGIN:\s*\$\{CORS_ORIGIN:\?/.test(productionCompose) ||
-      !/JWT_(?:ACCESS|REFRESH)_SECRET:\s*\$\{JWT_/.test(productionCompose))
-  )
-    findings.push(
-      finding(
-        "LS021",
-        "high",
-        "Production Compose does not require deployment settings",
-        "Production Compose should require an explicit CORS origin and JWT secrets.",
-        true,
-        "docker-compose.yml",
-      ),
-    );
+  const baseCompose = readIfPresent(root, "docker-compose.yml");
+  const productionCompose = readIfPresent(
+    root,
+    "docker-compose.production.yml",
+  );
+  if (baseCompose !== undefined || productionCompose !== undefined) {
+    const baseEnvironment = baseCompose
+      ? composeApiEnvironment(baseCompose)
+      : {};
+    const productionEnvironment = productionCompose
+      ? composeApiEnvironment(productionCompose)
+      : {};
+    const effectiveEnvironment =
+      baseEnvironment && productionEnvironment
+        ? productionCompose && composeApiEnvironmentReset(productionCompose)
+          ? productionEnvironment
+          : { ...baseEnvironment, ...productionEnvironment }
+        : undefined;
+    if (
+      !effectiveEnvironment ||
+      !requiresExplicitComposeValue(effectiveEnvironment, "CORS_ORIGIN") ||
+      !requiresExplicitComposeValue(
+        effectiveEnvironment,
+        "JWT_ACCESS_SECRET",
+      ) ||
+      !requiresExplicitComposeValue(effectiveEnvironment, "JWT_REFRESH_SECRET")
+    )
+      findings.push(
+        finding(
+          "LS021",
+          "high",
+          "Production Compose does not require deployment settings",
+          "Production Compose should require an explicit CORS origin and JWT secrets.",
+          true,
+          productionCompose !== undefined
+            ? "docker-compose.production.yml"
+            : "docker-compose.yml",
+        ),
+      );
+  }
   if (pkg) {
     const scripts =
       pkg.scripts && typeof pkg.scripts === "object"

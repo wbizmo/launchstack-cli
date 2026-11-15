@@ -2652,6 +2652,7 @@ import { existsSync as existsSync9, readFileSync as readFileSync8 } from "fs";
 import { execFileSync, spawnSync as spawnSync2 } from "child_process";
 import { join as join6, resolve as resolve9 } from "path";
 import { intersects, validRange } from "semver";
+import { parse as parseYaml2 } from "yaml";
 var readIfPresent = (root, path) => {
   const absolute = join6(root, path);
   return existsSync9(absolute) ? readFileSync8(absolute, "utf8") : void 0;
@@ -2833,6 +2834,36 @@ function gitTrackedFiles(root) {
   } catch {
     return { paths: [], complete: false, reason: "incomplete" };
   }
+}
+function composeApiEnvironment(content) {
+  try {
+    const parsed = parseYaml2(
+      content.replace(/!reset\s+(\[\]|\{\})/g, "$1")
+    );
+    const environment = parsed?.services?.api?.environment;
+    if (Array.isArray(environment)) {
+      const values = {};
+      for (const entry of environment) {
+        if (typeof entry !== "string") continue;
+        const separator = entry.indexOf("=");
+        if (separator < 0) values[entry] = void 0;
+        else values[entry.slice(0, separator)] = entry.slice(separator + 1);
+      }
+      return values;
+    }
+    if (typeof environment === "object" && environment !== null && !Array.isArray(environment))
+      return environment;
+    return {};
+  } catch {
+    return void 0;
+  }
+}
+function composeApiEnvironmentReset(content) {
+  return /environment\s*:\s*!reset\s+(?:\[\s*\]|\{\s*\})/m.test(content);
+}
+function requiresExplicitComposeValue(environment, name) {
+  const value = environment[name];
+  return typeof value === "string" && new RegExp(`^\\$\\{${name}(?::)?\\?`).test(value);
 }
 var finding = (ruleId, severity, title, detail, verified, path) => ({ ruleId, severity, title, detail, verified, path });
 var SECRET_FILE_PATTERNS = [
@@ -3016,21 +3047,30 @@ function runProductionAudit(projectDirectoryInput, options = {}) {
       );
     }
   }
-  const productionCompose = [
-    readIfPresent(root, "docker-compose.yml") ?? "",
-    readIfPresent(root, "docker-compose.production.yml") ?? ""
-  ].join("\n");
-  if (productionCompose && (!/CORS_ORIGIN:\s*\$\{CORS_ORIGIN:\?/.test(productionCompose) || !/JWT_(?:ACCESS|REFRESH)_SECRET:\s*\$\{JWT_/.test(productionCompose)))
-    findings.push(
-      finding(
-        "LS021",
-        "high",
-        "Production Compose does not require deployment settings",
-        "Production Compose should require an explicit CORS origin and JWT secrets.",
-        true,
-        "docker-compose.yml"
-      )
-    );
+  const baseCompose = readIfPresent(root, "docker-compose.yml");
+  const productionCompose = readIfPresent(
+    root,
+    "docker-compose.production.yml"
+  );
+  if (baseCompose !== void 0 || productionCompose !== void 0) {
+    const baseEnvironment = baseCompose ? composeApiEnvironment(baseCompose) : {};
+    const productionEnvironment = productionCompose ? composeApiEnvironment(productionCompose) : {};
+    const effectiveEnvironment = baseEnvironment && productionEnvironment ? productionCompose && composeApiEnvironmentReset(productionCompose) ? productionEnvironment : { ...baseEnvironment, ...productionEnvironment } : void 0;
+    if (!effectiveEnvironment || !requiresExplicitComposeValue(effectiveEnvironment, "CORS_ORIGIN") || !requiresExplicitComposeValue(
+      effectiveEnvironment,
+      "JWT_ACCESS_SECRET"
+    ) || !requiresExplicitComposeValue(effectiveEnvironment, "JWT_REFRESH_SECRET"))
+      findings.push(
+        finding(
+          "LS021",
+          "high",
+          "Production Compose does not require deployment settings",
+          "Production Compose should require an explicit CORS origin and JWT secrets.",
+          true,
+          productionCompose !== void 0 ? "docker-compose.production.yml" : "docker-compose.yml"
+        )
+      );
+  }
   if (pkg) {
     const scripts = pkg.scripts && typeof pkg.scripts === "object" ? pkg.scripts : {};
     if (!scripts["prisma:deploy"])
@@ -5728,4 +5768,4 @@ export {
   planModuleGeneration,
   applyModuleGeneration
 };
-//# sourceMappingURL=chunk-IQFKJC3Y.mjs.map
+//# sourceMappingURL=chunk-VVVC34HH.mjs.map

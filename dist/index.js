@@ -3968,6 +3968,7 @@ var import_node_fs15 = require("fs");
 var import_node_child_process3 = require("child_process");
 var import_node_path15 = require("path");
 var import_semver = require("semver");
+var import_yaml2 = require("yaml");
 var readIfPresent = (root, path) => {
   const absolute = (0, import_node_path15.join)(root, path);
   return (0, import_node_fs15.existsSync)(absolute) ? (0, import_node_fs15.readFileSync)(absolute, "utf8") : void 0;
@@ -4149,6 +4150,36 @@ function gitTrackedFiles(root) {
   } catch {
     return { paths: [], complete: false, reason: "incomplete" };
   }
+}
+function composeApiEnvironment(content) {
+  try {
+    const parsed = (0, import_yaml2.parse)(
+      content.replace(/!reset\s+(\[\]|\{\})/g, "$1")
+    );
+    const environment = parsed?.services?.api?.environment;
+    if (Array.isArray(environment)) {
+      const values = {};
+      for (const entry of environment) {
+        if (typeof entry !== "string") continue;
+        const separator = entry.indexOf("=");
+        if (separator < 0) values[entry] = void 0;
+        else values[entry.slice(0, separator)] = entry.slice(separator + 1);
+      }
+      return values;
+    }
+    if (typeof environment === "object" && environment !== null && !Array.isArray(environment))
+      return environment;
+    return {};
+  } catch {
+    return void 0;
+  }
+}
+function composeApiEnvironmentReset(content) {
+  return /environment\s*:\s*!reset\s+(?:\[\s*\]|\{\s*\})/m.test(content);
+}
+function requiresExplicitComposeValue(environment, name) {
+  const value = environment[name];
+  return typeof value === "string" && new RegExp(`^\\$\\{${name}(?::)?\\?`).test(value);
 }
 var finding = (ruleId, severity, title, detail, verified, path) => ({ ruleId, severity, title, detail, verified, path });
 var SECRET_FILE_PATTERNS = [
@@ -4332,21 +4363,30 @@ function runProductionAudit(projectDirectoryInput, options = {}) {
       );
     }
   }
-  const productionCompose = [
-    readIfPresent(root, "docker-compose.yml") ?? "",
-    readIfPresent(root, "docker-compose.production.yml") ?? ""
-  ].join("\n");
-  if (productionCompose && (!/CORS_ORIGIN:\s*\$\{CORS_ORIGIN:\?/.test(productionCompose) || !/JWT_(?:ACCESS|REFRESH)_SECRET:\s*\$\{JWT_/.test(productionCompose)))
-    findings.push(
-      finding(
-        "LS021",
-        "high",
-        "Production Compose does not require deployment settings",
-        "Production Compose should require an explicit CORS origin and JWT secrets.",
-        true,
-        "docker-compose.yml"
-      )
-    );
+  const baseCompose = readIfPresent(root, "docker-compose.yml");
+  const productionCompose = readIfPresent(
+    root,
+    "docker-compose.production.yml"
+  );
+  if (baseCompose !== void 0 || productionCompose !== void 0) {
+    const baseEnvironment = baseCompose ? composeApiEnvironment(baseCompose) : {};
+    const productionEnvironment = productionCompose ? composeApiEnvironment(productionCompose) : {};
+    const effectiveEnvironment = baseEnvironment && productionEnvironment ? productionCompose && composeApiEnvironmentReset(productionCompose) ? productionEnvironment : { ...baseEnvironment, ...productionEnvironment } : void 0;
+    if (!effectiveEnvironment || !requiresExplicitComposeValue(effectiveEnvironment, "CORS_ORIGIN") || !requiresExplicitComposeValue(
+      effectiveEnvironment,
+      "JWT_ACCESS_SECRET"
+    ) || !requiresExplicitComposeValue(effectiveEnvironment, "JWT_REFRESH_SECRET"))
+      findings.push(
+        finding(
+          "LS021",
+          "high",
+          "Production Compose does not require deployment settings",
+          "Production Compose should require an explicit CORS origin and JWT secrets.",
+          true,
+          productionCompose !== void 0 ? "docker-compose.production.yml" : "docker-compose.yml"
+        )
+      );
+  }
   if (pkg) {
     const scripts = pkg.scripts && typeof pkg.scripts === "object" ? pkg.scripts : {};
     if (!scripts["prisma:deploy"])

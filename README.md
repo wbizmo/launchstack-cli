@@ -161,8 +161,8 @@ Full results, methodology, reproduction commands and limitations are in the [ben
 - **Complexity:** service scheduling is O((V+E) log V), extension ordering O(V+E), and streaming hashing O(B) time with a bounded buffer.
 - **Release qualification:** at 250,000 files, drift-scan p50 was 36.41 s vs. 2.53 s on v3.0.0 (14.41× slower on this host).
 - **Transactions (v3.0.5):** 100, 1,000 and 10,000 file mutations measured 82.7 ms, 546.5 ms and 5.12 s p50; the 10,000-file p95 was 6.19 s. This separate Node 24.22.1 sample is not a direct comparison with the v3.0.4 host.
-- **Capability transactions (v3.0.6):** one transaction installing 1, 10 and 100 synthetic file-only capabilities measured 17.4 ms, 20.0 ms and 81.6 ms p50.
-- **Transactions (v3.0.6):** 100, 1,000 and 10,000 file mutations measured 78.8 ms, 594.4 ms and 6.23 s p50; the 10,000-file p95 was 6.41 s.
+- **Capability transactions (v3.0.6):** one transaction installing 1, 10 and 100 synthetic file-only capabilities measured 20.5 ms, 20.9 ms and 96.6 ms p50.
+- **Transactions (v3.0.6):** 100, 1,000 and 10,000 file mutations measured 110.2 ms, 727.2 ms and 6.06 s p50; the 10,000-file p95 was 6.28 s.
 
 ## Development checks
 
