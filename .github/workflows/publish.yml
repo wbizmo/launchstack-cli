@@ -57,8 +57,8 @@ jobs:
           TAG="v${VERSION}"
           NOTES="RELEASE_NOTES_${VERSION}.md"
 
-          if [ "$VERSION" != "3.0.4" ]; then
-            echo "::error::This approval workflow is scoped to v3.0.4, found ${VERSION}"
+          if [ "$VERSION" != "3.0.5" ]; then
+            echo "::error::This approval workflow is scoped to v3.0.5, found ${VERSION}"
             exit 1
           fi
           if [ ! -f "$NOTES" ]; then
@@ -111,7 +111,7 @@ jobs:
                 exit 1
               fi
 
-              while IFS= read -r changed_path; do
+              while IFS= read -r -d '' changed_path; do
                 case "$changed_path" in
                   README.md|CHANGELOG.md|LICENSE|RELEASE_NOTES_*.md|docs/*|src/templates/api/README.md|dist/templates/api/README.md|.github/workflows/publish.yml)
                     ;;

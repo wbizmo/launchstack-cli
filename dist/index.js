@@ -640,6 +640,7 @@ function commitStagedProject(stagedDirectory, destinationDirectory, overwrite) {
   }
 }
 function generateProject(options) {
+  options.onProgress?.("Validating project name and destination");
   validateProjectName(options.projectName);
   const destinationDirectory = (0, import_node_path6.resolve)(options.destinationDirectory);
   const overwrite = options.overwrite ?? false;
@@ -654,6 +655,7 @@ function generateProject(options) {
     )
   );
   try {
+    options.onProgress?.("Staging project template");
     if (overwrite && (0, import_node_fs6.existsSync)(destinationDirectory)) {
       (0, import_node_fs6.cpSync)(destinationDirectory, stagedDirectory, {
         recursive: true,
@@ -666,6 +668,7 @@ function generateProject(options) {
       PROJECT_DISPLAY_NAME: toDisplayName(options.projectName)
     });
     if (options.template === "api") {
+      options.onProgress?.("Generating project secrets");
       const environmentPath = (0, import_node_path6.join)(stagedDirectory, ".env");
       const environment = (0, import_node_fs6.readFileSync)(environmentPath, "utf8");
       const securedEnvironment = environment.replace(
@@ -679,6 +682,7 @@ function generateProject(options) {
       if (process.platform !== "win32") (0, import_node_fs6.chmodSync)(environmentPath, 384);
     }
     if (options.template === "api") {
+      options.onProgress?.("Preparing Docker assets");
       writeCanonicalDockerAssets(stagedDirectory, {
         buildCommand: "npm run build",
         outputDirectory: "dist",
@@ -688,6 +692,7 @@ function generateProject(options) {
         port: 3e3
       });
     }
+    options.onProgress?.("Writing project files");
     commitStagedProject(stagedDirectory, destinationDirectory, overwrite);
   } catch (error) {
     if ((0, import_node_fs6.existsSync)(stagedDirectory)) {
@@ -1182,73 +1187,180 @@ function writeJournal(projectDirectory, journal) {
 function acquireLock(projectDirectory) {
   const directory = ensureMetadataDirectory(projectDirectory);
   const lockPath = (0, import_node_path10.join)(directory, "mutation.lock");
+  let unverifiedLockInitialization = false;
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const lockId = (0, import_node_crypto4.randomUUID)();
-    const temporaryLockPath = (0, import_node_path10.join)(directory, `.mutation-lock-${lockId}.tmp`);
+    const ownerPath = (0, import_node_path10.join)(lockPath, `owner-${lockId}.json`);
+    const temporaryOwnerPath = (0, import_node_path10.join)(lockPath, `.owner-${lockId}.tmp`);
     const startToken = processStartToken(process.pid);
-    (0, import_node_fs10.writeFileSync)(
-      temporaryLockPath,
-      JSON.stringify({
+    let createdDirectory;
+    try {
+      (0, import_node_fs10.mkdirSync)(lockPath, { mode: 448 });
+      const lockDirectory = (0, import_node_fs10.lstatSync)(lockPath);
+      createdDirectory = { dev: lockDirectory.dev, ino: lockDirectory.ino };
+      const owner = {
         version: 1,
         id: lockId,
         pid: process.pid,
         processStartToken: startToken,
         createdAt: Date.now()
-      }),
-      { mode: 384, flag: "wx" }
-    );
-    syncFile(temporaryLockPath);
-    try {
-      (0, import_node_fs10.linkSync)(temporaryLockPath, lockPath);
-      (0, import_node_fs10.unlinkSync)(temporaryLockPath);
+      };
+      (0, import_node_fs10.writeFileSync)(temporaryOwnerPath, JSON.stringify(owner), {
+        mode: 384,
+        flag: "wx"
+      });
+      syncFile(temporaryOwnerPath);
+      (0, import_node_fs10.renameSync)(temporaryOwnerPath, ownerPath);
+      syncDirectory(lockPath);
+      const currentDirectory = (0, import_node_fs10.lstatSync)(lockPath);
+      if (currentDirectory.isSymbolicLink() || !currentDirectory.isDirectory() || currentDirectory.dev !== lockDirectory.dev || currentDirectory.ino !== lockDirectory.ino) {
+        (0, import_node_fs10.unlinkSync)(ownerPath);
+        throw new Error("Mutation lock directory changed during acquisition.");
+      }
       syncDirectory(directory);
       return () => {
         try {
           const current = JSON.parse(
-            readRegularFileNoFollow(lockPath, 4096).content
+            readRegularFileNoFollow(ownerPath, 4096).content
           );
-          if (current.id === lockId) (0, import_node_fs10.unlinkSync)(lockPath);
+          const currentDirectory2 = (0, import_node_fs10.lstatSync)(lockPath);
+          if (current.id === lockId && currentDirectory2.isDirectory() && !currentDirectory2.isSymbolicLink()) {
+            (0, import_node_fs10.unlinkSync)(ownerPath);
+            (0, import_node_fs10.rmdirSync)(lockPath);
+            syncDirectory(directory);
+          }
         } catch {
         }
       };
     } catch (error) {
-      try {
-        (0, import_node_fs10.unlinkSync)(temporaryLockPath);
-      } catch {
-      }
-      if (!(0, import_node_fs10.existsSync)(lockPath)) {
-        if (error.code === "EEXIST") continue;
+      if (error.code !== "EEXIST") {
+        if (createdDirectory) {
+          try {
+            (0, import_node_fs10.unlinkSync)(temporaryOwnerPath);
+          } catch {
+          }
+          try {
+            (0, import_node_fs10.unlinkSync)(ownerPath);
+          } catch {
+          }
+          try {
+            const current = (0, import_node_fs10.lstatSync)(lockPath);
+            if (current.isDirectory() && current.dev === createdDirectory.dev && current.ino === createdDirectory.ino)
+              (0, import_node_fs10.rmdirSync)(lockPath);
+          } catch {
+          }
+        }
+        if (error.code === "ENOENT") continue;
         throw error;
       }
+      if (!(0, import_node_fs10.existsSync)(lockPath)) continue;
       let stale = false;
+      let staleLegacyLock = false;
       try {
-        const lockFile = readRegularFileNoFollow(lockPath, 4096);
-        const contents = lockFile.content;
-        const lock = JSON.parse(contents);
-        if (lock.version !== 1 || typeof lock.id !== "string" || !Number.isInteger(lock.pid) || !Number.isFinite(lock.createdAt) || lock.processStartToken !== void 0 && typeof lock.processStartToken !== "string")
-          throw new Error("malformed lock");
-        stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
-        if (stale) {
-          const reclaimPath = (0, import_node_path10.join)(
-            directory,
-            `.mutation-reclaim-${lockFile.dev}-${lockFile.ino}`
+        const lockStat = (0, import_node_fs10.lstatSync)(lockPath);
+        if (lockStat.isSymbolicLink())
+          throw new Error("Mutation lock must not be a symbolic link.");
+        if (lockStat.isDirectory()) {
+          const ownerNames = (0, import_node_fs10.readdirSync)(lockPath);
+          const ownerName = ownerNames.find(
+            (name) => name.startsWith("owner-")
           );
-          try {
-            (0, import_node_fs10.linkSync)(lockPath, reclaimPath);
-          } catch (claimError) {
-            if (claimError.code === "EEXIST")
+          if (!ownerName) {
+            if (ownerNames.length === 0) {
+              unverifiedLockInitialization = true;
+              waitForLockRetry();
               continue;
-            throw claimError;
-          }
-          try {
-            const confirmed = readRegularFileNoFollow(lockPath, 4096);
-            if (confirmed.content === contents && confirmed.dev === lockFile.dev && confirmed.ino === lockFile.ino && !processIsAlive(lock.pid ?? -1, lock.processStartToken)) {
-              (0, import_node_fs10.unlinkSync)(lockPath);
-              syncDirectory(directory);
             }
-          } finally {
-            (0, import_node_fs10.unlinkSync)(reclaimPath);
+            if (Date.now() - lockStat.mtimeMs > 3e4) {
+              let abandoned = true;
+              for (const name of ownerNames) {
+                if (!/^\.owner-[0-9a-f-]{36}\.tmp$/i.test(name)) {
+                  abandoned = false;
+                  break;
+                }
+                const temporaryOwner = (0, import_node_path10.join)(lockPath, name);
+                const temporaryStat = (0, import_node_fs10.lstatSync)(temporaryOwner);
+                if (temporaryStat.isSymbolicLink() || !temporaryStat.isFile()) {
+                  abandoned = false;
+                  break;
+                }
+                const temporaryFile = readRegularFileNoFollow(
+                  temporaryOwner,
+                  4096
+                );
+                let temporaryLock = {};
+                try {
+                  temporaryLock = JSON.parse(
+                    temporaryFile.content
+                  );
+                } catch {
+                  abandoned = false;
+                  unverifiedLockInitialization = true;
+                  break;
+                }
+                if (temporaryLock.id && name !== `.owner-${temporaryLock.id}.tmp`) {
+                  abandoned = false;
+                  break;
+                }
+                if (temporaryLock.pid !== void 0 && processIsAlive(
+                  temporaryLock.pid,
+                  temporaryLock.processStartToken
+                )) {
+                  abandoned = false;
+                  break;
+                }
+                const confirmedTemporary = readRegularFileNoFollow(
+                  temporaryOwner,
+                  4096
+                );
+                if (confirmedTemporary.dev !== temporaryFile.dev || confirmedTemporary.ino !== temporaryFile.ino || confirmedTemporary.content !== temporaryFile.content) {
+                  abandoned = false;
+                  break;
+                }
+                (0, import_node_fs10.unlinkSync)(temporaryOwner);
+              }
+              if (abandoned) {
+                try {
+                  (0, import_node_fs10.rmdirSync)(lockPath);
+                  syncDirectory(directory);
+                } catch {
+                }
+              }
+              continue;
+            }
+            waitForLockRetry();
+            continue;
           }
+          if (ownerNames.length !== 1 || !/^owner-[0-9a-f-]{36}\.json$/i.test(ownerName))
+            throw new Error(
+              "Mutation lock directory contains invalid owner data."
+            );
+          const currentOwnerPath = (0, import_node_path10.join)(lockPath, ownerName);
+          const lockFile = readRegularFileNoFollow(currentOwnerPath, 4096);
+          const contents = lockFile.content;
+          const lock = JSON.parse(contents);
+          if (lock.version !== 1 || typeof lock.id !== "string" || ownerName !== `owner-${lock.id}.json` || !Number.isInteger(lock.pid) || !Number.isFinite(lock.createdAt) || lock.processStartToken !== void 0 && typeof lock.processStartToken !== "string")
+            throw new Error("malformed lock");
+          stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
+          if (stale) {
+            const confirmed = readRegularFileNoFollow(currentOwnerPath, 4096);
+            if (confirmed.content === contents && confirmed.dev === lockFile.dev && confirmed.ino === lockFile.ino && !processIsAlive(lock.pid ?? -1, lock.processStartToken)) {
+              try {
+                (0, import_node_fs10.unlinkSync)(currentOwnerPath);
+                (0, import_node_fs10.rmdirSync)(lockPath);
+                syncDirectory(directory);
+              } catch {
+              }
+            }
+          }
+        } else {
+          const lockFile = readRegularFileNoFollow(lockPath, 4096);
+          const contents = lockFile.content;
+          const lock = JSON.parse(contents);
+          if (lock.version !== 1 || typeof lock.id !== "string" || !Number.isInteger(lock.pid) || !Number.isFinite(lock.createdAt) || lock.processStartToken !== void 0 && typeof lock.processStartToken !== "string")
+            throw new Error("malformed lock");
+          stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
+          staleLegacyLock = stale;
         }
       } catch (error2) {
         if (lockChangedDuringRead(error2)) continue;
@@ -1257,6 +1369,10 @@ function acquireLock(projectDirectory) {
           "Another LaunchStack mutation is already running; its lock identity cannot be verified."
         );
       }
+      if (staleLegacyLock)
+        throw new Error(
+          "A stale mutation lock file from an earlier LaunchStack release needs manual cleanup. Verify that no LaunchStack mutation is running, remove .launchstack/mutation.lock, and retry."
+        );
       if (!stale) {
         if (attempt === 99)
           throw new Error(
@@ -1266,6 +1382,10 @@ function acquireLock(projectDirectory) {
       }
     }
   }
+  if (unverifiedLockInitialization)
+    throw new Error(
+      "Mutation lock initialization has no verifiable owner. Verify that no mutation is running, remove .launchstack/mutation.lock, and retry."
+    );
   throw new Error("Unable to acquire LaunchStack project mutation lock.");
 }
 function restoreJournal(projectDirectory, journal) {
@@ -1499,7 +1619,7 @@ function applyFileMutations(input) {
 function currentLaunchStackVersion() {
   if (process.env.LAUNCHSTACK_VERSION_OVERRIDE)
     return process.env.LAUNCHSTACK_VERSION_OVERRIDE;
-  return true ? "3.0.4" : "0.0.0-dev";
+  return true ? "3.0.5" : "0.0.0-dev";
 }
 
 // src/extensions/engine.ts

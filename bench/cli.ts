@@ -126,18 +126,11 @@ async function main(): Promise<void> {
     }
     const projectSamples: number[] = [];
     for (let index = 0; index < repetitions; index += 1) {
-      const project = join(temp, `generated-${index}`);
+      const project = join(temp, `bench-${index}`);
       const started = performance.now();
       run(
         process.execPath,
-        [
-          cli,
-          "create",
-          `bench-${index}`,
-          "--directory",
-          project,
-          "--no-install",
-        ],
+        [cli, "create", `bench-${index}`, "--directory", temp, "--no-install"],
         temp,
       );
       projectSamples.push(performance.now() - started);

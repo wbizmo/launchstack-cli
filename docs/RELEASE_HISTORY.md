@@ -1,6 +1,6 @@
 # Release history
 
-LaunchStack CLI's current release is [v3.0.4](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.4). This index links the full notes for every published release represented in the repository's GitHub release history.
+LaunchStack CLI's current release is [v3.0.5](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.5). This index links the full notes for every published release represented in the repository's GitHub release history.
 
 | Version | Release date | Summary                                                                    | Notes                                      |
 | ------- | ------------ | -------------------------------------------------------------------------- | ------------------------------------------ |
@@ -11,5 +11,6 @@ LaunchStack CLI's current release is [v3.0.4](https://github.com/wbizmo/launchst
 | 2.1.0   | 2026-09-14   | Artifact verification and generated API/security hardening.                | [Release notes](../RELEASE_NOTES_2.1.0.md) |
 | 3.0.0   | 2026-09-14   | Declarative project lifecycle, capabilities, generators and previews.      | [Release notes](../RELEASE_NOTES_3.0.0.md) |
 | 3.0.4   | 2026-11-14   | Runtime modernization, lifecycle/security hardening and qualification.     | [Release notes](../RELEASE_NOTES_3.0.4.md) |
+| 3.0.5   | 2026-11-15   | Portable mutation locks and CLI project validation and creation fixes.     | [Release notes](../RELEASE_NOTES_3.0.5.md) |
 
-The [cumulative changelog](../CHANGELOG.md) records changes by release. The source repository's [benchmark reports](benchmarks/) include methodology, raw machine-readable results and known limits for v3.0.4.
+The [cumulative changelog](../CHANGELOG.md) records changes by release. The [benchmark reports](benchmarks/) include methodology, raw machine-readable results and known limits. v3.0.5 includes transaction benchmark runs at 100, 1,000 and 10,000 files; the measurements and environment details are in the transaction report.

@@ -1,6 +1,6 @@
 # Preparing a LaunchStack release
 
-This guide helps contributors prepare release documentation and verify changes. LaunchStack supports Node.js 24.22.3 and later in the 24.x line, and Node.js 26.13.1 and later in the 26.x line. Node.js 20 is no longer supported.
+This guide helps contributors prepare release documentation and verify changes. LaunchStack supports Node.js 24.22.0 and later in the 24.x line, and Node.js 26.13.0 and later in the 26.x line. Node.js 20 and 22 are not supported. CI tests current patched releases on Node.js 24 and 26.
 
 ## Before proposing a release
 

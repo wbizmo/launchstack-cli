@@ -41,8 +41,8 @@ export function writeConfig(config: LaunchStackProjectConfig) {
   atomicWriteText(getConfigPath(), `${JSON.stringify(validated, null, 2)}\n`);
 }
 
-export function readConfig(): LaunchStackProjectConfig {
-  const raw = readFileSync(getConfigPath(), "utf-8");
+export function readConfig(path = getConfigPath()): LaunchStackProjectConfig {
+  const raw = readFileSync(path, "utf-8");
   const parsed = JSON.parse(raw);
 
   return launchStackConfigSchema.parse(parsed);

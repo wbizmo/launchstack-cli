@@ -2,7 +2,7 @@
 
 **Baseline:** published v3.0.0, `f76996cc0c3d125abcb1e6f998d2cc037c02b140`
 
-**Candidate:** transaction hardening implementation; exact commit is recorded in the JSON result
+**Candidate:** v3.0.4 transaction hardening implementation; exact commit is recorded in the JSON result
 
 **Runtime and machine:** Node 24.22.3, Linux x64, AMD EPYC 9V74, 5 visible CPUs, 33.3 GiB RAM. Both versions used the same `/tmp` filesystem.
 
@@ -19,3 +19,15 @@ The candidate's additional time is the cost of durable staging, journal writes a
 The separate process test ran 8 and 32 simultaneous writers against one project. Each writer created a unique file; all processes exited successfully and all files matched their expected contents. The test validates serialization and no lost writes. Ten-thousand-file timings and RSS are reported above; 128-writer and 1,000-fault-trial workloads were not run.
 
 Reproduce with `NPM_CONFIG_CACHE=/workspace/.npm-cache npm run bench:transactions`. To compare the published baseline, check out tag `v3.0.0`, install its dependencies, and set `LAUNCHSTACK_BENCH_REPO` to that checkout. `LAUNCHSTACK_BENCH_SIZES` and `LAUNCHSTACK_BENCH_WORKER_COUNT` select bounded sizes and repetitions.
+
+## v3.0.5 mutation lock sample
+
+The v3.0.5 directory-lock implementation was measured separately on Node.js 24.22.1, Linux x64, AMD EPYC 9V74, with 5 visible CPUs and 33.3 GiB reported memory. This run used three isolated processes per size and no warmup. It is a local observation, not a direct comparison with the v3.0.4 candidate above because the Node patch level and measured run environment are not guaranteed identical. Full raw values are in [`transactions-3.0.5.json`](transactions-3.0.5.json).
+
+|  Files |        p50 / p95 | Sampled peak RSS |
+| -----: | ---------------: | ---------------: |
+|    100 |   82.7 / 90.0 ms |         60.7 MiB |
+|  1,000 | 546.5 / 547.5 ms |         69.7 MiB |
+| 10,000 |    5.12 / 6.19 s |         79.8 MiB |
+
+For a plan with `n` paths and `B` bytes of file content, path sorting is `O(n log n)`, file staging and commit perform `O(n)` filesystem operations, and content I/O is `O(B)`. Lock acquisition uses a fixed number of filesystem operations in the uncontended case; owner-directory inspection occurs only while another or stale lock is present. Concurrent writer tests cover 8 and 32 processes; the benchmark does not measure distributed locking across separate hosts or network partitions.

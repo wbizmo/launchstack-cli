@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readdirSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
   readFileSync,
   existsSync,
@@ -86,7 +87,12 @@ describe("v3 project lifecycle primitives", () => {
     mkdirSync(join(root, ".launchstack"), { recursive: true });
     writeFileSync(
       join(root, ".launchstack", "mutation.lock"),
-      JSON.stringify({ pid: process.pid, createdAt: 0 }),
+      JSON.stringify({
+        version: 1,
+        id: "2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31",
+        pid: process.pid,
+        createdAt: 0,
+      }),
     );
     expect(() =>
       applyFileMutations({
@@ -95,6 +101,149 @@ describe("v3 project lifecycle primitives", () => {
         mutations: [],
       }),
     ).toThrow(/already running/i);
+  }, 10_000);
+
+  test("reclaims a stale directory lock without relying on hard links", () => {
+    const root = fixture();
+    const lock = join(root, ".launchstack", "mutation.lock");
+    mkdirSync(join(root, ".launchstack"), { recursive: true });
+    mkdirSync(lock);
+    writeFileSync(
+      join(lock, "owner-2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31.json"),
+      JSON.stringify({
+        version: 1,
+        id: "2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31",
+        pid: 2_147_483_647,
+        createdAt: Date.now(),
+      }),
+    );
+
+    expect(
+      applyFileMutations({
+        projectDirectory: root,
+        state: emptyProjectState("3.0.5", "3.0.5"),
+        mutations: [],
+      }),
+    ).toBeTruthy();
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  test("does not reclaim a paused acquirer's empty lock directory", async () => {
+    const root = fixture();
+    const lock = join(root, ".launchstack", "mutation.lock");
+    const transactionModule = resolve(
+      process.cwd(),
+      "src/project/transaction.ts",
+    );
+    const typesModule = resolve(process.cwd(), "src/project/types.ts");
+    const code = `const fs = require("node:fs"); const lockPath = ${JSON.stringify(lock)}; const originalMkdir = fs.mkdirSync; let paused = false; fs.mkdirSync = function (path, ...args) { const result = originalMkdir.call(fs, path, ...args); if (!paused && path === lockPath) { paused = true; process.send("created"); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 9000); } return result; }; const { applyFileMutations } = require(${JSON.stringify(transactionModule)}); const { emptyProjectState } = require(${JSON.stringify(typesModule)}); applyFileMutations({ projectDirectory: ${JSON.stringify(root)}, state: emptyProjectState("3.0.5", "3.0.5"), mutations: [{ type: "write", path: "writers/paused-owner.txt", content: "owner\\n", owner: "test", version: "1", expectedSha256: null }] });`;
+    const child = spawn(process.execPath, ["--import", "tsx", "--eval", code], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "ignore", "pipe", "ipc"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      child.once("message", () => resolvePromise());
+      child.once("error", rejectPromise);
+      child.once("exit", (codeValue) =>
+        rejectPromise(
+          new Error(`paused lock owner exited early (${codeValue}): ${stderr}`),
+        ),
+      );
+    });
+
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lock, old, old);
+    expect(() =>
+      applyFileMutations({
+        projectDirectory: root,
+        state: emptyProjectState("3.0.5", "3.0.5"),
+        mutations: [
+          {
+            type: "write",
+            path: "writers/contender.txt",
+            content: "contender\n",
+            owner: "test",
+            version: "1",
+            expectedSha256: null,
+          },
+        ],
+      }),
+    ).toThrow(/no verifiable owner/i);
+    expect(readdirSync(lock)).toEqual([]);
+
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      child.once("error", rejectPromise);
+      child.once("exit", (codeValue) =>
+        codeValue === 0
+          ? resolvePromise()
+          : rejectPromise(
+              new Error(
+                `paused lock owner exited with ${codeValue}: ${stderr}`,
+              ),
+            ),
+      );
+    });
+    expect(
+      readFileSync(join(root, "writers", "paused-owner.txt"), "utf8"),
+    ).toBe("owner\n");
+    expect(existsSync(join(root, "writers", "contender.txt"))).toBe(false);
+  }, 15_000);
+
+  test("does not reclaim a stale legacy lock without coordinating with older CLIs", () => {
+    const root = fixture();
+    const lock = join(root, ".launchstack", "mutation.lock");
+    mkdirSync(join(root, ".launchstack"), { recursive: true });
+    writeFileSync(
+      lock,
+      JSON.stringify({
+        version: 1,
+        id: "2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31",
+        pid: 2_147_483_647,
+        createdAt: Date.now(),
+      }),
+    );
+
+    expect(() =>
+      applyFileMutations({
+        projectDirectory: root,
+        state: emptyProjectState("3.0.5", "3.0.5"),
+        mutations: [],
+      }),
+    ).toThrow(/stale mutation lock file.*manual cleanup/i);
+    expect(existsSync(lock)).toBe(true);
+  });
+
+  test("cleans abandoned temporary owner metadata from an interrupted lock setup", () => {
+    const root = fixture();
+    const metadata = join(root, ".launchstack");
+    const lock = join(metadata, "mutation.lock");
+    const id = "3c13b7b8-72c0-4db6-ae5c-9f2b776d6b32";
+    mkdirSync(lock, { recursive: true });
+    writeFileSync(
+      join(lock, `.owner-${id}.tmp`),
+      JSON.stringify({
+        version: 1,
+        id,
+        pid: 2_147_483_647,
+        createdAt: Date.now() - 60_000,
+      }),
+    );
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lock, old, old);
+
+    expect(
+      applyFileMutations({
+        projectDirectory: root,
+        state: emptyProjectState("3.0.5", "3.0.5"),
+        mutations: [],
+      }),
+    ).toBeTruthy();
+    expect(existsSync(lock)).toBe(false);
   });
 
   test("cleans staging directories when preflight validation fails", () => {
@@ -227,9 +376,11 @@ describe("v3 project lifecycle primitives", () => {
       const root = fixture();
       if (count === 8) {
         const metadata = join(root, ".launchstack");
+        const lock = join(metadata, "mutation.lock");
         mkdirSync(metadata, { recursive: true });
+        mkdirSync(lock);
         writeFileSync(
-          join(metadata, "mutation.lock"),
+          join(lock, "owner-2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31.json"),
           JSON.stringify({
             version: 1,
             id: "2c13b7b8-72c0-4db6-ae5c-9f2b776d6b31",

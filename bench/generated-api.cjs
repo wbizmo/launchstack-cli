@@ -17,7 +17,7 @@ const databaseName = `launchstack_bench_${process.pid}_${Date.now()}`;
 const databaseUrl = `postgresql://postgres:postgres@127.0.0.1:5432/${databaseName}`;
 const project = join(
   mkdtempSync(join(tmpdir(), "launchstack-api-bench-")),
-  "api",
+  "benchmark-api",
 );
 const temporary = require("node:path").dirname(project);
 const port = Number(process.env.LAUNCHSTACK_BENCH_PORT ?? 49321);
@@ -236,7 +236,7 @@ async function main() {
     "create",
     "benchmark-api",
     "--directory",
-    project,
+    temporary,
     "--no-install",
   ]).elapsedMs;
   setupTimings.resource_generation_ms = timedRun(node, [

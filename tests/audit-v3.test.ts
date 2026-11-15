@@ -127,7 +127,7 @@ describe("v3 production audit", () => {
     writeFileSync(
       join(root, "package.json"),
       JSON.stringify({
-        engines: { node: ">=24.22.3 <25 || >=26.13.1 <27" },
+        engines: { node: ">=24.22.0 <25 || >=26.13.0 <27" },
       }),
     );
 

@@ -33,7 +33,7 @@ try {
     "create",
     "smoke-api",
     "--directory",
-    project,
+    temp,
     "--no-install",
   ]);
   run(node, [

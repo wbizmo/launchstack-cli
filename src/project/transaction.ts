@@ -4,11 +4,12 @@ import {
   existsSync,
   fsyncSync,
   lstatSync,
-  linkSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   renameSync,
+  rmdirSync,
   rmSync,
   unlinkSync,
   writeFileSync,
@@ -255,100 +256,268 @@ function writeJournal(projectDirectory: string, journal: Journal): void {
 function acquireLock(projectDirectory: string): () => void {
   const directory = ensureMetadataDirectory(projectDirectory);
   const lockPath = join(directory, "mutation.lock");
+  let unverifiedLockInitialization = false;
 
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const lockId = randomUUID();
-    const temporaryLockPath = join(directory, `.mutation-lock-${lockId}.tmp`);
+    const ownerPath = join(lockPath, `owner-${lockId}.json`);
+    const temporaryOwnerPath = join(lockPath, `.owner-${lockId}.tmp`);
     const startToken = processStartToken(process.pid);
-    writeFileSync(
-      temporaryLockPath,
-      JSON.stringify({
+    let createdDirectory: { dev: number; ino: number } | undefined;
+    try {
+      mkdirSync(lockPath, { mode: 0o700 });
+      const lockDirectory = lstatSync(lockPath);
+      createdDirectory = { dev: lockDirectory.dev, ino: lockDirectory.ino };
+      const owner = {
         version: 1,
         id: lockId,
         pid: process.pid,
         processStartToken: startToken,
         createdAt: Date.now(),
-      }),
-      { mode: 0o600, flag: "wx" },
-    );
-    syncFile(temporaryLockPath);
-    try {
-      linkSync(temporaryLockPath, lockPath);
-      unlinkSync(temporaryLockPath);
+      };
+      writeFileSync(temporaryOwnerPath, JSON.stringify(owner), {
+        mode: 0o600,
+        flag: "wx",
+      });
+      syncFile(temporaryOwnerPath);
+      renameSync(temporaryOwnerPath, ownerPath);
+      syncDirectory(lockPath);
+      const currentDirectory = lstatSync(lockPath);
+      if (
+        currentDirectory.isSymbolicLink() ||
+        !currentDirectory.isDirectory() ||
+        currentDirectory.dev !== lockDirectory.dev ||
+        currentDirectory.ino !== lockDirectory.ino
+      ) {
+        unlinkSync(ownerPath);
+        throw new Error("Mutation lock directory changed during acquisition.");
+      }
       syncDirectory(directory);
       return () => {
         try {
           const current = JSON.parse(
-            readRegularFileNoFollow(lockPath, 4096).content,
-          ) as {
-            id?: string;
-          };
-          if (current.id === lockId) unlinkSync(lockPath);
+            readRegularFileNoFollow(ownerPath, 4096).content,
+          ) as { id?: string };
+          const currentDirectory = lstatSync(lockPath);
+          if (
+            current.id === lockId &&
+            currentDirectory.isDirectory() &&
+            !currentDirectory.isSymbolicLink()
+          ) {
+            unlinkSync(ownerPath);
+            rmdirSync(lockPath);
+            syncDirectory(directory);
+          }
         } catch {
           /* lock was replaced or already released */
         }
       };
     } catch (error) {
-      try {
-        unlinkSync(temporaryLockPath);
-      } catch {
-        /* already removed */
-      }
-      if (!existsSync(lockPath)) {
-        if ((error as NodeJS.ErrnoException).code === "EEXIST") continue;
-        throw error;
-      }
-      let stale = false;
-      try {
-        const lockFile = readRegularFileNoFollow(lockPath, 4096);
-        const contents = lockFile.content;
-        const lock = JSON.parse(contents) as {
-          version?: number;
-          id?: string;
-          pid?: number;
-          processStartToken?: string;
-          createdAt?: number;
-        };
-        if (
-          lock.version !== 1 ||
-          typeof lock.id !== "string" ||
-          !Number.isInteger(lock.pid) ||
-          !Number.isFinite(lock.createdAt) ||
-          (lock.processStartToken !== undefined &&
-            typeof lock.processStartToken !== "string")
-        )
-          throw new Error("malformed lock");
-        stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
-        if (stale) {
-          // Reclaimers for the same inode serialize on a deterministic
-          // hard-link claim. The claim remains while unlinking the stale lock,
-          // so a second process that observed the old lock cannot unlink a
-          // replacement owner's lock after the first process acquires it.
-          const reclaimPath = join(
-            directory,
-            `.mutation-reclaim-${lockFile.dev}-${lockFile.ino}`,
-          );
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        if (createdDirectory) {
           try {
-            linkSync(lockPath, reclaimPath);
-          } catch (claimError) {
-            if ((claimError as NodeJS.ErrnoException).code === "EEXIST")
-              continue;
-            throw claimError;
+            unlinkSync(temporaryOwnerPath);
+          } catch {
+            /* temporary owner file was never created or already moved */
           }
           try {
-            const confirmed = readRegularFileNoFollow(lockPath, 4096);
+            unlinkSync(ownerPath);
+          } catch {
+            /* owner was not created or has already been removed */
+          }
+          try {
+            const current = lstatSync(lockPath);
+            if (
+              current.isDirectory() &&
+              current.dev === createdDirectory.dev &&
+              current.ino === createdDirectory.ino
+            )
+              rmdirSync(lockPath);
+          } catch {
+            /* a replacement owner or directory must be preserved */
+          }
+        }
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
+      if (!existsSync(lockPath)) continue;
+
+      let stale = false;
+      let staleLegacyLock = false;
+      try {
+        const lockStat = lstatSync(lockPath);
+        if (lockStat.isSymbolicLink())
+          throw new Error("Mutation lock must not be a symbolic link.");
+
+        if (lockStat.isDirectory()) {
+          const ownerNames = readdirSync(lockPath);
+          const ownerName = ownerNames.find((name) =>
+            name.startsWith("owner-"),
+          );
+          if (!ownerName) {
+            // A creator may be suspended after mkdir but before it can capture
+            // the directory identity or write owner metadata. Age alone cannot
+            // distinguish that live creator from an abandoned empty directory.
+            // Never reclaim an empty lock directory without an owner to verify.
+            if (ownerNames.length === 0) {
+              unverifiedLockInitialization = true;
+              waitForLockRetry();
+              continue;
+            }
+            // mkdir and owner creation are separate syscalls. A fresh empty
+            // directory may belong to an acquiring process; temporary owner
+            // metadata must identify a dead process before it can be removed.
+            if (Date.now() - lockStat.mtimeMs > 30_000) {
+              let abandoned = true;
+              for (const name of ownerNames) {
+                if (!/^\.owner-[0-9a-f-]{36}\.tmp$/i.test(name)) {
+                  abandoned = false;
+                  break;
+                }
+                const temporaryOwner = join(lockPath, name);
+                const temporaryStat = lstatSync(temporaryOwner);
+                if (temporaryStat.isSymbolicLink() || !temporaryStat.isFile()) {
+                  abandoned = false;
+                  break;
+                }
+                const temporaryFile = readRegularFileNoFollow(
+                  temporaryOwner,
+                  4096,
+                );
+                let temporaryLock: {
+                  id?: string;
+                  pid?: number;
+                  processStartToken?: string;
+                } = {};
+                try {
+                  temporaryLock = JSON.parse(
+                    temporaryFile.content,
+                  ) as typeof temporaryLock;
+                } catch {
+                  // Incomplete metadata cannot distinguish a crash from a
+                  // suspended writer, so leave it for explicit cleanup.
+                  abandoned = false;
+                  unverifiedLockInitialization = true;
+                  break;
+                }
+                if (
+                  temporaryLock.id &&
+                  name !== `.owner-${temporaryLock.id}.tmp`
+                ) {
+                  abandoned = false;
+                  break;
+                }
+                if (
+                  temporaryLock.pid !== undefined &&
+                  processIsAlive(
+                    temporaryLock.pid,
+                    temporaryLock.processStartToken,
+                  )
+                ) {
+                  abandoned = false;
+                  break;
+                }
+                const confirmedTemporary = readRegularFileNoFollow(
+                  temporaryOwner,
+                  4096,
+                );
+                if (
+                  confirmedTemporary.dev !== temporaryFile.dev ||
+                  confirmedTemporary.ino !== temporaryFile.ino ||
+                  confirmedTemporary.content !== temporaryFile.content
+                ) {
+                  abandoned = false;
+                  break;
+                }
+                unlinkSync(temporaryOwner);
+              }
+              if (abandoned) {
+                try {
+                  rmdirSync(lockPath);
+                  syncDirectory(directory);
+                } catch {
+                  /* an owner appeared or another process reclaimed the directory */
+                }
+              }
+              continue;
+            }
+            waitForLockRetry();
+            continue;
+          }
+          if (
+            ownerNames.length !== 1 ||
+            !/^owner-[0-9a-f-]{36}\.json$/i.test(ownerName)
+          )
+            throw new Error(
+              "Mutation lock directory contains invalid owner data.",
+            );
+
+          const currentOwnerPath = join(lockPath, ownerName);
+          const lockFile = readRegularFileNoFollow(currentOwnerPath, 4096);
+          const contents = lockFile.content;
+          const lock = JSON.parse(contents) as {
+            version?: number;
+            id?: string;
+            pid?: number;
+            processStartToken?: string;
+            createdAt?: number;
+          };
+          if (
+            lock.version !== 1 ||
+            typeof lock.id !== "string" ||
+            ownerName !== `owner-${lock.id}.json` ||
+            !Number.isInteger(lock.pid) ||
+            !Number.isFinite(lock.createdAt) ||
+            (lock.processStartToken !== undefined &&
+              typeof lock.processStartToken !== "string")
+          )
+            throw new Error("malformed lock");
+
+          stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
+          if (stale) {
+            const confirmed = readRegularFileNoFollow(currentOwnerPath, 4096);
             if (
               confirmed.content === contents &&
               confirmed.dev === lockFile.dev &&
               confirmed.ino === lockFile.ino &&
               !processIsAlive(lock.pid ?? -1, lock.processStartToken)
             ) {
-              unlinkSync(lockPath);
-              syncDirectory(directory);
+              try {
+                // The owner filename is unique to this lock generation.
+                // rmdir succeeds only if no replacement owner has entered.
+                unlinkSync(currentOwnerPath);
+                rmdirSync(lockPath);
+                syncDirectory(directory);
+              } catch {
+                /* rmdir fails while another owner holds the lock directory */
+              }
             }
-          } finally {
-            unlinkSync(reclaimPath);
           }
+        } else {
+          // Honor lock files written by earlier CLI releases during upgrades.
+          const lockFile = readRegularFileNoFollow(lockPath, 4096);
+          const contents = lockFile.content;
+          const lock = JSON.parse(contents) as {
+            version?: number;
+            id?: string;
+            pid?: number;
+            processStartToken?: string;
+            createdAt?: number;
+          };
+          if (
+            lock.version !== 1 ||
+            typeof lock.id !== "string" ||
+            !Number.isInteger(lock.pid) ||
+            !Number.isFinite(lock.createdAt) ||
+            (lock.processStartToken !== undefined &&
+              typeof lock.processStartToken !== "string")
+          )
+            throw new Error("malformed lock");
+          stale = !processIsAlive(lock.pid ?? -1, lock.processStartToken);
+          // Older CLI releases coordinate stale-lock reclamation with a
+          // hard-link claim that this implementation cannot safely join.
+          // Refuse automatic removal during the compatibility window.
+          staleLegacyLock = stale;
         }
       } catch (error) {
         if (lockChangedDuringRead(error)) continue;
@@ -357,6 +526,12 @@ function acquireLock(projectDirectory: string): () => void {
           "Another LaunchStack mutation is already running; its lock identity cannot be verified.",
         );
       }
+
+      if (staleLegacyLock)
+        throw new Error(
+          "A stale mutation lock file from an earlier LaunchStack release needs manual cleanup. Verify that no LaunchStack mutation is running, remove .launchstack/mutation.lock, and retry.",
+        );
+
       if (!stale) {
         if (attempt === 99)
           throw new Error(
@@ -367,6 +542,10 @@ function acquireLock(projectDirectory: string): () => void {
     }
   }
 
+  if (unverifiedLockInitialization)
+    throw new Error(
+      "Mutation lock initialization has no verifiable owner. Verify that no mutation is running, remove .launchstack/mutation.lock, and retry.",
+    );
   throw new Error("Unable to acquire LaunchStack project mutation lock.");
 }
 

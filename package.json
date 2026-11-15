@@ -1,6 +1,6 @@
 {
   "name": "launchstack-cli",
-  "version": "3.0.4",
+  "version": "3.0.5",
   "description": "A TypeScript CLI for production-ready backend API scaffolding, lifecycle management, deployment preparation, configuration management, and developer workflows.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -97,6 +97,6 @@
     "vitest": "^4.1.11"
   },
   "engines": {
-    "node": ">=24.22.3 <25 || >=26.13.1 <27"
+    "node": ">=24.22.0 <25 || >=26.13.0 <27"
   }
 }

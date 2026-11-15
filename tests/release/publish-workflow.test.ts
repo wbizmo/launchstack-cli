@@ -20,8 +20,15 @@ describe("npm publish workflow authorization", () => {
   });
 
   it("pins this authorization workflow to the reviewed package version", () => {
-    expect(workflow).toContain('if [ "$VERSION" != "3.0.4" ]');
+    expect(workflow).toContain('if [ "$VERSION" != "3.0.5" ]');
     expect(workflow).toContain("npm run release:check");
     expect(workflow).toContain("npm publish --access public --provenance");
+  });
+
+  it("checks each NUL-delimited path changed after an existing tag", () => {
+    expect(workflow).toContain("while IFS= read -r -d '' changed_path; do");
+    expect(workflow).toContain(
+      'git diff --no-renames --name-only -z "$TAG_SHA"',
+    );
   });
 });

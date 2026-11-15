@@ -16,7 +16,7 @@ const root = resolve(__dirname, "..");
 const node = process.execPath;
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const temp = mkdtempSync(join(tmpdir(), "launchstack-docker-smoke-"));
-const project = join(temp, "api");
+const project = join(temp, "docker-smoke");
 const cliImage = `launchstack-cli-smoke:${randomUUID()}`;
 const compose = [
   "compose",
@@ -79,7 +79,7 @@ async function main() {
       "create",
       "docker-smoke",
       "--directory",
-      project,
+      temp,
       "--no-install",
     ]);
     phase = "check Docker daemon";

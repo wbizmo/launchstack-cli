@@ -75,6 +75,7 @@ type GenerateProjectOptions = {
     destinationDirectory: string;
     template: TemplateName;
     overwrite?: boolean;
+    onProgress?: (message: string) => void;
 };
 
 declare function generateProject(options: GenerateProjectOptions): string;

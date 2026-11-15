@@ -2,6 +2,20 @@
 
 Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.md`](docs/RELEASE_HISTORY.md).
 
+## [3.0.5] - 2026-11-15
+
+### Fixed
+
+- Replace hard-link project mutation locks with directory locks so project changes work on filesystems that do not support hard links. Preserve concurrent-writer serialization and stale-owner recovery; incomplete lock initialization is left for safe manual cleanup instead of being reclaimed by age alone.
+- Make `launchstack validate` validate v3 `launchstack.json` manifests while continuing to accept legacy `launchstack.config.json` files.
+- Make `launchstack create --directory <parent>` create `<parent>/<project-name>` and add `--verbose` progress for generation stages.
+- Accept Node.js 24.22.0+ and 26.13.0+ within those major lines; CI and Docker stay on the current patched releases.
+- Keep capability documentation explicit that Redis, queue and cron provide local wiring while OAuth, storage, observability, WebSocket, email and webhooks provide helper code.
+
+### Release checks
+
+- Local verification results and benchmark measurements are recorded in [`RELEASE_NOTES_3.0.5.md`](RELEASE_NOTES_3.0.5.md).
+
 ## [3.0.4] - 2026-11-14
 
 ### Qualification and release controls
