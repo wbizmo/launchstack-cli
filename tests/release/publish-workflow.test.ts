@@ -33,9 +33,7 @@ describe("npm publish workflow authorization", () => {
     expect(workflow).toContain(
       "npm ci --ignore-scripts --prefix src/templates/api",
     );
-    expect(workflow).toContain(
-      "generated-api-template.cdx.json",
-    );
+    expect(workflow).toContain("generated-api-template.cdx.json");
   });
 
   it("checks each NUL-delimited path changed after an existing tag", () => {
