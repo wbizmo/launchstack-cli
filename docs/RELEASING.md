@@ -16,3 +16,7 @@ This guide helps contributors prepare release documentation and verify changes. 
 `CHANGELOG.md` records changes across versions. Versioned release notes are indexed in [`RELEASE_HISTORY.md`](RELEASE_HISTORY.md). The README describes the current release and links to its user-facing notes. Keep compatibility and migration details in [`COMPATIBILITY.md`](COMPATIBILITY.md) and [`UPGRADING.md`](UPGRADING.md).
 
 Package, generated-project and project schema versions are managed independently; describe each one clearly when a change affects it.
+
+## Scoped OpenChain license and security assurance evidence
+
+Zivora Labs is preparing ISO/IEC 5230:2020 and ISO/IEC 18974:2023 **self-certification only for Toolip and LaunchStack CLI**. The [programme](openchain/README.md) and [69-question evidence register](openchain/SELF-ASSESSMENT.md) describe prerequisites that have **not yet been declared satisfied**. For LaunchStack release qualification, include the actual CLI tarball **and generated API templates** when building and archiving the component inventory, reviewing licenses and testing for vulnerabilities. Archive notices, source-delivery decisions and per-component vulnerability dispositions alongside the immutable artifact hashes. A normal green release check alone does not establish OpenChain conformance. The existing release/version workflow remains unchanged; governance-only edits do not authorize npm publication.
