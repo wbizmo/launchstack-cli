@@ -20,3 +20,7 @@ Package, generated-project and project schema versions are managed independently
 ## Scoped OpenChain license and security assurance evidence
 
 Zivora Labs is preparing ISO/IEC 5230:2020 and ISO/IEC 18974:2023 **self-certification only for Toolip and LaunchStack CLI**. The [programme](openchain/README.md) and [69-question evidence register](openchain/SELF-ASSESSMENT.md) describe prerequisites that have **not yet been declared satisfied**. For LaunchStack release qualification, include the actual CLI tarball **and generated API templates** when building and archiving the component inventory, reviewing licenses and testing for vulnerabilities. Archive notices, source-delivery decisions and per-component vulnerability dispositions alongside the immutable artifact hashes. A normal green release check alone does not establish OpenChain conformance. The existing release/version workflow remains unchanged; governance-only edits do not authorize npm publication.
+
+## OpenChain evidence release gate
+
+Starting with v3.0.7, every public release must run npm run openchain:check, create exact component records for the CLI and generated API template, archive registry source tarballs with lockfile integrity verification, generate CycloneDX SBOMs, retain low-severity production audit JSON and package SHA-256, and attach the resulting evidence archive to the GitHub release. Release failure or unavailable evidence invalidates the supplied-release self-certification claim. See docs/openchain/README.md.

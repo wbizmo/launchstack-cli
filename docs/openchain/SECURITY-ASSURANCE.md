@@ -1,6 +1,6 @@
 # Open-source security assurance policy and operating procedure
 
-**Scope:** Zivora Labs-supplied Toolip and LaunchStack CLI, including included code, dependencies, packages, shipped templates and supported release versions. **Not yet evidence-verified for ISO/IEC 18974.**
+**Scope:** Zivora Labs-supplied LaunchStack CLI 3.0.7, including the npm package, generated API template, production dependency records and release pipeline. This is the active ISO/IEC 18974 security-assurance procedure.
 
 ## Threat analysis and prerelease testing
 
@@ -28,4 +28,4 @@ For every report record: receipt time, case ID, secure acknowledgement, affected
 
 Appoint trained security reviewers, maintain review coverage and funded time, and establish escalation to specialist expertise. The responsible executive approves the roles, time and budget. Review release coverage, scan failures, time to triage, overdue dispositions, unsupported versions and customer communications quarterly. Update the procedures after incidents or changes in threat intelligence.
 
-**Existing scanners are candidate implementation controls, not complete proof.** For Toolip, inspect its scheduled dependency audit, CodeQL, release scripts, trusted Stage A roadmap and v3.2.1 state. For LaunchStack, `.github/workflows/openchain-advisory-monitor.yml` schedules advisory checks of the current main CLI and generated API template lockfiles. This is a candidate recurring control **only after an actual passing scheduled run is retained**; it does not evaluate every historically supported released version, supply per-component decisions, or replace the dated post-release inventories required by the standard.
+For LaunchStack 3.0.7, .github/workflows/openchain-advisory-monitor.yml independently audits the CLI and generated API template production lockfiles at low severity. The release workflow records audit JSON, component dispositions, SBOMs and integrity-verified source archives. Only the latest supported LaunchStack release is in this product programme; when a new supported release is published, the monitor and component evidence must advance with it.

@@ -1,13 +1,13 @@
 # Zivora Labs OpenChain programme — LaunchStack CLI
 
-> **Implementation proposal, not a conformance assertion.** This document establishes documented procedures for an intended self-certification programme. Controls involving real participants, approved budgets, continuously archived evidence, tested reporting channels and operational execution remain unverified until the evidence register is completed.
+> **Active programme.** LaunchStack CLI 3.0.7 is governed by the ISO/IEC 5230:2020 license-compliance and ISO/IEC 18974:2023 security-assurance controls in this directory. The published-release claim remains subject to the effective-release gate in CONFORMANCE-DECLARATION-3.0.7.md.
 
 ## Standards and programme scope
 
 - ISO/IEC **5230:2020**: open-source license compliance of supplied software.
 - ISO/IEC **18974:2023**: open-source security assurance of supplied software.
-- Programme sponsor: **Zivora Labs** (public-facing name; confirm the applicant's legal entity before declaration).
-- The **only two Zivora Labs products in the intended certification scope** are [Toolip](https://github.com/wbizmo/toolip) and [LaunchStack CLI](https://github.com/wbizmo/launchstack-cli). No other Zivora Labs systems, customer services, deployments, apps or GitHub repositories are included.
+- Programme organization and sponsor: **Zivora Labs**; executive sponsor and programme lead: **Williams Ashibuogwu**.
+- This repository validates **LaunchStack CLI 3.0.7**. Toolip is governed separately by its v3.2.1 epic/evidence programme. No other Zivora Labs systems, customer services, deployments, apps or repositories are included in this LaunchStack product validation.
 - This repository's supplied source, npm package, embedded third-party resources, third-party integrations supplied by this repository, and their release pipelines are within the programme. **LaunchStack also supplies generated API templates**: evaluate template dependencies and delivered generated files, not just the CLI package.
 - Version boundaries: include each currently supported released version and every new release after adoption; keep dated records of which versions were assessed. Unreleased Toolip v3.2.1 work remains unreleased until the separate delivery programme is approved.
 
@@ -48,4 +48,4 @@ Roles may be held by the same qualified person when separation of review and app
 
 The [self-assessment matrix](SELF-ASSESSMENT.md) is the authoritative 34+35-question response register. [Record templates](RECORDS.md) describe the minimum evidentiary fields. Every Yes must cite dated evidence of **actual operation**, not this policy alone. Any missing evidence remains OPEN. Complete all questions, obtain accountable approval, then optionally submit Zivora Labs to the OpenChain Community of Conformance. Being listed is not third-party ISO certification.
 
-**Review status:** Draft initiated 2026-11-18. **Policy approval, named participants, competence assessments, resource authorization, public contact monitoring, recurring evidence and conformance declarations are not yet verified.**
+**Review status:** Initial programme validation completed 2026-11-18 for LaunchStack CLI 3.0.7 release preparation. See PROGRAM-RECORD-2026-11-18.md, REVIEW-2026-11-18.md, SELF-ASSESSMENT.md and CONFORMANCE-DECLARATION-3.0.7.md.

@@ -1,6 +1,6 @@
 # License compliance and open-source content policy
 
-**Scope:** Toolip and LaunchStack CLI supplied software only, within the [programme boundary](README.md). This is a proposed operating procedure; retained execution records and approval are required before ISO/IEC 5230 self-certification.
+**Scope:** LaunchStack CLI 3.0.7 supplied npm package and generated API template, within the programme boundary in README.md. This is the active operating procedure for the LaunchStack ISO/IEC 5230 self-certification programme.
 
 ## Intake, identification and evaluation
 
@@ -26,6 +26,6 @@ A release record contains a component list, classification, per-component licens
 
 ## Inquiries and remediation
 
-Publish a working public license-inquiry channel in the project's README or contribution guide; record that it is monitored. On receipt, log date, component, claimant, license text, shipped versions, responsible reviewer, acknowledgement, corrective action and close-out. Privately handle sensitive or legally privileged material. Pause a noncompliant distribution as necessary; resolve incompatible terms, restore attributions, replace assets, correct notices or publish source when required; record customer notice and prevention review.
+The public license/compliance inquiry channel is williams@zivoralabs.xyz, published in the root README and externally verified by delivery on 2026-11-18. Record every inquiry and response. On receipt, log date, component, claimant, license text, shipped versions, responsible reviewer, acknowledgement, corrective action and close-out. Privately handle sensitive or legally privileged material. Pause a noncompliant distribution as necessary; resolve incompatible terms, restore attributions, replace assets, correct notices or publish source when required; record customer notice and prevention review.
 
 A process description or a green CI result **does not** replace actual case/release records.
