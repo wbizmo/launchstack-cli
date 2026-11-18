@@ -2,7 +2,7 @@
 
 Release date: 18 November 2026
 
-**Distribution status:** v3.0.7 is prepared as a **GitHub tag and source release with a verified packed-package artifact and evidence archive**. It is **not published to npm**. The latest npm package remains `launchstack-cli@3.0.6`. No `npm publish` runs in the GitHub-only release workflow; npm publication requires a separate, explicitly authorized manual workflow.
+**Distribution status:** v3.0.7 is **released on GitHub** with a verified packed-package artifact and evidence archive. It is **not published to npm**. The latest npm package remains `launchstack-cli@3.0.6`. No `npm publish` runs in the GitHub-only release workflow; npm publication requires a separate, explicitly authorized manual workflow.
 
 ## What is new in 3.0.7
 
@@ -44,6 +44,6 @@ node bin/launchstack.cjs --version
 
 ## Release validation
 
-The release must pass the repository's Node 24/26 CI and Windows gates, CodeQL, `npm run release:check`, generated-project/database tests, packed-CLI smoke, generated-template CycloneDX validation, production dependency audits and generated Docker image tests. The exact tagged commit, package archive, notices and SHA-256 evidence must be attached to the GitHub release.
+**Verification passed on 18 November 2026.** The protected-main commit `7633e826a9b870fdf2cd54f0aa4ba9c82dc9d034` passed the Node.js 24/26 release gates, Windows portability, CodeQL, generated API/database tests, packed CLI smoke, generated-template CycloneDX validation, production dependency audits and generated Docker image tests. [The GitHub-only release workflow](https://github.com/wbizmo/launchstack-cli/actions/runs/44401159846) also completed successfully, created the immutable `v3.0.7` annotated tag and attached `launchstack-openchain-evidence-3.0.7.tar.gz` (62,651,467 bytes) with component records, notice files, upstream source archives, security results and SHA-256 checksums. No npm publication was performed.
 
 **Certification clarification:** Shipping a GitHub release and evidence archive does not itself prove all 69 OpenChain controls are satisfied in operation, make LaunchStack independently ISO certified, or award an OpenSSF Gold badge. All organizational attestations and any public certification or logo claims remain subject to genuine evidence, authorization and, where applicable, badge-service approval.

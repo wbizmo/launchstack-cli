@@ -9,7 +9,7 @@ TypeScript backend scaffolding and lifecycle management. LaunchStack creates Fas
 
 **GitHub source release:** [v3.0.7](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.7) · **Latest npm package:** [v3.0.6](https://www.npmjs.com/package/launchstack-cli) · [3.0.7 release notes](RELEASE_NOTES_3.0.7.md) · [Zivora Labs project page](https://www.zivoralabs.xyz/open-source/launchstack-cli)
 
-LaunchStack CLI has evolved from deployment and configuration tooling (v1) into a backend API generator (v2), then a declarative lifecycle platform (v3). Version 3.0.7 is the GitHub source release. The npm registry remains at version 3.0.6 until a separate, explicitly authorized npm publication. Browse the [complete release history](docs/RELEASE_HISTORY.md) and [cumulative changelog](CHANGELOG.md) for every published version.
+LaunchStack CLI has evolved from deployment and configuration tooling (v1) into a backend API generator (v2), then a declarative lifecycle platform (v3). Version 3.0.7 was released on GitHub on 18 November 2026. The npm registry remains at version 3.0.6 until a separate, explicitly authorized npm publication. Browse the [complete release history](docs/RELEASE_HISTORY.md) and [cumulative changelog](CHANGELOG.md) for every published version.
 
 ## Requirements
 
