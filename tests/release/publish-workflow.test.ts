@@ -30,10 +30,18 @@ describe("npm publish workflow authorization", () => {
   });
 
   it("generates a normalized template SBOM before the two audits and publication", () => {
-    const evidenceStep = workflow.split("      - name: Build OpenChain release evidence")[1]?.split("      - name: Verify npm publish token")[0];
-    expect(evidenceStep).toContain("node scripts/openchain-template-sbom.cjs --output openchain-evidence/generated-api-template.cdx.json");
-    expect(evidenceStep.indexOf("node scripts/openchain-template-sbom.cjs")).toBeLessThan(evidenceStep.indexOf("npm audit --omit=dev"));
-    expect(workflow.indexOf("      - name: Build OpenChain release evidence")).toBeLessThan(workflow.indexOf("      - name: Publish package to npm"));
+    const evidenceStep = workflow
+      .split("      - name: Build OpenChain release evidence")[1]
+      ?.split("      - name: Verify npm publish token")[0];
+    expect(evidenceStep).toContain(
+      "node scripts/openchain-template-sbom.cjs --output openchain-evidence/generated-api-template.cdx.json",
+    );
+    expect(
+      evidenceStep.indexOf("node scripts/openchain-template-sbom.cjs"),
+    ).toBeLessThan(evidenceStep.indexOf("npm audit --omit=dev"));
+    expect(
+      workflow.indexOf("      - name: Build OpenChain release evidence"),
+    ).toBeLessThan(workflow.indexOf("      - name: Publish package to npm"));
   });
 
   it("checks each NUL-delimited path changed after an existing tag", () => {

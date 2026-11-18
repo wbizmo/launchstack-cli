@@ -25,17 +25,31 @@ describe("LaunchStack 3.0.7 OpenChain release workflow", () => {
     );
     expect(workflow).toContain("launchstack-cli.cdx.json");
     expect(workflow).toContain("generated-api-template.cdx.json");
-    const evidenceStep = workflow.split("      - name: Build exact OpenChain release evidence")[1]?.split("      - name: Check whether npm version")[0];
+    const evidenceStep = workflow
+      .split("      - name: Build exact OpenChain release evidence")[1]
+      ?.split("      - name: Check whether npm version")[0];
     expect(evidenceStep).toBeDefined();
-    expect(evidenceStep.indexOf("node scripts/openchain-evidence.cjs")).toBeLessThan(evidenceStep.indexOf("node scripts/openchain-template-sbom.cjs"));
-    expect(evidenceStep.indexOf("node scripts/openchain-template-sbom.cjs")).toBeLessThan(evidenceStep.indexOf("npm audit --omit=dev"));
-    expect(evidenceStep.indexOf("npm audit --omit=dev")).toBeLessThan(evidenceStep.indexOf("npm pack --json"));
+    expect(
+      evidenceStep.indexOf("node scripts/openchain-evidence.cjs"),
+    ).toBeLessThan(
+      evidenceStep.indexOf("node scripts/openchain-template-sbom.cjs"),
+    );
+    expect(
+      evidenceStep.indexOf("node scripts/openchain-template-sbom.cjs"),
+    ).toBeLessThan(evidenceStep.indexOf("npm audit --omit=dev"));
+    expect(evidenceStep.indexOf("npm audit --omit=dev")).toBeLessThan(
+      evidenceStep.indexOf("npm pack --json"),
+    );
     expect(workflow).toContain("openchain-dispositions.cjs");
   });
 
   it("publishes only after evidence and attaches it to the GitHub release", () => {
     expect(workflow).toContain("npm publish --access public --provenance");
-    expect(workflow.indexOf("      - name: Build exact OpenChain release evidence")).toBeLessThan(workflow.indexOf("      - name: Publish npm package with provenance"));
+    expect(
+      workflow.indexOf("      - name: Build exact OpenChain release evidence"),
+    ).toBeLessThan(
+      workflow.indexOf("      - name: Publish npm package with provenance"),
+    );
     expect(workflow).toContain(
       "gh release upload v3.0.7 launchstack-openchain-evidence-3.0.7.tar.gz --clobber",
     );

@@ -2,7 +2,9 @@ import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { normalizeTemplateManifests } = require("../scripts/openchain-template-sbom.cjs");
+const {
+  normalizeTemplateManifests,
+} = require("../scripts/openchain-template-sbom.cjs");
 
 const makeTemplate = () => ({
   manifest: {
@@ -28,12 +30,23 @@ const makeTemplate = () => ({
 describe("OpenChain generated-template SBOM manifest normalization", () => {
   it("replaces only the unrendered package identity, keeping dependency and template source unchanged", () => {
     const original = makeTemplate();
-    const normalized = normalizeTemplateManifests(original.manifest, original.lock);
-    expect(normalized.manifest.name).toBe("launchstack-openchain-template-sbom");
+    const normalized = normalizeTemplateManifests(
+      original.manifest,
+      original.lock,
+    );
+    expect(normalized.manifest.name).toBe(
+      "launchstack-openchain-template-sbom",
+    );
     expect(normalized.lock.name).toBe("launchstack-openchain-template-sbom");
-    expect(normalized.lock.packages[""].name).toBe("launchstack-openchain-template-sbom");
-    expect(normalized.manifest.dependencies).toEqual(original.manifest.dependencies);
-    expect(normalized.manifest.scripts["docker:build"]).toContain("{{PROJECT_NAME}}");
+    expect(normalized.lock.packages[""].name).toBe(
+      "launchstack-openchain-template-sbom",
+    );
+    expect(normalized.manifest.dependencies).toEqual(
+      original.manifest.dependencies,
+    );
+    expect(normalized.manifest.scripts["docker:build"]).toContain(
+      "{{PROJECT_NAME}}",
+    );
     expect(normalized.lock.packages["node_modules/fastify"]).toEqual(
       original.lock.packages["node_modules/fastify"],
     );
