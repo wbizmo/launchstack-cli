@@ -240,6 +240,10 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(args.root, "package.json"), "utf8"),
+  );
+  const version = packageJson.version;
   const rootLock = JSON.parse(
     fs.readFileSync(path.join(args.root, "package-lock.json"), "utf8"),
   );
@@ -262,12 +266,12 @@ async function main() {
   const all = [...root, ...template];
   const rootNotice = buildNotice(
     all,
-    "Third-party notices — LaunchStack CLI 3.0.7",
+    "Third-party notices — LaunchStack CLI " + version,
     "the CLI and generated API template production dependency graphs",
   );
   const templateNotice = buildNotice(
     template,
-    "Third-party notices — generated API template 3.0.7",
+    "Third-party notices — generated API template " + version,
     "the generated API template production dependency graph",
   );
 
@@ -302,7 +306,7 @@ async function main() {
     JSON.stringify(
       {
         schemaVersion: 1,
-        generatedFor: "launchstack-cli@3.0.7",
+        generatedFor: "launchstack-cli@" + version,
         generatedAt: new Date().toISOString(),
         recordCount: all.length,
         licenseDistribution: licenses,
