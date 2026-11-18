@@ -23,4 +23,12 @@ Zivora Labs is preparing ISO/IEC 5230:2020 and ISO/IEC 18974:2023 **self-certifi
 
 ## OpenChain evidence release gate
 
-Starting with v3.0.7, every public release must run npm run openchain:check, create exact component records for the CLI and generated API template, archive registry source tarballs with lockfile integrity verification, generate CycloneDX SBOMs, retain low-severity production audit JSON and package SHA-256, and attach the resulting evidence archive to the GitHub release. Release failure or unavailable evidence invalidates the supplied-release self-certification claim. See docs/openchain/README.md.
+Starting with v3.0.7, every GitHub source release must run npm run openchain:check, create exact component records for the CLI and generated API template, archive registry source tarballs with lockfile integrity verification, generate CycloneDX SBOMs, retain low-severity production audit JSON and package SHA-256, and attach the resulting evidence archive to the GitHub release. Release failure or unavailable evidence means the release is not qualified. Even a complete release evidence archive does not independently establish satisfaction of every organizational OpenChain self-certification requirement. See docs/openchain/README.md.
+
+## 3.0.7 GitHub-only release — explicit separation from npm
+
+The one-time `.github/workflows/release-openchain-3.0.7.yml` workflow runs **only** when a branch named `release/github-only-3.0.7` is created from the _exact_ protected `main` commit. It runs the full release checks, builds and archives component-source/evidence records, creates the matching `v3.0.7` tag, then creates the GitHub release and attaches the evidence archive. **It contains no npm publish command, npm publication token, or npm-publish environment.** Never use the old `release/openchain-3.0.7` branch trigger for publication.
+
+The separate `.github/workflows/publish.yml` is the only npm publishing path and requires an intentional manual `workflow_dispatch` from `main`, `authorize_publication=true`, and the npm-publish protected environment. **Do not invoke it for the GitHub-only release.** Do not describe `launchstack-cli@3.0.7` as available on npm until a separately authorized job has succeeded and the registry verifies that exact version.
+
+A release tag should reference the exact qualified protected-main commit. Once created, verify tag SHA, GitHub release and attached evidence/archive hashes; retain these alongside the PR and CI records. A GitHub release is not in itself an ISO/IEC certification or OpenSSF badge.

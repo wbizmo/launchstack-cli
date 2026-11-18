@@ -1,19 +1,17 @@
-name: Release LaunchStack CLI 3.0.7 OpenChain candidate
+name: Release LaunchStack CLI 3.0.7 — GitHub only
 
 on:
   push:
     branches:
-      - release/openchain-3.0.7
+      - release/github-only-3.0.7
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    environment: npm-publish
 
     services:
       postgres:
@@ -48,7 +46,7 @@ jobs:
           fi
           VERSION="$(node -p "require('./package.json').version")"
           if [ "$VERSION" != "3.0.7" ]; then
-            echo "::error::This one-time workflow only permits launchstack-cli@3.0.7."
+            echo "::error::This one-time GitHub-only workflow only permits source version 3.0.7."
             exit 1
           fi
 
@@ -76,11 +74,7 @@ jobs:
 
           node scripts/openchain-evidence.cjs --output openchain-evidence --archive-sources
           npm sbom --omit=dev --sbom-format=cyclonedx > openchain-evidence/launchstack-cli.cdx.json
-          npm ci --ignore-scripts --prefix src/templates/api
-          (
-            cd src/templates/api
-            npm sbom --omit=dev --sbom-format=cyclonedx
-          ) > openchain-evidence/generated-api-template.cdx.json
+          node scripts/openchain-template-sbom.cjs --output openchain-evidence/generated-api-template.cdx.json
 
           set +e
           npm audit --omit=dev --audit-level=low --json > openchain-evidence/launchstack-cli-audit.json
@@ -121,37 +115,6 @@ jobs:
             exit 1
           fi
 
-      - name: Check whether npm version is already published
-        id: publication
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin --tags --force
-          if npm view launchstack-cli@3.0.7 version >/dev/null 2>&1; then
-            if ! git rev-parse -q --verify "refs/tags/v3.0.7" >/dev/null; then
-              echo "::error::npm 3.0.7 exists without a matching repository tag."
-              exit 1
-            fi
-            if [ "$(git rev-parse 'v3.0.7^{commit}')" != "$GITHUB_SHA" ]; then
-              echo "::error::Existing v3.0.7 tag does not match this release commit."
-              exit 1
-            fi
-            echo "already_published=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "already_published=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Require npm publication credential
-        if: steps.publication.outputs.already_published != 'true'
-        shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.LAUNCHSTACK_NPM_TOKEN }}
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::LAUNCHSTACK_NPM_TOKEN is not configured."
-            exit 1
-          fi
-
       - name: Create immutable release tag
         shell: bash
         run: |
@@ -164,12 +127,6 @@ jobs:
             git tag -a v3.0.7 -m "LaunchStack CLI v3.0.7"
             git push origin v3.0.7
           fi
-
-      - name: Publish npm package with provenance
-        if: steps.publication.outputs.already_published != 'true'
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.LAUNCHSTACK_NPM_TOKEN }}
 
       - name: Create or repair GitHub release and evidence attachment
         shell: bash

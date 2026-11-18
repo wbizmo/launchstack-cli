@@ -29,11 +29,19 @@ describe("npm publish workflow authorization", () => {
     expect(workflow).toContain("npm publish --access public --provenance");
   });
 
-  it("installs the generated-template lockfile before generating its SBOM", () => {
-    expect(workflow).toContain(
-      "npm ci --ignore-scripts --prefix src/templates/api",
+  it("generates a normalized template SBOM before the two audits and publication", () => {
+    const evidenceStep = workflow
+      .split("      - name: Build OpenChain release evidence")[1]
+      ?.split("      - name: Verify npm publish token")[0];
+    expect(evidenceStep).toContain(
+      "node scripts/openchain-template-sbom.cjs --output openchain-evidence/generated-api-template.cdx.json",
     );
-    expect(workflow).toContain("generated-api-template.cdx.json");
+    expect(
+      evidenceStep.indexOf("node scripts/openchain-template-sbom.cjs"),
+    ).toBeLessThan(evidenceStep.indexOf("npm audit --omit=dev"));
+    expect(
+      workflow.indexOf("      - name: Build OpenChain release evidence"),
+    ).toBeLessThan(workflow.indexOf("      - name: Publish package to npm"));
   });
 
   it("checks each NUL-delimited path changed after an existing tag", () => {
