@@ -2,7 +2,7 @@
 
 Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.md`](docs/RELEASE_HISTORY.md).
 
-## [3.0.7] - 2026-11-18
+## [3.0.7] - 2026-11-18 (GitHub source release; npm publication deferred)
 
 ### OpenChain compliance and release evidence
 
@@ -11,11 +11,12 @@ Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.m
 - Add low-severity production dependency gates for both CLI and generated API template, public security/license inquiry routes and recurring independent advisory checks.
 - Pin release/security workflow actions by immutable commit SHA and fail closed when component metadata, source integrity, audit status or release evidence is incomplete.
 
-### Runtime
+### Runtime and distribution
 
 - No intentional CLI command behavior change. Generated projects now include explicit license and third-party notice files.
-
-Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.md`](docs/RELEASE_HISTORY.md).
+- The GitHub tag, source release and archived evidence are distributed independently from npm. The latest npm version remains **3.0.6**; no npm publishing is authorized by this GitHub-only release.
+- The earlier invalid unrendered generated-template SBOM name is corrected by generating its CycloneDX file from a temporary normalized manifest, leaving the distributed template unchanged.
+- Add contributor guidance, governance, code of conduct, CLI interface reference, and a 145-item OpenSSF Gold-series evidence register. These documents do not constitute an awarded badge.
 
 ## [3.0.6] - 2026-11-15
 

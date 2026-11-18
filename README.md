@@ -7,9 +7,9 @@
 
 TypeScript backend scaffolding and lifecycle management. LaunchStack creates Fastify, Prisma and PostgreSQL projects, then helps teams manage generated files, capabilities, upgrades, local environments, typed clients and preview stages as the project changes.
 
-**Release:** [v3.0.7](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.7) · [Release notes](RELEASE_NOTES_3.0.7.md) · [Zivora Labs project page](https://www.zivoralabs.xyz/open-source/launchstack-cli)
+**GitHub source release:** [v3.0.7](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.7) · **Latest npm package:** [v3.0.6](https://www.npmjs.com/package/launchstack-cli) · [3.0.7 release notes](RELEASE_NOTES_3.0.7.md) · [Zivora Labs project page](https://www.zivoralabs.xyz/open-source/launchstack-cli)
 
-LaunchStack CLI has evolved from deployment and configuration tooling (v1) into a backend API generator (v2), then a declarative lifecycle platform (v3). Version 3.0.7 is the current release. Browse the [complete release history](docs/RELEASE_HISTORY.md) and [cumulative changelog](CHANGELOG.md) for every published version.
+LaunchStack CLI has evolved from deployment and configuration tooling (v1) into a backend API generator (v2), then a declarative lifecycle platform (v3). Version 3.0.7 is the GitHub source release. The npm registry remains at version 3.0.6 until a separate, explicitly authorized npm publication. Browse the [complete release history](docs/RELEASE_HISTORY.md) and [cumulative changelog](CHANGELOG.md) for every published version.
 
 ## Requirements
 
@@ -19,7 +19,18 @@ LaunchStack CLI has evolved from deployment and configuration tooling (v1) into 
 ## Install
 
 ```bash
-npm install --global launchstack-cli@3.0.7
+npm install --global launchstack-cli@3.0.6
+```
+
+To inspect or run **3.0.7 from source**, use the tagged GitHub source checkout (not an npm 3.0.7 install):
+
+```bash
+git clone https://github.com/wbizmo/launchstack-cli.git
+cd launchstack-cli
+git checkout v3.0.7
+npm ci
+npm run build
+node bin/launchstack.cjs --version
 ```
 
 ## Quick start
@@ -164,6 +175,12 @@ Full results, methodology, reproduction commands and limitations are in the [ben
 - **Capability transactions (v3.0.6):** one transaction installing 1, 10 and 100 synthetic file-only capabilities measured 20.5 ms, 20.9 ms and 96.6 ms p50.
 - **Transactions (v3.0.6):** 100, 1,000 and 10,000 file mutations measured 110.2 ms, 727.2 ms and 6.06 s p50; the 10,000-file p95 was 6.28 s.
 
+### GitHub v3.0.7 — licensing and security-assurance improvements
+
+The 3.0.7 source release adds an explicit MIT license and third-party notice file to generated API projects, deterministic component/license records, a complete OpenChain 5230/18974 requirement crosswalk, private vulnerability and public license inquiry routes, regular independent CLI and template dependency auditing, immutable GitHub Actions pins, integrity-verified source archives, and a guarded evidence bundle containing CycloneDX SBOMs, vulnerability dispositions, release artifact hashes and source tarballs. It does not intentionally change the existing CLI command interface. See [3.0.7 release notes](RELEASE_NOTES_3.0.7.md) and [component/evidence procedures](docs/openchain/README.md).
+
+**Distribution:** GitHub tag and release only. The 3.0.7 npm package has **not** been published; the latest npm install command above intentionally remains at 3.0.6. OpenChain self-certification and OpenSSF Gold badge claims require separate verified evidence and are **not** established merely by releasing 3.0.7.
+
 ## Development checks
 
 ```bash
@@ -187,7 +204,7 @@ LaunchStack CLI is an open-source project built and maintained by [Zivora Labs](
 
 Zivora Labs' LaunchStack CLI 3.0.7 programme is evidence-gated for self-certification against ISO/IEC 5230:2020 (open-source license compliance) and ISO/IEC 18974:2023 (open-source security assurance). The complete 34 + 35 item mapping, scope, programme record and release declaration are in docs/openchain.
 
-Security reports and open-source license/compliance inquiries can be sent to williams@zivoralabs.xyz. The release process archives exact component records, CycloneDX SBOMs, integrity-verified source tarballs, production audit results and the packed npm artifact. This is a Zivora Labs self-certification and is not represented as independent accredited ISO certification.
+Security reports and open-source license/compliance inquiries can be sent to williams@zivoralabs.xyz. The release process archives exact component records, CycloneDX SBOMs, integrity-verified source tarballs, production audit results and the packed npm artifact. This is a documented self-assessment programme; the GitHub-only source release does not establish an evidence-backed 69/69 self-certification or an independent accredited ISO certificate. OpenSSF Gold has not been awarded.
 
 ## Contribute and assess OpenSSF practices
 
