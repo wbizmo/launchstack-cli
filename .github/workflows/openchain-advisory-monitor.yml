@@ -1,7 +1,7 @@
 name: Open source dependency advisory monitoring
 
-# Complements CodeQL by scanning the CLI and generated API template lockfiles
-# even when main has no changes. Not a substitute for historical release SBOMs.
+# Complements CodeQL. The CLI and generated template are independent matrix
+# targets so one failing audit can never suppress the other target.
 on:
   schedule:
     - cron: "23 6 * * 2"
@@ -12,9 +12,17 @@ permissions:
 
 jobs:
   dependency-advisories:
-    name: CLI and generated API template advisory audit
+    name: ${{ matrix.label }} advisory audit
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: LaunchStack CLI
+            directory: .
+          - label: Generated API template
+            directory: src/templates/api
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,9 +35,6 @@ jobs:
           node-version: "24.22.3"
           cache: npm
 
-      - name: Audit CLI production and development dependencies
-        run: npm audit --audit-level=low
-
-      - name: Audit included generated API template dependencies
-        working-directory: src/templates/api
-        run: npm audit --audit-level=low
+      - name: Audit production dependencies at every severity
+        working-directory: ${{ matrix.directory }}
+        run: npm audit --omit=dev --audit-level=low

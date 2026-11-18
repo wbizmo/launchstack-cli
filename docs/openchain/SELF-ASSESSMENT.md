@@ -145,7 +145,7 @@ Status policy: **OPEN** until an accountable reviewer confirms both design and p
 
 | ID             | Objective in original checklist order           | State | Evidence needed to answer Yes                                     |
 | -------------- | ----------------------------------------------- | ----- | ----------------------------------------------------------------- |
-| 18974-4.3.1-01 | Continuous inventory and archive of open source | OPEN  | SBOM procedure plus time-stamped release archive                  |
+| 18974-4.3.1-01 | Continuous inventory and archive of open source | OPEN  | SBOM procedure, time-stamped release archive, and archive of the open-source software used |
 | 18974-4.3.1-02 | Demonstrable records of shipped components      | OPEN  | Per-release component inventory including templates if applicable |
 
 ### 18974 checklist section 4.3.2
