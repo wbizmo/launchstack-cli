@@ -76,11 +76,7 @@ jobs:
 
           node scripts/openchain-evidence.cjs --output openchain-evidence --archive-sources
           npm sbom --omit=dev --sbom-format=cyclonedx > openchain-evidence/launchstack-cli.cdx.json
-          npm ci --ignore-scripts --prefix src/templates/api
-          (
-            cd src/templates/api
-            npm sbom --omit=dev --sbom-format=cyclonedx
-          ) > openchain-evidence/generated-api-template.cdx.json
+          node scripts/openchain-template-sbom.cjs --output openchain-evidence/generated-api-template.cdx.json
 
           set +e
           npm audit --omit=dev --audit-level=low --json > openchain-evidence/launchstack-cli-audit.json
