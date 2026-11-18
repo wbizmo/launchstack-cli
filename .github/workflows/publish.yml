@@ -87,6 +87,63 @@ jobs:
         env:
           LAUNCHSTACK_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/launchstack_smoke
 
+      - name: Build OpenChain release evidence
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          DECLARATION="docs/openchain/CONFORMANCE-DECLARATION-${RELEASE_VERSION}.md"
+          if [ ! -f "$DECLARATION" ]; then
+            echo "::error::Missing versioned OpenChain declaration: $DECLARATION"
+            exit 1
+          fi
+
+          rm -rf openchain-evidence
+          mkdir -p openchain-evidence/program-docs
+          node scripts/openchain-evidence.cjs --output openchain-evidence --archive-sources
+
+          npm sbom --omit=dev --sbom-format=cyclonedx > openchain-evidence/launchstack-cli.cdx.json
+          (
+            cd src/templates/api
+            npm sbom --omit=dev --sbom-format=cyclonedx
+          ) > openchain-evidence/generated-api-template.cdx.json
+
+          set +e
+          npm audit --omit=dev --audit-level=low --json > openchain-evidence/launchstack-cli-audit.json
+          CLI_AUDIT=$?
+          (
+            cd src/templates/api
+            npm audit --omit=dev --audit-level=low --json
+          ) > openchain-evidence/generated-api-template-audit.json
+          TEMPLATE_AUDIT=$?
+          set -e
+
+          node scripts/openchain-dispositions.cjs \
+            openchain-evidence/component-records.json \
+            openchain-evidence/launchstack-cli-audit.json \
+            openchain-evidence/generated-api-template-audit.json \
+            openchain-evidence/vulnerability-dispositions.json
+
+          cp -R docs/openchain/. openchain-evidence/program-docs/
+          cp THIRD_PARTY_NOTICES.md openchain-evidence/
+          cp SECURITY.md openchain-evidence/
+
+          PACK_JSON="$(npm pack --json --silent)"
+          PACK_FILE="$(node -e 'const x=JSON.parse(process.argv[1]);process.stdout.write(x[0].filename)' "$PACK_JSON")"
+          mv "$PACK_FILE" "openchain-evidence/$PACK_FILE"
+
+          (
+            cd openchain-evidence
+            find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+          )
+          tar -czf "launchstack-openchain-evidence-${RELEASE_VERSION}.tar.gz" openchain-evidence
+
+          if [ "$CLI_AUDIT" -ne 0 ] || [ "$TEMPLATE_AUDIT" -ne 0 ]; then
+            echo "::error::A production dependency audit reported a known vulnerability or failed."
+            exit 1
+          fi
+
       - name: Verify npm publish token is configured
         shell: bash
         env:
@@ -154,3 +211,4 @@ jobs:
               --title "LaunchStack CLI v${RELEASE_VERSION}" \
               --notes-file "$RELEASE_NOTES"
           fi
+          gh release upload "$RELEASE_TAG" "launchstack-openchain-evidence-${RELEASE_VERSION}.tar.gz" --clobber
