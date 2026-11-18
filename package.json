@@ -1,6 +1,6 @@
 {
   "name": "launchstack-cli",
-  "version": "3.0.6",
+  "version": "3.0.7",
   "description": "A TypeScript CLI for production-ready backend API scaffolding, lifecycle management, deployment preparation, configuration management, and developer workflows.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -39,7 +39,7 @@
     "template:smoke": "node scripts/template-smoke.cjs",
     "locks:template": "node scripts/refresh-template-lock.cjs",
     "release:verify-tag": "node scripts/verify-release-tag.cjs",
-    "release:check": "npm run format:check && npm run check && npm run audit:runtime && npm run sbom:check && npm run pack:smoke && npm run template:smoke",
+    "release:check": "npm run format:check && npm run check && npm run openchain:check && npm run audit:runtime && npm run sbom:check && npm run pack:smoke && npm run template:smoke",
     "bench:drift": "tsx bench/drift.ts",
     "bench:security": "tsx bench/security-audit.ts",
     "bench:api": "node bench/generated-api.cjs",
@@ -48,7 +48,10 @@
     "bench:recovery": "tsx bench/recovery.ts",
     "format:check": "prettier --check . --ignore-path .gitignore",
     "sbom:check": "node scripts/sbom-smoke.cjs",
-    "docker:template:smoke": "node scripts/docker-template-smoke.cjs"
+    "docker:template:smoke": "node scripts/docker-template-smoke.cjs",
+    "openchain:evidence": "node scripts/openchain-evidence.cjs --output openchain-evidence",
+    "openchain:archive": "node scripts/openchain-evidence.cjs --output openchain-evidence --archive-sources",
+    "openchain:check": "node scripts/openchain-evidence.cjs --check && npm audit --omit=dev --audit-level=low && npm --prefix src/templates/api audit --omit=dev --audit-level=low"
   },
   "keywords": [
     "launchstack",
@@ -72,7 +75,10 @@
     "bin",
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "SECURITY.md",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/openchain"
   ],
   "publishConfig": {
     "access": "public",

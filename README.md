@@ -7,9 +7,9 @@
 
 TypeScript backend scaffolding and lifecycle management. LaunchStack creates Fastify, Prisma and PostgreSQL projects, then helps teams manage generated files, capabilities, upgrades, local environments, typed clients and preview stages as the project changes.
 
-**Release:** [v3.0.6](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.6) · [Release notes](RELEASE_NOTES_3.0.6.md) · [Zivora Labs project page](https://www.zivoralabs.xyz/open-source/launchstack-cli)
+**Release:** [v3.0.7](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.7) · [Release notes](RELEASE_NOTES_3.0.7.md) · [Zivora Labs project page](https://www.zivoralabs.xyz/open-source/launchstack-cli)
 
-LaunchStack CLI has evolved from deployment and configuration tooling (v1) into a backend API generator (v2), then a declarative lifecycle platform (v3). Version 3.0.6 is the current release. Browse the [complete release history](docs/RELEASE_HISTORY.md) and [cumulative changelog](CHANGELOG.md) for every published version.
+LaunchStack CLI has evolved from deployment and configuration tooling (v1) into a backend API generator (v2), then a declarative lifecycle platform (v3). Version 3.0.7 is the current release. Browse the [complete release history](docs/RELEASE_HISTORY.md) and [cumulative changelog](CHANGELOG.md) for every published version.
 
 ## Requirements
 
@@ -19,7 +19,7 @@ LaunchStack CLI has evolved from deployment and configuration tooling (v1) into 
 ## Install
 
 ```bash
-npm install --global launchstack-cli@3.0.6
+npm install --global launchstack-cli@3.0.7
 ```
 
 ## Quick start
@@ -182,3 +182,9 @@ LaunchStack CLI is an open-source project built and maintained by [Zivora Labs](
 - Project page: [Zivora Labs Open Source](https://www.zivoralabs.xyz/open-source/launchstack-cli)
 - Lead maintainer: [Williams Ashibuogwu](https://github.com/wbizmo)
 - License: [MIT](LICENSE), maintained by Zivora Labs
+
+## OpenChain self-certification
+
+Zivora Labs' LaunchStack CLI 3.0.7 programme is evidence-gated for self-certification against ISO/IEC 5230:2020 (open-source license compliance) and ISO/IEC 18974:2023 (open-source security assurance). The complete 34 + 35 item mapping, scope, programme record and release declaration are in docs/openchain.
+
+Security reports and open-source license/compliance inquiries can be sent to williams@zivoralabs.xyz. The release process archives exact component records, CycloneDX SBOMs, integrity-verified source tarballs, production audit results and the packed npm artifact. This is a Zivora Labs self-certification and is not represented as independent accredited ISO certification.

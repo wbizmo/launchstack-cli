@@ -1,0 +1,40 @@
+name: Open source dependency advisory monitoring
+
+# Complements CodeQL. The CLI and generated template are independent matrix
+# targets so one failing audit can never suppress the other target.
+on:
+  schedule:
+    - cron: "23 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-advisories:
+    name: ${{ matrix.label }} advisory audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: LaunchStack CLI
+            directory: .
+          - label: Generated API template
+            directory: src/templates/api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.3"
+          cache: npm
+
+      - name: Audit production dependencies at every severity
+        working-directory: ${{ matrix.directory }}
+        run: npm audit --omit=dev --audit-level=low

@@ -62,3 +62,7 @@ npm run docker:prod
 ```
 
 Each generated project receives unique development JWT secrets in its ignored `.env`. The `.env.example` file contains placeholders only. Local PostgreSQL and API ports bind to loopback by default. Before deployment, set explicit CORS and JWT settings, review the production port binding for your reverse proxy, and run `launchstack audit --production`.
+
+## License and third-party components
+
+Generated project source is supplied under the MIT License in LICENSE. Production dependency names, versions, licenses and registry sources are recorded in THIRD_PARTY_NOTICES.md. The LaunchStack release evidence archive contains the exact dependency/source records used for this template release.

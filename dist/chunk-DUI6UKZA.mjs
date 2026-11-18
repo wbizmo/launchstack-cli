@@ -603,7 +603,7 @@ function detectManagedDrift(projectDirectory, state) {
 function currentLaunchStackVersion() {
   if (process.env.LAUNCHSTACK_VERSION_OVERRIDE)
     return process.env.LAUNCHSTACK_VERSION_OVERRIDE;
-  return true ? "3.0.6" : "0.0.0-dev";
+  return true ? "3.0.7" : "0.0.0-dev";
 }
 
 // src/extensions/engine.ts
@@ -5768,4 +5768,4 @@ export {
   planModuleGeneration,
   applyModuleGeneration
 };
-//# sourceMappingURL=chunk-VVVC34HH.mjs.map
+//# sourceMappingURL=chunk-DUI6UKZA.mjs.map

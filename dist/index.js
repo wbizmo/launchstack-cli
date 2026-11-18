@@ -1621,7 +1621,7 @@ function applyFileMutations(input) {
 function currentLaunchStackVersion() {
   if (process.env.LAUNCHSTACK_VERSION_OVERRIDE)
     return process.env.LAUNCHSTACK_VERSION_OVERRIDE;
-  return true ? "3.0.6" : "0.0.0-dev";
+  return true ? "3.0.7" : "0.0.0-dev";
 }
 
 // src/extensions/engine.ts

@@ -12,6 +12,8 @@ if (!projectDirectory) {
 
 const requiredFiles = [
   "README.md",
+  "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
   "CHANGELOG.md",
   "docs/ARCHITECTURE.md",
   "docs/DEPLOYMENT.md",
