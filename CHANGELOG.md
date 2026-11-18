@@ -2,6 +2,21 @@
 
 Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.md`](docs/RELEASE_HISTORY.md).
 
+## [3.0.7] - 2026-11-18
+
+### OpenChain compliance and release evidence
+
+- Establish the LaunchStack CLI 3.0.7 programme for OpenChain self-certification against ISO/IEC 5230:2020 and ISO/IEC 18974:2023 with a complete 34 + 35 item evidence register.
+- Add explicit generated-project MIT licensing, third-party notice registers, exact production component records, integrity-verified source archiving and a committee-ready release evidence bundle.
+- Add low-severity production dependency gates for both CLI and generated API template, public security/license inquiry routes and recurring independent advisory checks.
+- Pin release/security workflow actions by immutable commit SHA and fail closed when component metadata, source integrity, audit status or release evidence is incomplete.
+
+### Runtime
+
+- No intentional CLI command behavior change. Generated projects now include explicit license and third-party notice files.
+
+Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.md`](docs/RELEASE_HISTORY.md).
+
 ## [3.0.6] - 2026-11-15
 
 ### Fixed
