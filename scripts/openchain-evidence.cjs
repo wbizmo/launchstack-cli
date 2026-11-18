@@ -64,11 +64,7 @@ function collectComponents(lock, scope, lockfile) {
 
 function formatMarkdownTable(headers, rows) {
   const widths = headers.map((header, index) =>
-    Math.max(
-      3,
-      header.length,
-      ...rows.map((row) => String(row[index]).length),
-    ),
+    Math.max(3, header.length, ...rows.map((row) => String(row[index]).length)),
   );
   const render = (row) =>
     "| " +
