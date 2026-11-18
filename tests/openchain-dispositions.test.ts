@@ -13,18 +13,18 @@ describe("OpenChain vulnerability dispositions", () => {
             scope: "launchstack-cli",
             name: "runtime",
             version: "1.0.0",
-            license: "MIT"
-          }
-        ]
+            license: "MIT",
+          },
+        ],
       },
       {
-        "launchstack-cli": { vulnerabilities: {} }
-      }
+        "launchstack-cli": { vulnerabilities: {} },
+      },
     );
 
     expect(result.findingCount).toBe(0);
     expect(result.dispositions[0].disposition).toBe(
-      "no-action-required-at-release-validation"
+      "no-action-required-at-release-validation",
     );
   });
 
@@ -36,9 +36,9 @@ describe("OpenChain vulnerability dispositions", () => {
             scope: "launchstack-cli",
             name: "runtime",
             version: "1.0.0",
-            license: "MIT"
-          }
-        ]
+            license: "MIT",
+          },
+        ],
       },
       {
         "launchstack-cli": {
@@ -51,18 +51,18 @@ describe("OpenChain vulnerability dispositions", () => {
                   name: "runtime",
                   title: "fixture advisory",
                   severity: "high",
-                  range: "<=1.0.0"
-                }
-              ]
-            }
-          }
-        }
-      }
+                  range: "<=1.0.0",
+                },
+              ],
+            },
+          },
+        },
+      },
     );
 
     expect(result.findingCount).toBe(1);
     expect(result.dispositions[0].disposition).toBe(
-      "release-blocked-pending-remediation-or-reviewed-mitigation"
+      "release-blocked-pending-remediation-or-reviewed-mitigation",
     );
   });
 });

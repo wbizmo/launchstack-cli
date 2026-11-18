@@ -22,11 +22,21 @@ function collectComponents(lock, scope, lockfile) {
     if (!packagePath || !packagePath.includes("node_modules/")) continue;
     if (entry.dev === true || entry.link === true) continue;
     const name = componentNameFromPath(packagePath);
-    if (!name || !entry.version || !entry.license || !entry.resolved || !entry.integrity) {
-      throw new Error("Incomplete production component record: " + scope + ":" + packagePath);
+    if (
+      !name ||
+      !entry.version ||
+      !entry.license ||
+      !entry.resolved ||
+      !entry.integrity
+    ) {
+      throw new Error(
+        "Incomplete production component record: " + scope + ":" + packagePath,
+      );
     }
     if (!entry.resolved.startsWith("https://registry.npmjs.org/")) {
-      throw new Error("Unapproved production package source: " + entry.resolved);
+      throw new Error(
+        "Unapproved production package source: " + entry.resolved,
+      );
     }
     components.push({
       scope,
@@ -37,16 +47,18 @@ function collectComponents(lock, scope, lockfile) {
       license: entry.license,
       resolved: entry.resolved,
       integrity: entry.integrity,
-      optional: entry.optional === true
+      optional: entry.optional === true,
     });
   }
   if (components.length > MAX_COMPONENTS) {
-    throw new Error("Production component limit exceeded: " + components.length);
+    throw new Error(
+      "Production component limit exceeded: " + components.length,
+    );
   }
   return components.sort((a, b) =>
     (a.name + "@" + a.version + "|" + a.scope + "|" + a.path).localeCompare(
-      b.name + "@" + b.version + "|" + b.scope + "|" + b.path
-    )
+      b.name + "@" + b.version + "|" + b.scope + "|" + b.path,
+    ),
   );
 }
 
@@ -57,18 +69,34 @@ function buildNotice(components, title, scopeText) {
     if (!unique.has(key)) unique.set(key, component);
   }
   const rows = [...unique.values()].sort((a, b) =>
-    (a.name + "@" + a.version).localeCompare(b.name + "@" + b.version)
+    (a.name + "@" + a.version).localeCompare(b.name + "@" + b.version),
   );
   const licenses = [...new Set(rows.map((row) => row.license))].sort();
   let output = "# " + title + "\n\n";
-  output += "This release-time component register covers " + scopeText + ".\n\n";
-  output += "All production dependency license expressions in the reviewed lockfiles are permissive: " + licenses.join(", ") + ". No strong-copyleft, custom, or unknown production license expression was found.\n\n";
-  output += "The guarded release process archives the exact registry source tarballs identified by these lockfiles and verifies their Subresource Integrity values before publication. Third-party code remains governed by its upstream license and copyright notices.\n\n";
-  output += "| Package | Version | License | Registry source |\n| --- | --- | --- | --- |\n";
+  output +=
+    "This release-time component register covers " + scopeText + ".\n\n";
+  output +=
+    "All production dependency license expressions in the reviewed lockfiles are permissive: " +
+    licenses.join(", ") +
+    ". No strong-copyleft, custom, or unknown production license expression was found.\n\n";
+  output +=
+    "The guarded release process archives the exact registry source tarballs identified by these lockfiles and verifies their Subresource Integrity values before publication. Third-party code remains governed by its upstream license and copyright notices.\n\n";
+  output +=
+    "| Package | Version | License | Registry source |\n| --- | --- | --- | --- |\n";
   for (const row of rows) {
-    output += "| " + row.name + " | " + row.version + " | " + row.license + " | " + row.resolved + " |\n";
+    output +=
+      "| " +
+      row.name +
+      " | " +
+      row.version +
+      " | " +
+      row.license +
+      " | " +
+      row.resolved +
+      " |\n";
   }
-  output += "\nOpen-source license/compliance inquiries: williams@zivoralabs.xyz.\n";
+  output +=
+    "\nOpen-source license/compliance inquiries: williams@zivoralabs.xyz.\n";
   return output;
 }
 
@@ -79,7 +107,10 @@ function parseIntegrity(integrity) {
     if (dash < 1) continue;
     const algorithm = item.slice(0, dash);
     const expected = item.slice(dash + 1);
-    if (["sha512", "sha384", "sha256", "sha1"].includes(algorithm) && expected) {
+    if (
+      ["sha512", "sha384", "sha256", "sha1"].includes(algorithm) &&
+      expected
+    ) {
       return { algorithm, expected };
     }
   }
@@ -87,10 +118,14 @@ function parseIntegrity(integrity) {
 }
 
 function fetchBuffer(url, redirects = 0) {
-  if (redirects > 5) return Promise.reject(new Error("Too many redirects: " + url));
+  if (redirects > 5)
+    return Promise.reject(new Error("Too many redirects: " + url));
   return new Promise((resolve, reject) => {
     const request = https.get(url, { timeout: 30000 }, (response) => {
-      if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+      if (
+        [301, 302, 303, 307, 308].includes(response.statusCode) &&
+        response.headers.location
+      ) {
         response.resume();
         const redirected = new URL(response.headers.location, url);
         if (redirected.protocol !== "https:") {
@@ -102,7 +137,9 @@ function fetchBuffer(url, redirects = 0) {
       }
       if (response.statusCode !== 200) {
         response.resume();
-        reject(new Error("Download failed " + response.statusCode + ": " + url));
+        reject(
+          new Error("Download failed " + response.statusCode + ": " + url),
+        );
         return;
       }
       const chunks = [];
@@ -110,7 +147,9 @@ function fetchBuffer(url, redirects = 0) {
       response.on("data", (chunk) => {
         size += chunk.length;
         if (size > MAX_FILE_BYTES) {
-          request.destroy(new Error("Source archive member exceeds byte limit"));
+          request.destroy(
+            new Error("Source archive member exceeds byte limit"),
+          );
           return;
         }
         chunks.push(chunk);
@@ -118,7 +157,9 @@ function fetchBuffer(url, redirects = 0) {
       response.on("end", () => resolve(Buffer.concat(chunks)));
       response.on("error", reject);
     });
-    request.on("timeout", () => request.destroy(new Error("Download timeout: " + url)));
+    request.on("timeout", () =>
+      request.destroy(new Error("Download timeout: " + url)),
+    );
     request.on("error", reject);
   });
 }
@@ -134,20 +175,31 @@ async function archiveSources(components, outputDirectory) {
   let totalBytes = 0;
   const manifest = [];
   const ordered = [...unique.values()].sort((a, b) =>
-    (a.name + "@" + a.version).localeCompare(b.name + "@" + b.version)
+    (a.name + "@" + a.version).localeCompare(b.name + "@" + b.version),
   );
   for (const component of ordered) {
     const buffer = await fetchBuffer(component.resolved);
     totalBytes += buffer.length;
-    if (totalBytes > MAX_TOTAL_BYTES) throw new Error("Source archive total byte limit exceeded");
+    if (totalBytes > MAX_TOTAL_BYTES)
+      throw new Error("Source archive total byte limit exceeded");
     const parsed = parseIntegrity(component.integrity);
-    const actual = crypto.createHash(parsed.algorithm).update(buffer).digest("base64");
+    const actual = crypto
+      .createHash(parsed.algorithm)
+      .update(buffer)
+      .digest("base64");
     if (actual !== parsed.expected) {
-      throw new Error("Integrity mismatch for " + component.name + "@" + component.version);
+      throw new Error(
+        "Integrity mismatch for " + component.name + "@" + component.version,
+      );
     }
     const filename =
-      component.name.replace(/[^a-zA-Z0-9._-]+/g, "_") + "__" + component.version + ".tgz";
-    fs.writeFileSync(path.join(sourceDirectory, filename), buffer, { mode: 0o644 });
+      component.name.replace(/[^a-zA-Z0-9._-]+/g, "_") +
+      "__" +
+      component.version +
+      ".tgz";
+    fs.writeFileSync(path.join(sourceDirectory, filename), buffer, {
+      mode: 0o644,
+    });
     manifest.push({
       name: component.name,
       version: component.version,
@@ -155,17 +207,26 @@ async function archiveSources(components, outputDirectory) {
       resolved: component.resolved,
       integrity: component.integrity,
       archivedFile: "sources/" + filename,
-      size: buffer.length
+      size: buffer.length,
     });
   }
   fs.writeFileSync(
     path.join(outputDirectory, "source-archive-manifest.json"),
-    JSON.stringify({ schemaVersion: 1, totalBytes, packages: manifest }, null, 2) + "\n"
+    JSON.stringify(
+      { schemaVersion: 1, totalBytes, packages: manifest },
+      null,
+      2,
+    ) + "\n",
   );
 }
 
 function parseArgs(argv) {
-  const args = { root: process.cwd(), output: null, check: false, archiveSources: false };
+  const args = {
+    root: process.cwd(),
+    output: null,
+    check: false,
+    archiveSources: false,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--root") args.root = path.resolve(argv[++i]);
@@ -179,41 +240,58 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const rootLock = JSON.parse(fs.readFileSync(path.join(args.root, "package-lock.json"), "utf8"));
-  const templateLock = JSON.parse(
-    fs.readFileSync(path.join(args.root, "src", "templates", "api", "package-lock.json"), "utf8")
+  const rootLock = JSON.parse(
+    fs.readFileSync(path.join(args.root, "package-lock.json"), "utf8"),
   );
-  const root = collectComponents(rootLock, "launchstack-cli", "package-lock.json");
+  const templateLock = JSON.parse(
+    fs.readFileSync(
+      path.join(args.root, "src", "templates", "api", "package-lock.json"),
+      "utf8",
+    ),
+  );
+  const root = collectComponents(
+    rootLock,
+    "launchstack-cli",
+    "package-lock.json",
+  );
   const template = collectComponents(
     templateLock,
     "generated-api-template",
-    "src/templates/api/package-lock.json"
+    "src/templates/api/package-lock.json",
   );
   const all = [...root, ...template];
   const rootNotice = buildNotice(
     all,
     "Third-party notices — LaunchStack CLI 3.0.7",
-    "the CLI and generated API template production dependency graphs"
+    "the CLI and generated API template production dependency graphs",
   );
   const templateNotice = buildNotice(
     template,
     "Third-party notices — generated API template 3.0.7",
-    "the generated API template production dependency graph"
+    "the generated API template production dependency graph",
   );
 
   if (args.check) {
-    const expectedRoot = fs.readFileSync(path.join(args.root, "THIRD_PARTY_NOTICES.md"), "utf8");
+    const expectedRoot = fs.readFileSync(
+      path.join(args.root, "THIRD_PARTY_NOTICES.md"),
+      "utf8",
+    );
     const expectedTemplate = fs.readFileSync(
       path.join(args.root, "src", "templates", "api", "THIRD_PARTY_NOTICES.md"),
-      "utf8"
+      "utf8",
     );
-    if (rootNotice !== expectedRoot) throw new Error("Root THIRD_PARTY_NOTICES.md is stale");
-    if (templateNotice !== expectedTemplate) throw new Error("Template THIRD_PARTY_NOTICES.md is stale");
-    console.log("OpenChain component records validated: " + all.length + " records.");
+    if (rootNotice !== expectedRoot)
+      throw new Error("Root THIRD_PARTY_NOTICES.md is stale");
+    if (templateNotice !== expectedTemplate)
+      throw new Error("Template THIRD_PARTY_NOTICES.md is stale");
+    console.log(
+      "OpenChain component records validated: " + all.length + " records.",
+    );
     return;
   }
 
-  if (!args.output) throw new Error("--output is required unless --check is used");
+  if (!args.output)
+    throw new Error("--output is required unless --check is used");
   fs.mkdirSync(args.output, { recursive: true });
   const licenses = {};
   for (const component of all) {
@@ -228,19 +306,24 @@ async function main() {
         generatedAt: new Date().toISOString(),
         recordCount: all.length,
         licenseDistribution: licenses,
-        components: all
+        components: all,
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
-  fs.writeFileSync(path.join(args.output, "THIRD_PARTY_NOTICES.md"), rootNotice);
+  fs.writeFileSync(
+    path.join(args.output, "THIRD_PARTY_NOTICES.md"),
+    rootNotice,
+  );
   fs.writeFileSync(
     path.join(args.output, "GENERATED_API_THIRD_PARTY_NOTICES.md"),
-    templateNotice
+    templateNotice,
   );
   if (args.archiveSources) await archiveSources(all, args.output);
-  console.log("OpenChain evidence generated: " + all.length + " component records.");
+  console.log(
+    "OpenChain evidence generated: " + all.length + " component records.",
+  );
 }
 
 if (require.main === module) {
@@ -255,5 +338,5 @@ module.exports = {
   buildNotice,
   collectComponents,
   componentNameFromPath,
-  parseIntegrity
+  parseIntegrity,
 };

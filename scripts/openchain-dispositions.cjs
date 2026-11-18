@@ -11,7 +11,7 @@ function extractVia(vulnerability) {
       title: value.title ?? null,
       url: value.url ?? null,
       severity: value.severity ?? null,
-      range: value.range ?? null
+      range: value.range ?? null,
     };
   });
 }
@@ -31,27 +31,30 @@ function buildDispositions(componentRecord, audits) {
       component: component.name,
       version: component.version,
       license: component.license,
-      auditStatus: vulnerability ? "known-vulnerability-reported" : "no-known-vulnerability-returned",
+      auditStatus: vulnerability
+        ? "known-vulnerability-reported"
+        : "no-known-vulnerability-returned",
       severity: vulnerability?.severity ?? null,
       via: vulnerability ? extractVia(vulnerability) : [],
       disposition: vulnerability
         ? "release-blocked-pending-remediation-or-reviewed-mitigation"
-        : "no-action-required-at-release-validation"
+        : "no-action-required-at-release-validation",
     });
   }
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     findingCount,
-    dispositions
+    dispositions,
   };
 }
 
 function main() {
-  const [componentPath, cliAuditPath, templateAuditPath, outputPath] = process.argv.slice(2);
+  const [componentPath, cliAuditPath, templateAuditPath, outputPath] =
+    process.argv.slice(2);
   if (!componentPath || !cliAuditPath || !templateAuditPath || !outputPath) {
     throw new Error(
-      "Usage: node scripts/openchain-dispositions.cjs <component-records> <cli-audit> <template-audit> <output>"
+      "Usage: node scripts/openchain-dispositions.cjs <component-records> <cli-audit> <template-audit> <output>",
     );
   }
   const components = JSON.parse(fs.readFileSync(componentPath, "utf8"));
@@ -59,7 +62,7 @@ function main() {
   const templateAudit = JSON.parse(fs.readFileSync(templateAuditPath, "utf8"));
   const result = buildDispositions(components, {
     "launchstack-cli": cliAudit,
-    "generated-api-template": templateAudit
+    "generated-api-template": templateAudit,
   });
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, JSON.stringify(result, null, 2) + "\n");
@@ -68,7 +71,7 @@ function main() {
       result.dispositions.length +
       " components, " +
       result.findingCount +
-      " findings."
+      " findings.",
   );
 }
 

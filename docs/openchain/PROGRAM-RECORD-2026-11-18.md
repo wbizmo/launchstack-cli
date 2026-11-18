@@ -11,8 +11,8 @@
 
 ## Programme participants and responsibilities
 
-| Participant | Programme roles | Responsibilities |
-| --- | --- | --- |
+| Participant         | Programme roles                                                                                                                 | Responsibilities                                                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Williams Ashibuogwu | Executive sponsor; Open Source Programme Owner; License Compliance Lead; Security Assurance Lead; Maintainer / Release Approver | Approve scope/resources; maintain component and license records; apply policies; triage inquiries/advisories; decide release go/no-go; retain evidence; revalidate conformance |
 
 External contributors are reviewed under CONTRIBUTIONS.md; they do not receive release-programme responsibility unless explicitly added to this roster and assessed.
@@ -43,17 +43,17 @@ The current policies are README.md, LICENSE-COMPLIANCE.md, SECURITY-ASSURANCE.md
 
 ## Metrics and review objectives
 
-| Metric | Target |
-| --- | --- |
-| Supplied production components represented in release component records | 100% |
-| Production components with license identifier, resolved source and integrity | 100% |
-| Release component source tarballs archived and integrity verified | 100% |
-| License decisions / required notices for supplied components | 100% |
-| Supported release versions receiving scheduled known-vulnerability review | 100% |
-| Release-blocking security checks completing successfully | 100% |
-| Known vulnerabilities without documented disposition | 0 |
-| Unknown/custom/conflicting production licenses released without specialist review | 0 |
-| Programme participants with current competence and awareness record | 100% |
-| Open compliance/security inquiries without an assigned response owner | 0 |
+| Metric                                                                            | Target |
+| --------------------------------------------------------------------------------- | ------ |
+| Supplied production components represented in release component records           | 100%   |
+| Production components with license identifier, resolved source and integrity      | 100%   |
+| Release component source tarballs archived and integrity verified                 | 100%   |
+| License decisions / required notices for supplied components                      | 100%   |
+| Supported release versions receiving scheduled known-vulnerability review         | 100%   |
+| Release-blocking security checks completing successfully                          | 100%   |
+| Known vulnerabilities without documented disposition                              | 0      |
+| Unknown/custom/conflicting production licenses released without specialist review | 0      |
+| Programme participants with current competence and awareness record               | 100%   |
+| Open compliance/security inquiries without an assigned response owner             | 0      |
 
 Initial validation date: 2026-11-18. Next full conformance review is due no later than 2028-05-18 (18 months), and earlier after a material change to product scope, distribution model, license profile, release pipeline or security-assurance process.
