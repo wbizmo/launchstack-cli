@@ -188,3 +188,7 @@ LaunchStack CLI is an open-source project built and maintained by [Zivora Labs](
 Zivora Labs' LaunchStack CLI 3.0.7 programme is evidence-gated for self-certification against ISO/IEC 5230:2020 (open-source license compliance) and ISO/IEC 18974:2023 (open-source security assurance). The complete 34 + 35 item mapping, scope, programme record and release declaration are in docs/openchain.
 
 Security reports and open-source license/compliance inquiries can be sent to williams@zivoralabs.xyz. The release process archives exact component records, CycloneDX SBOMs, integrity-verified source tarballs, production audit results and the packed npm artifact. This is a Zivora Labs self-certification and is not represented as independent accredited ISO certification.
+
+## Contribute and assess OpenSSF practices
+
+The project publishes a [contribution guide](CONTRIBUTING.md), [governance](GOVERNANCE.md), [code of conduct](CODE_OF_CONDUCT.md), [external CLI reference](docs/EXTERNAL-INTERFACE.md), and [private vulnerability reporting](SECURITY.md). The [complete OpenSSF Passing/Silver/Gold evidence register](docs/openchain/OPENSSF-GOLD-CHECKLIST.md) tracks **145 criteria**. Gold has **not** been awarded. OpenChain self-certification is a separate Zivora Labs programme with independent evidence requirements.
