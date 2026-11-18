@@ -4,7 +4,7 @@ name: Open source dependency advisory monitoring
 # even when main has no changes. Not a substitute for historical release SBOMs.
 on:
   schedule:
-    - cron: '23 6 * * 2'
+    - cron: "23 6 * * 2"
   workflow_dispatch:
 
 permissions:
@@ -24,7 +24,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24.22.3'
+          node-version: "24.22.3"
           cache: npm
 
       - name: Audit CLI production and development dependencies
