@@ -101,6 +101,25 @@ describe("OpenChain evidence generator", () => {
     expect(output).toContain("Apache-2.0, MIT");
   });
 
+  it("formats Markdown tables the same way as the committed notices", () => {
+    expect(
+      evidence.formatMarkdownTable(
+        ["Package", "Version"],
+        [
+          ["a", "1.0.0"],
+          ["long-name", "2.0.0"],
+        ],
+      ),
+    ).toBe(
+      [
+        "| Package   | Version |",
+        "| --------- | ------- |",
+        "| a         | 1.0.0   |",
+        "| long-name | 2.0.0   |",
+      ].join("\n"),
+    );
+  });
+
   it("parses supported integrity metadata", () => {
     expect(evidence.parseIntegrity("sha512-YWJj")).toEqual({
       algorithm: "sha512",

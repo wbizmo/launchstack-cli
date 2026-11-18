@@ -62,6 +62,25 @@ function collectComponents(lock, scope, lockfile) {
   );
 }
 
+function formatMarkdownTable(headers, rows) {
+  const widths = headers.map((header, index) =>
+    Math.max(
+      3,
+      header.length,
+      ...rows.map((row) => String(row[index]).length),
+    ),
+  );
+  const render = (row) =>
+    "| " +
+    row
+      .map((cell, index) => String(cell).padEnd(widths[index], " "))
+      .join(" | ") +
+    " |";
+  const separator =
+    "| " + widths.map((width) => "-".repeat(width)).join(" | ") + " |";
+  return [render(headers), separator, ...rows.map(render)].join("\n");
+}
+
 function buildNotice(components, title, scopeText) {
   const unique = new Map();
   for (const component of components) {
@@ -82,19 +101,10 @@ function buildNotice(components, title, scopeText) {
   output +=
     "The guarded release process archives the exact registry source tarballs identified by these lockfiles and verifies their Subresource Integrity values before publication. Third-party code remains governed by its upstream license and copyright notices.\n\n";
   output +=
-    "| Package | Version | License | Registry source |\n| --- | --- | --- | --- |\n";
-  for (const row of rows) {
-    output +=
-      "| " +
-      row.name +
-      " | " +
-      row.version +
-      " | " +
-      row.license +
-      " | " +
-      row.resolved +
-      " |\n";
-  }
+    formatMarkdownTable(
+      ["Package", "Version", "License", "Registry source"],
+      rows.map((row) => [row.name, row.version, row.license, row.resolved]),
+    ) + "\n";
   output +=
     "\nOpen-source license/compliance inquiries: williams@zivoralabs.xyz.\n";
   return output;
@@ -342,5 +352,6 @@ module.exports = {
   buildNotice,
   collectComponents,
   componentNameFromPath,
+  formatMarkdownTable,
   parseIntegrity,
 };
