@@ -29,6 +29,13 @@ describe("npm publish workflow authorization", () => {
     expect(workflow).toContain("npm publish --access public --provenance");
   });
 
+  it("installs the generated-template lockfile before generating its SBOM", () => {
+    expect(workflow).toContain(
+      "npm ci --ignore-scripts --prefix src/templates/api",
+    );
+    expect(workflow).toContain("generated-api-template.cdx.json");
+  });
+
   it("checks each NUL-delimited path changed after an existing tag", () => {
     expect(workflow).toContain("while IFS= read -r -d '' changed_path; do");
     expect(workflow).toContain(
