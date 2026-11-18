@@ -97,7 +97,8 @@ describe("OpenChain evidence generator", () => {
       "Third-party notices",
       "fixture scope",
     );
-    expect(output.indexOf("| a |")).toBeLessThan(output.indexOf("| b |"));
+    expect(output.indexOf("| a")).toBeGreaterThanOrEqual(0);
+    expect(output.indexOf("| a")).toBeLessThan(output.indexOf("| b"));
     expect(output).toContain("Apache-2.0, MIT");
   });
 
