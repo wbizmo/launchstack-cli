@@ -174,6 +174,7 @@ The following are existing files observed on the default branch on 2026-11-18. T
 | Evidence candidate | Why it matters | Limitation |
 | --- | --- | --- |
 | `.github/workflows/codeql.yml` | Weekly static-analysis schedule | Not a replacement for recurring dependency SCA on released versions |
+| `.github/workflows/openchain-advisory-monitor.yml` | Proposed weekly CLI and shipped-template advisory checks | Needs observed run evidence; current main is not an archive of all supported releases |
 | `.github/workflows/ci.yml` | Cross-platform build and release checks | Does not demonstrate retained post-release component dispositions |
 | `scripts/sbom-smoke.cjs`, `scripts/final-release-audit.cjs` | Existing BOM and release-audit mechanisms | Must verify full release inventory, not just successful smoke checks |
 | `package-lock.json`, `src/templates/api/package-lock.json` | CLI and shipped generated API dependencies | Both inventories and any bundled output require review per release |
