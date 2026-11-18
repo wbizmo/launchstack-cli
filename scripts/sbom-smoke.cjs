@@ -37,7 +37,8 @@ try {
   const templateSbom = JSON.parse(readFileSync(output, "utf8"));
   assert.equal(templateSbom.bomFormat, "CycloneDX");
   assert.ok(
-    Array.isArray(templateSbom.components) && templateSbom.components.length > 0,
+    Array.isArray(templateSbom.components) &&
+      templateSbom.components.length > 0,
     "generated API template must produce a nonempty CycloneDX SBOM",
   );
   console.log(
