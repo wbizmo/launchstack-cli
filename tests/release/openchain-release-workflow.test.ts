@@ -53,7 +53,9 @@ describe("LaunchStack 3.0.7 OpenChain release workflow", () => {
     expect(workflow).not.toContain("LAUNCHSTACK_NPM_TOKEN");
     expect(workflow).not.toContain("environment: npm-publish");
     expect(workflow).not.toContain("id-token: write");
-    expect(workflow.indexOf("      - name: Build exact OpenChain release evidence")).toBeLessThan(
+    expect(
+      workflow.indexOf("      - name: Build exact OpenChain release evidence"),
+    ).toBeLessThan(
       workflow.indexOf("      - name: Create immutable release tag"),
     );
   });

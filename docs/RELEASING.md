@@ -27,7 +27,7 @@ Starting with v3.0.7, every GitHub source release must run npm run openchain:che
 
 ## 3.0.7 GitHub-only release — explicit separation from npm
 
-The one-time `.github/workflows/release-openchain-3.0.7.yml` workflow runs **only** when a branch named `release/github-only-3.0.7` is created from the *exact* protected `main` commit. It runs the full release checks, builds and archives component-source/evidence records, creates the matching `v3.0.7` tag, then creates the GitHub release and attaches the evidence archive. **It contains no npm publish command, npm publication token, or npm-publish environment.** Never use the old `release/openchain-3.0.7` branch trigger for publication.
+The one-time `.github/workflows/release-openchain-3.0.7.yml` workflow runs **only** when a branch named `release/github-only-3.0.7` is created from the _exact_ protected `main` commit. It runs the full release checks, builds and archives component-source/evidence records, creates the matching `v3.0.7` tag, then creates the GitHub release and attaches the evidence archive. **It contains no npm publish command, npm publication token, or npm-publish environment.** Never use the old `release/openchain-3.0.7` branch trigger for publication.
 
 The separate `.github/workflows/publish.yml` is the only npm publishing path and requires an intentional manual `workflow_dispatch` from `main`, `authorize_publication=true`, and the npm-publish protected environment. **Do not invoke it for the GitHub-only release.** Do not describe `launchstack-cli@3.0.7` as available on npm until a separately authorized job has succeeded and the registry verifies that exact version.
 
