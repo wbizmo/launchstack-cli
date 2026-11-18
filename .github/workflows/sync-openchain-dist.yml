@@ -29,6 +29,19 @@ jobs:
       - name: Install exact dependencies
         run: npm ci
 
+      - name: Format new compliance files
+        run: |
+          npx prettier --write \
+            docs/openchain/PROGRAM-RECORD-2026-11-18.md \
+            docs/openchain/SELF-ASSESSMENT.md \
+            docs/RELEASE_HISTORY.md \
+            scripts/openchain-dispositions.cjs \
+            scripts/openchain-evidence.cjs \
+            src/templates/api/THIRD_PARTY_NOTICES.md \
+            tests/openchain-dispositions.test.ts \
+            tests/openchain-evidence.test.ts \
+            THIRD_PARTY_NOTICES.md
+
       - name: Rebuild committed distribution
         run: npm run build
 
@@ -36,12 +49,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- dist; then
-            echo "Committed dist already matches a fresh build."
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "Formatting and committed dist already match the release source."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dist
+          git add \
+            docs/openchain/PROGRAM-RECORD-2026-11-18.md \
+            docs/openchain/SELF-ASSESSMENT.md \
+            docs/RELEASE_HISTORY.md \
+            scripts/openchain-dispositions.cjs \
+            scripts/openchain-evidence.cjs \
+            src/templates/api/THIRD_PARTY_NOTICES.md \
+            tests/openchain-dispositions.test.ts \
+            tests/openchain-evidence.test.ts \
+            THIRD_PARTY_NOTICES.md
+          git add -f dist
           git commit -m "build: synchronize LaunchStack 3.0.7 dist"
           git push origin HEAD:docs/openchain-5230-18974-program-20261118
