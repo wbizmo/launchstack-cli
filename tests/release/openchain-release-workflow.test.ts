@@ -9,7 +9,7 @@ const workflow = readFileSync(
 
 describe("LaunchStack 3.0.7 OpenChain release workflow", () => {
   it("is scoped to the exact one-time release branch and protected main commit", () => {
-    expect(workflow).toContain("release/openchain-3.0.7");
+    expect(workflow).toContain("release/github-only-3.0.7");
     expect(workflow).toContain('MAIN_SHA="$(git rev-parse origin/main)"');
     expect(workflow).toContain('if [ "$GITHUB_SHA" != "$MAIN_SHA" ]; then');
     expect(workflow).toContain('if [ "$VERSION" != "3.0.7" ]; then');
@@ -27,7 +27,7 @@ describe("LaunchStack 3.0.7 OpenChain release workflow", () => {
     expect(workflow).toContain("generated-api-template.cdx.json");
     const evidenceStep = workflow
       .split("      - name: Build exact OpenChain release evidence")[1]
-      ?.split("      - name: Check whether npm version")[0];
+      ?.split("      - name: Create immutable release tag")[0];
     expect(evidenceStep).toBeDefined();
     expect(
       evidenceStep.indexOf("node scripts/openchain-evidence.cjs"),
@@ -43,15 +43,18 @@ describe("LaunchStack 3.0.7 OpenChain release workflow", () => {
     expect(workflow).toContain("openchain-dispositions.cjs");
   });
 
-  it("publishes only after evidence and attaches it to the GitHub release", () => {
-    expect(workflow).toContain("npm publish --access public --provenance");
-    expect(
-      workflow.indexOf("      - name: Build exact OpenChain release evidence"),
-    ).toBeLessThan(
-      workflow.indexOf("      - name: Publish npm package with provenance"),
-    );
+  it("publishes a GitHub tag and evidence only, never to npm", () => {
+    expect(workflow).toContain("release/github-only-3.0.7");
+    expect(workflow).toContain("gh release create v3.0.7 --verify-tag");
     expect(workflow).toContain(
       "gh release upload v3.0.7 launchstack-openchain-evidence-3.0.7.tar.gz --clobber",
+    );
+    expect(workflow).not.toMatch(/npm publish/);
+    expect(workflow).not.toContain("LAUNCHSTACK_NPM_TOKEN");
+    expect(workflow).not.toContain("environment: npm-publish");
+    expect(workflow).not.toContain("id-token: write");
+    expect(workflow.indexOf("      - name: Build exact OpenChain release evidence")).toBeLessThan(
+      workflow.indexOf("      - name: Create immutable release tag"),
     );
   });
 });
