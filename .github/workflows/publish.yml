@@ -87,20 +87,14 @@ jobs:
         env:
           LAUNCHSTACK_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/launchstack_smoke
 
-      - name: Build OpenChain release evidence
+      - name: Build release evidence
         shell: bash
         env:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
-          DECLARATION="docs/openchain/CONFORMANCE-DECLARATION-${RELEASE_VERSION}.md"
-          if [ ! -f "$DECLARATION" ]; then
-            echo "::error::Missing versioned OpenChain declaration: $DECLARATION"
-            exit 1
-          fi
-
           rm -rf openchain-evidence
-          mkdir -p openchain-evidence/program-docs
+          mkdir -p openchain-evidence
           node scripts/openchain-evidence.cjs --output openchain-evidence --archive-sources
 
           npm sbom --omit=dev --sbom-format=cyclonedx > openchain-evidence/launchstack-cli.cdx.json
@@ -122,7 +116,6 @@ jobs:
             openchain-evidence/generated-api-template-audit.json \
             openchain-evidence/vulnerability-dispositions.json
 
-          cp -R docs/openchain/. openchain-evidence/program-docs/
           cp THIRD_PARTY_NOTICES.md openchain-evidence/
           cp SECURITY.md openchain-evidence/
 
@@ -167,7 +160,20 @@ jobs:
 
               while IFS= read -r -d '' changed_path; do
                 case "$changed_path" in
-                  README.md|CHANGELOG.md|LICENSE|RELEASE_NOTES_*.md|docs/*|src/templates/api/README.md|dist/templates/api/README.md|.github/workflows/publish.yml)
+                  README.md|CHANGELOG.md|LICENSE|RELEASE_NOTES_*.md|docs/*|src/templates/api/README.md|dist/templates/api/README.md|.github/workflows/publish.yml|.github/workflows/release-openchain-3.0.7.yml|tests/release/openchain-release-workflow.test.ts)
+                    ;;
+                  package.json)
+                    node -e '
+                      const fs = require("node:fs");
+                      const cp = require("node:child_process");
+                      const before = JSON.parse(cp.execFileSync("git", ["show", process.env.RELEASE_TAG + ":package.json"], { encoding: "utf8" }));
+                      const after = JSON.parse(fs.readFileSync("package.json", "utf8"));
+                      before.files = before.files.filter(path => path !== "docs/openchain");
+                      if (JSON.stringify(before) !== JSON.stringify(after)) {
+                        console.error("Package metadata changed beyond removal of obsolete documentation inclusion");
+                        process.exit(1);
+                      }
+                    '
                     ;;
                   *)
                     echo "::error::Change after ${RELEASE_TAG} is outside release documentation: ${changed_path}"

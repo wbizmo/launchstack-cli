@@ -18,4 +18,4 @@ Commands implementing --json provide machine-readable responses. LaunchStack mus
 
 The project's generated Fastify API includes its own package, dependency lockfile, OpenAPI contracts, Prisma schema and runtime health checks. These distributed template dependencies are part of its security and license-assurance scope.
 
-See [README](../README.md), [release history](RELEASE_HISTORY.md), [security policy](../SECURITY.md) and the generated API documentation. The complete OpenSSF documentation_interface criterion requires validation that the external API reference actually covers the supported interface, not just the existence of this file.
+See [README](../README.md), [release history](RELEASE_HISTORY.md), [security policy](../SECURITY.md) and the generated API documentation.

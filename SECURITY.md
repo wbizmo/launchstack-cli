@@ -2,7 +2,7 @@
 
 ## Supported releases
 
-The OpenChain programme supports only the latest LaunchStack CLI release. On publication of v3.0.7, v3.0.7 becomes the supported programme release and earlier versions are superseded for this assurance scope.
+The currently supported LaunchStack CLI release is v3.0.7. Earlier versions are superseded for active security maintenance.
 
 ## Reporting a vulnerability
 
@@ -12,4 +12,4 @@ Supply a minimal non-sensitive reproduction, version, affected command or genera
 
 Maintainers will triage privately, evaluate the affected release and its shipped dependencies/templates, record decisions, coordinate remediation and user communications when warranted, and credit reporters as agreed. **No fixed response SLA or guaranteed response time is claimed until an operational response team has adopted and evidenced one.**
 
-For open-source license/compliance questions, use **williams@zivoralabs.xyz** with “LaunchStack license compliance” in the subject. See the Zivora Labs OpenChain security-assurance procedure and versioned declaration in docs/openchain.
+For open-source license/compliance questions, use **williams@zivoralabs.xyz** with “LaunchStack license compliance” in the subject.

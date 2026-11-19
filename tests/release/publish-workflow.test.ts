@@ -27,20 +27,28 @@ describe("npm publish workflow authorization", () => {
     expect(workflow).not.toContain('VERSION" != "3.0.5"');
     expect(workflow).toContain("npm run release:check");
     expect(workflow).toContain("npm publish --access public --provenance");
+    expect(workflow).toContain(
+      'before.files = before.files.filter(path => path !== "docs/openchain")',
+    );
+    expect(workflow).toContain(
+      "Package metadata changed beyond removal of obsolete documentation inclusion",
+    );
   });
 
   it("generates a normalized template SBOM before the two audits and publication", () => {
     const evidenceStep = workflow
-      .split("      - name: Build OpenChain release evidence")[1]
+      .split("      - name: Build release evidence")[1]
       ?.split("      - name: Verify npm publish token")[0];
     expect(evidenceStep).toContain(
       "node scripts/openchain-template-sbom.cjs --output openchain-evidence/generated-api-template.cdx.json",
     );
+    expect(workflow).not.toContain("docs/openchain/");
+    expect(workflow).not.toContain("CONFORMANCE-DECLARATION");
     expect(
       evidenceStep.indexOf("node scripts/openchain-template-sbom.cjs"),
     ).toBeLessThan(evidenceStep.indexOf("npm audit --omit=dev"));
     expect(
-      workflow.indexOf("      - name: Build OpenChain release evidence"),
+      workflow.indexOf("      - name: Build release evidence"),
     ).toBeLessThan(workflow.indexOf("      - name: Publish package to npm"));
   });
 
