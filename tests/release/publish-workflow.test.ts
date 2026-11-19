@@ -58,4 +58,27 @@ describe("npm publish workflow authorization", () => {
       'git diff --no-renames --name-only -z "$TAG_SHA"',
     );
   });
+
+  it("allows the already-merged 3.0.7 documentation cleanup but rejects runtime changes after the tag", () => {
+    const allowedPatterns = workflow
+      .match(/case "\\$changed_path" in\\s*([^\\n]+)\\)/)?.[1]
+      ?.trim()
+      .split("|");
+
+    expect(allowedPatterns).toBeDefined();
+    for (const path of [
+      "CODE_OF_CONDUCT.md",
+      "CONTRIBUTING.md",
+      "GOVERNANCE.md",
+      "SECURITY.md",
+      "tests/release/publish-workflow.test.ts",
+    ]) {
+      expect(allowedPatterns).toContain(path);
+    }
+    expect(allowedPatterns).not.toContain("src/*");
+    expect(allowedPatterns).not.toContain("scripts/*");
+    expect(workflow).toContain(
+      'Change after ${RELEASE_TAG} is outside release documentation',
+    );
+  });
 });
