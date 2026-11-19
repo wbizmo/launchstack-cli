@@ -27,8 +27,12 @@ describe("npm publish workflow authorization", () => {
     expect(workflow).not.toContain('VERSION" != "3.0.5"');
     expect(workflow).toContain("npm run release:check");
     expect(workflow).toContain("npm publish --access public --provenance");
-    expect(workflow).toContain('before.files = before.files.filter(path => path !== "docs/openchain")');
-    expect(workflow).toContain("Package metadata changed beyond removal of obsolete documentation inclusion");
+    expect(workflow).toContain(
+      'before.files = before.files.filter(path => path !== "docs/openchain")',
+    );
+    expect(workflow).toContain(
+      "Package metadata changed beyond removal of obsolete documentation inclusion",
+    );
   });
 
   it("generates a normalized template SBOM before the two audits and publication", () => {

@@ -45,4 +45,3 @@ node bin/launchstack.cjs --version
 ## Release validation
 
 **Verification passed on 18 November 2026.** The v3.0.7 source release was qualified with Node 24/26 checks, Windows portability, CodeQL, generated API/database tests, packed CLI smoke tests, CycloneDX validation, dependency audits and generated Docker checks. The [release workflow](https://github.com/wbizmo/launchstack-cli/actions/runs/44401159846) attached a versioned integrity-verified evidence archive.
-
