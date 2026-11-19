@@ -59,7 +59,7 @@ describe("npm publish workflow authorization", () => {
     );
   });
 
-  it("allows the already-merged 3.0.7 documentation cleanup but rejects runtime changes after the tag", () => {
+  it("allows post-tag docs cleanup but rejects runtime changes", () => {
     const allowedPatterns = workflow
       .match(/case "\$changed_path" in\s*([^\n]+)\)/)?.[1]
       ?.trim()
