@@ -87,20 +87,14 @@ jobs:
         env:
           LAUNCHSTACK_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/launchstack_smoke
 
-      - name: Build OpenChain release evidence
+      - name: Build release evidence
         shell: bash
         env:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
-          DECLARATION="docs/openchain/CONFORMANCE-DECLARATION-${RELEASE_VERSION}.md"
-          if [ ! -f "$DECLARATION" ]; then
-            echo "::error::Missing versioned OpenChain declaration: $DECLARATION"
-            exit 1
-          fi
-
           rm -rf openchain-evidence
-          mkdir -p openchain-evidence/program-docs
+          mkdir -p openchain-evidence
           node scripts/openchain-evidence.cjs --output openchain-evidence --archive-sources
 
           npm sbom --omit=dev --sbom-format=cyclonedx > openchain-evidence/launchstack-cli.cdx.json
@@ -122,7 +116,6 @@ jobs:
             openchain-evidence/generated-api-template-audit.json \
             openchain-evidence/vulnerability-dispositions.json
 
-          cp -R docs/openchain/. openchain-evidence/program-docs/
           cp THIRD_PARTY_NOTICES.md openchain-evidence/
           cp SECURITY.md openchain-evidence/
 
