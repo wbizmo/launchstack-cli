@@ -2,11 +2,10 @@
 
 Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.md`](docs/RELEASE_HISTORY.md).
 
-## [3.0.7] - 2026-11-18 (GitHub source release; npm publication deferred)
+## [3.0.7] - 2026-11-18
 
-### OpenChain compliance and release evidence
+### Supply-chain security and release evidence
 
-- Establish the LaunchStack CLI 3.0.7 programme for OpenChain self-certification against ISO/IEC 5230:2020 and ISO/IEC 18974:2023 with a complete 34 + 35 item evidence register.
 - Add explicit generated-project MIT licensing, third-party notice registers, exact production component records, integrity-verified source archiving and a committee-ready release evidence bundle.
 - Add low-severity production dependency gates for both CLI and generated API template, public security/license inquiry routes and recurring independent advisory checks.
 - Pin release/security workflow actions by immutable commit SHA and fail closed when component metadata, source integrity, audit status or release evidence is incomplete.
@@ -14,9 +13,7 @@ Release notes for all published versions are indexed in [`docs/RELEASE_HISTORY.m
 ### Runtime and distribution
 
 - No intentional CLI command behavior change. Generated projects now include explicit license and third-party notice files.
-- The GitHub tag, source release and archived evidence are distributed independently from npm. The latest npm version remains **3.0.6**; no npm publishing is authorized by this GitHub-only release.
 - The earlier invalid unrendered generated-template SBOM name is corrected by generating its CycloneDX file from a temporary normalized manifest, leaving the distributed template unchanged.
-- Add contributor guidance, governance, code of conduct, CLI interface reference, and a 145-item OpenSSF Gold-series evidence register. These documents do not constitute an awarded badge.
 
 ## [3.0.6] - 2026-11-15
 

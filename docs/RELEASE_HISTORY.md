@@ -1,6 +1,6 @@
 # Release history
 
-LaunchStack CLI's latest **GitHub source release** is [v3.0.7](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.7); the latest published **npm package** remains **v3.0.6**. GitHub tag and npm package versions intentionally differ until npm publication is separately approved. This index links the release notes for tagged versions and previously published packages.
+LaunchStack CLI v3.0.7 is the [current release](https://github.com/wbizmo/launchstack-cli/releases/tag/v3.0.7). This index links to the versioned release notes.
 
 | Version | Release date | Summary                                                                                  | Notes                                      |
 | ------- | ------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------ |
@@ -13,6 +13,6 @@ LaunchStack CLI's latest **GitHub source release** is [v3.0.7](https://github.co
 | 3.0.4   | 2026-11-14   | Runtime modernization, lifecycle/security hardening and qualification.                   | [Release notes](../RELEASE_NOTES_3.0.4.md) |
 | 3.0.5   | 2026-11-15   | Portable mutation locks and CLI project validation and creation fixes.                   | [Release notes](../RELEASE_NOTES_3.0.5.md) |
 | 3.0.6   | 2026-11-15   | Concurrent mutation safety, audit accuracy and runtime/build guidance.                   | [Release notes](../RELEASE_NOTES_3.0.6.md) |
-| 3.0.7   | 2026-11-18   | GitHub source only: licensing/assurance, source evidence, template notices; npm pending. | [Release notes](../RELEASE_NOTES_3.0.7.md) |
+| 3.0.7   | 2026-11-18   | Supply-chain hardening, source evidence and generated-template notices. | [Release notes](../RELEASE_NOTES_3.0.7.md) |
 
 The [cumulative changelog](../CHANGELOG.md) records changes by release. The [benchmark reports](benchmarks/) include methodology, raw machine-readable results and known limits. v3.0.5 includes transaction benchmark runs at 100, 1,000 and 10,000 files; the measurements and environment details are in the transaction report.

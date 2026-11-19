@@ -14,8 +14,8 @@ LaunchStack welcomes bug reports, feature suggestions, code, tests and documenta
 
 ## Review and acceptance
 
-The [active default-branch ruleset](https://github.com/wbizmo/launchstack-cli/rules/21824160) specifies two approving reviews, code-owner review, a review of the last push and resolved threads. Squash or rebase merges are supported. A repository-role bypass is possible; a bypass is not itself proof of an independently reviewed change. OpenSSF Gold requires evidence of actual reviews across at least 50% of proposed modifications, regardless of the policy setting.
+The [active default-branch ruleset](https://github.com/wbizmo/launchstack-cli/rules/21824160) specifies two approving reviews, code-owner review, a review of the last push and resolved threads. Squash or rebase merges are supported. A repository-role bypass is possible; a bypass is not itself proof of an independently reviewed change.
 
 Maintainers review correctness, untrusted inputs, test coverage, supply-chain provenance, changes to user files, licensing/attribution and release risks. No release is authorized by a passing PR check alone.
 
-Contributors must have the right to submit their material under the project's MIT license. Never paste proprietary code, another project’s code without its license terms or customer data into a pull request. Consult the [OpenChain contribution policy](docs/openchain/CONTRIBUTIONS.md).
+Contributors must have the right to submit their material under the project's MIT license. Never paste proprietary code, another project’s code without its license terms or customer data into a pull request.
