@@ -62,5 +62,4 @@ describe("npm publish workflow authorization", () => {
     expect(workflow).toContain("tests/release/publish-workflow.test.ts");
     expect(workflow).not.toContain("scripts/*");
   });
-
 });
