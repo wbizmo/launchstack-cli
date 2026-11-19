@@ -57,5 +57,9 @@ describe("npm publish workflow authorization", () => {
     expect(workflow).toContain(
       'git diff --no-renames --name-only -z "$TAG_SHA"',
     );
+    expect(workflow).toContain("CODE_OF_CONDUCT.md|CONTRIBUTING.md");
+    expect(workflow).toContain("GOVERNANCE.md|SECURITY.md");
+    expect(workflow).toContain("tests/release/publish-workflow.test.ts");
+    expect(workflow).not.toContain("scripts/*");
   });
 });
