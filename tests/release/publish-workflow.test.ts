@@ -60,10 +60,9 @@ describe("npm publish workflow authorization", () => {
   });
 
   it("allows post-tag docs cleanup but rejects runtime changes", () => {
-    const allowedPatterns = workflow
-      .match(/case "\$changed_path" in\s*([^\n]+)\)/)?.[1]
-      ?.trim()
-      .split("|");
+    const caseBlock = workflow.split('case "$changed_path" in')[1];
+    const allowLine = caseBlock?.split("\n")[1]?.trim();
+    const allowedPatterns = allowLine?.replace(/\)$/, "").split("|");
 
     expect(allowedPatterns).toBeDefined();
     for (const path of [
