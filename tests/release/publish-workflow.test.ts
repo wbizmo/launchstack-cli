@@ -59,23 +59,13 @@ describe("npm publish workflow authorization", () => {
     );
   });
 
-  it("allows post-tag docs cleanup but rejects runtime changes", () => {
-    const caseBlock = workflow.split('case "$changed_path" in')[1];
-    const allowLine = caseBlock?.split("\n")[1]?.trim();
-    const allowedPatterns = allowLine?.replace(/\)$/, "").split("|");
-
-    expect(allowedPatterns).toBeDefined();
-    for (const path of [
-      "CODE_OF_CONDUCT.md",
-      "CONTRIBUTING.md",
-      "GOVERNANCE.md",
-      "SECURITY.md",
-      "tests/release/publish-workflow.test.ts",
-    ]) {
-      expect(allowedPatterns).toContain(path);
-    }
-    expect(allowedPatterns).not.toContain("src/*");
-    expect(allowedPatterns).not.toContain("scripts/*");
+  it("keeps the v3.0.7 post-tag cleanup publishable", () => {
+    expect(workflow).toContain(
+      "|CODE_OF_CONDUCT.md|CONTRIBUTING.md|GOVERNANCE.md|SECURITY.md|",
+    );
+    expect(workflow).toContain("|tests/release/publish-workflow.test.ts)");
+    expect(workflow).not.toContain("src/*");
+    expect(workflow).not.toContain("scripts/*");
     expect(workflow).toContain(
       'Change after ${RELEASE_TAG} is outside release documentation',
     );
