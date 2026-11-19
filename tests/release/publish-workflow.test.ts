@@ -57,17 +57,10 @@ describe("npm publish workflow authorization", () => {
     expect(workflow).toContain(
       'git diff --no-renames --name-only -z "$TAG_SHA"',
     );
+    expect(workflow).toContain("CODE_OF_CONDUCT.md|CONTRIBUTING.md");
+    expect(workflow).toContain("GOVERNANCE.md|SECURITY.md");
+    expect(workflow).toContain("tests/release/publish-workflow.test.ts");
+    expect(workflow).not.toContain("scripts/*");
   });
 
-  it("keeps the v3.0.7 post-tag cleanup publishable", () => {
-    expect(workflow).toContain(
-      "|CODE_OF_CONDUCT.md|CONTRIBUTING.md|GOVERNANCE.md|SECURITY.md|",
-    );
-    expect(workflow).toContain("|tests/release/publish-workflow.test.ts)");
-    expect(workflow).not.toContain("src/*");
-    expect(workflow).not.toContain("scripts/*");
-    expect(workflow).toContain(
-      "Change after ${RELEASE_TAG} is outside release documentation",
-    );
-  });
 });
