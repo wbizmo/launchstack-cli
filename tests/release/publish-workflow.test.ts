@@ -66,6 +66,8 @@ describe("npm publish workflow authorization", () => {
     expect(workflow).toContain("|tests/release/publish-workflow.test.ts)");
     expect(workflow).not.toContain("src/*");
     expect(workflow).not.toContain("scripts/*");
-    expect(workflow).toContain("Change after ${RELEASE_TAG} is outside release documentation");
+    expect(workflow).toContain(
+      "Change after ${RELEASE_TAG} is outside release documentation",
+    );
   });
 });
